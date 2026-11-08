@@ -4,7 +4,7 @@ import { createPayPalRestClient } from "@/lib/paypal/rest/client";
 import { provideDisputeEvidence } from "@/lib/paypal/rest/disputes";
 import { exchangeAuthorizationCode, getUserInfo, loginWithPayPalUrl } from "@/lib/paypal/rest/identity";
 import { createPayoutBatch, getPayoutBatch, type PayoutItemInput } from "@/lib/paypal/rest/payouts";
-import { createWebhook } from "@/lib/paypal/rest/webhooks";
+import { createWebhook, resendWebhookEvent } from "@/lib/paypal/rest/webhooks";
 import { readLoginWithPayPalRedirectUri } from "@/lib/paypal/config";
 import { PAYPAL_WEBHOOK_EVENT_TYPES } from "@/lib/paypal/webhooks/events";
 
@@ -186,5 +186,30 @@ describe("Webhook registration", () => {
 
     const body = JSON.parse(String(apiCall()?.init.body));
     expect(body.event_types.map((type: { name: string }) => type.name)).toEqual([...PAYPAL_WEBHOOK_EVENT_TYPES]);
+  });
+});
+
+describe("Webhook event resend", () => {
+  const eventId = "WH-2WR32451HC0233532-67976317FL4543714";
+
+  it("posts to the resend endpoint for the event and names the target webhook", async () => {
+    const { rest, apiCall } = restAnswering({ id: eventId, event_type: "PAYMENT.PAYOUTSBATCH.SUCCESS" }, 202);
+
+    const resent = await resendWebhookEvent(rest, eventId, ["4JH86294D6297924G"]);
+
+    expect(resent).toEqual({ id: eventId, event_type: "PAYMENT.PAYOUTSBATCH.SUCCESS" });
+    const call = apiCall();
+    expect(call?.init.method).toBe("POST");
+    expect(call?.url).toBe(`https://api-m.sandbox.paypal.com/v1/notifications/webhooks-events/${eventId}/resend`);
+    expect(JSON.parse(String(call?.init.body))).toEqual({ webhook_ids: ["4JH86294D6297924G"] });
+  });
+
+  it("rejects an event ID that could change the path, and an empty webhook list, before calling PayPal", () => {
+    const { rest, apiCall } = restAnswering({});
+
+    expect(() => resendWebhookEvent(rest, "../webhooks/4JH86294D6297924G", ["4JH86294D6297924G"])).toThrow(RangeError);
+    expect(() => resendWebhookEvent(rest, "A".repeat(51), ["4JH86294D6297924G"])).toThrow(RangeError);
+    expect(() => resendWebhookEvent(rest, eventId, [])).toThrow(RangeError);
+    expect(apiCall()).toBeUndefined();
   });
 });

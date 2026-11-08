@@ -103,6 +103,43 @@ export function updateWebhookEventTypes(
   });
 }
 
+/**
+ * PayPal's spec allows only letters and digits in the path, but delivered
+ * event IDs look like `WH-2WR32451HC0233532-67976317FL4543714`, so hyphens
+ * are accepted too.
+ */
+const EVENT_ID = /^[A-Za-z0-9-]{1,50}$/;
+
+const resentEventSchema = z.object({ id: z.string(), event_type: z.string() });
+
+export type ResentWebhookEvent = z.infer<typeof resentEventSchema>;
+
+/**
+ * Asks PayPal to deliver a past event again to the given webhooks. The
+ * redelivery keeps the event ID and gets a new transmission signature, which
+ * makes it a real duplicate for the route to skip. PayPal answers 202 before
+ * it delivers. The operation defines no PayPal-Request-Id, and repeating it
+ * only queues another identical delivery.
+ */
+export function resendWebhookEvent(
+  rest: PayPalRestClient,
+  eventId: string,
+  webhookIds: readonly string[],
+): Promise<ResentWebhookEvent> {
+  if (!EVENT_ID.test(eventId)) {
+    throw new RangeError("A webhook event ID is 1 to 50 letters, digits, or hyphens.");
+  }
+  if (webhookIds.length === 0 || webhookIds.length > 500) {
+    throw new RangeError("Resend to between 1 and 500 webhooks.");
+  }
+  return rest.request({
+    method: "POST",
+    path: `/v1/notifications/webhooks-events/${eventId}/resend`,
+    body: { kind: "json", value: { webhook_ids: webhookIds } },
+    schema: resentEventSchema,
+  });
+}
+
 export interface WebhookRegistration {
   readonly action: "created" | "updated" | "unchanged";
   readonly webhook: PayPalWebhook;
