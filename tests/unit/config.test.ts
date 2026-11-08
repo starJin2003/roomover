@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { ConfigError, readConfig, type ConfigKey } from "@/lib/config";
+import { ConfigError, readConfig, readOptionalConfig, type ConfigKey } from "@/lib/config";
 
 const validEnv = {
   PAYPAL_CLIENT_ID: "sandbox-client-id",
   PAYPAL_CLIENT_SECRET: "sandbox-client-secret",
-  PAYPAL_WEBHOOK_ID: "sandbox-webhook-id",
+  PAYPAL_WEBHOOK_ID: "8PT597110X687430LKGECATA",
   ANTHROPIC_API_KEY: "test-anthropic-key",
   CHANNEL3_API_KEY: "test-channel3-key",
   DATABASE_URL: "postgresql://roomover:roomover@localhost:5432/roomover",
@@ -86,5 +86,24 @@ describe("readConfig", () => {
       readConfig(["DATABASE_URL"], { DATABASE_URL: "mysql://localhost:3306/roomover" }),
     );
     expect(error.variables).toEqual(["DATABASE_URL"]);
+  });
+});
+
+describe("readOptionalConfig", () => {
+  it("returns undefined when the variable is unset or empty", () => {
+    expect(readOptionalConfig("PAYPAL_WEBHOOK_ID", {})).toBeUndefined();
+    expect(readOptionalConfig("PAYPAL_WEBHOOK_ID", { PAYPAL_WEBHOOK_ID: "" })).toBeUndefined();
+  });
+
+  it("returns a valid value", () => {
+    expect(readOptionalConfig("PAYPAL_WEBHOOK_ID", validEnv)).toBe(validEnv.PAYPAL_WEBHOOK_ID);
+  });
+
+  it("throws when the value is set but invalid, such as the .env.example placeholder", () => {
+    const error = captureConfigError(() =>
+      readOptionalConfig("PAYPAL_WEBHOOK_ID", { PAYPAL_WEBHOOK_ID: "your-sandbox-webhook-id" }),
+    );
+    expect(error.variables).toEqual(["PAYPAL_WEBHOOK_ID"]);
+    expect(error.message).not.toContain("your-sandbox-webhook-id");
   });
 });

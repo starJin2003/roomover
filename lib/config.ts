@@ -3,7 +3,8 @@ import { z } from "zod";
 const configSchema = z.object({
   PAYPAL_CLIENT_ID: z.string().min(1),
   PAYPAL_CLIENT_SECRET: z.string().min(1),
-  PAYPAL_WEBHOOK_ID: z.string().min(1),
+  // PayPal webhook IDs are uppercase letters and digits, so a copied placeholder fails here.
+  PAYPAL_WEBHOOK_ID: z.string().regex(/^[A-Z0-9]{8,64}$/, "Expected a PayPal webhook ID"),
   ANTHROPIC_API_KEY: z.string().min(1),
   CHANNEL3_API_KEY: z.string().min(1),
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
@@ -55,4 +56,17 @@ export function readConfig<K extends ConfigKey>(
     throw new ConfigError([...problems.keys()], [...problems.values()].join(" "));
   }
   return values as Pick<Config, K>;
+}
+
+/**
+ * For variables a deployment may not have yet. Unset or empty returns
+ * undefined, and a value that is set but invalid still throws.
+ */
+export function readOptionalConfig<K extends ConfigKey>(
+  key: K,
+  env: Environment = process.env,
+): Config[K] | undefined {
+  const raw = env[key];
+  if (raw === undefined || raw === "") return undefined;
+  return readConfig([key], env)[key];
 }
