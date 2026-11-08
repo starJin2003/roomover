@@ -1,7 +1,7 @@
 /**
  * Seeds the Lakeshore University demo campus with listing windows counted
  * from today in campus time. Safe to run again, since every row has a fixed
- * ID and unchanged rows are skipped.
+ * ID and unchanged rows are skipped. A Render cron job runs it once a day.
  *
  *   pnpm db:seed
  */

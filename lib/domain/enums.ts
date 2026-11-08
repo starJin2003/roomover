@@ -93,6 +93,12 @@ export const ORDER_STATUSES = [
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
 /**
+ * Orders that no longer hold their listings. `capture_declined` stays open
+ * because the buyer can retry with another funding source.
+ */
+export const TERMINAL_ORDER_STATUSES = ["settled", "canceled", "voided", "reversed"] as const satisfies readonly OrderStatus[];
+
+/**
  * `held` is an item captured at checkout and held by the platform. `captured`
  * keeps the full amount, `adjusted` keeps a reduced amount, and `released`
  * returns everything to the buyer through a void or a refund.

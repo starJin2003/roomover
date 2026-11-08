@@ -1,6 +1,7 @@
-# Roomover on Render. One always on web service and the roomover-db Postgres
-# instance, both in Ohio so the app reaches the database over the private
-# network. Secret values live only in the Render dashboard (sync false).
+# Roomover on Render. One always on web service, a daily reseed cron job, and
+# the roomover-db Postgres instance, all in Ohio so both services reach the
+# database over the private network. Secret values live only in the Render
+# dashboard (sync false).
 services:
   - type: web
     name: roomover
@@ -37,6 +38,27 @@ services:
         sync: false
       - key: SESSION_SECRET
         sync: false
+
+  # Moves the demo listing windows to the current campus day so a judge always
+  # finds a winter cart that authorizes. Schedules run in UTC, so 10:00 is 04:00
+  # Central in winter and 05:00 in summer. The seed skips listings that open
+  # orders hold and deletes nothing.
+  - type: cron
+    name: roomover-reseed
+    runtime: node
+    region: ohio
+    plan: 0.5c-512mb
+    schedule: "0 10 * * *"
+    autoDeployTrigger: commit
+    buildCommand: npm install --global corepack@0.36.0 && corepack enable pnpm && pnpm install --frozen-lockfile
+    startCommand: npm run db:seed
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: roomover-db
+          property: connectionString
+      - key: COREPACK_ENABLE_DOWNLOAD_PROMPT
+        value: "0"
 
 databases:
   # Adopted by name. The instance already exists, so its plan, disk, version,
