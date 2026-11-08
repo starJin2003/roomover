@@ -1,29 +1,61 @@
 import { describe, expect, it } from "vitest";
-import { ACTIVITY, CARD_SLUGS, LEDGER, LEDGER_SUMMARY, listingCard } from "@/app/style-guide/demo-data";
+import {
+  ACTIVITY_LOG,
+  BUDGET_CENTS,
+  FURNISH,
+  HANDOFF,
+  MONEY,
+  PAYOUT_ARRIVALS,
+  PAYPAL_MOMENTS,
+  SELL,
+  SELLER_PAYOUTS,
+} from "@/app/style-guide/demo-data";
 import { AGENT_NAMES } from "@/lib/domain/enums";
 import { sumCents } from "@/lib/domain/money";
 
 describe("style guide demo data", () => {
-  it("conserves money across the settlement", () => {
-    expect(sumCents(LEDGER.map((row) => row.beforeCents))).toBe(sumCents(LEDGER.map((row) => row.afterCents)));
-    expect(LEDGER_SUMMARY.capturedCents + LEDGER_SUMMARY.releasedCents).toBe(LEDGER_SUMMARY.authorizedCents);
+  it("conserves money from authorization to payouts", () => {
+    expect(MONEY).toMatchObject({ authorizedCents: 14_100, capturedCents: 13_600, releasedCents: 500 });
+    expect(MONEY.capturedCents + MONEY.releasedCents).toBe(MONEY.authorizedCents);
+    expect(sumCents(SELLER_PAYOUTS.map((row) => row.amountCents))).toBe(MONEY.capturedCents);
   });
 
-  it("pays the platform and five distinct sellers", () => {
-    expect(LEDGER).toHaveLength(6);
-    expect(new Set(LEDGER.map((row) => row.account)).size).toBe(6);
+  it("stays inside the budget and shows the real savings against new", () => {
+    expect(MONEY.authorizedCents).toBeLessThanOrEqual(BUDGET_CENTS);
+    expect(MONEY.newCents - MONEY.authorizedCents).toBe(40_700);
   });
 
-  it("shows every agent, and every PayPal step with an ID", () => {
-    expect(new Set(ACTIVITY.map((entry) => entry.agent))).toEqual(new Set(AGENT_NAMES));
-    for (const entry of ACTIVITY.filter((line) => line.paypal !== undefined)) {
-      expect(entry.paypal?.id).toMatch(/^[0-9A-Z]{13,17}$/);
+  it("pays five distinct sellers, and the replay delivers each payout once", () => {
+    expect(new Set(SELLER_PAYOUTS.map((row) => row.sellerName)).size).toBe(5);
+    expect([...PAYOUT_ARRIVALS].sort()).toEqual(SELLER_PAYOUTS.map((row) => row.payoutItemId).sort());
+  });
+
+  it("tells the activity in about three sentences, with every agent in the log behind Details", () => {
+    expect(FURNISH.sentences).toHaveLength(3);
+    expect(FURNISH.sentences[0]).toBe("Found a desk that fits under the window. $52 from Jun.");
+    expect(new Set(ACTIVITY_LOG.map((entry) => entry.agent))).toEqual(new Set(AGENT_NAMES));
+  });
+
+  it("backs every PayPal moment with sandbox style IDs from the log", () => {
+    const logIds = new Set(ACTIVITY_LOG.flatMap((entry) => (entry.paypal === undefined ? [] : [entry.paypal.id])));
+    for (const moment of Object.values(PAYPAL_MOMENTS)) {
+      expect(moment.references.length).toBeGreaterThan(0);
+      for (const reference of moment.references) {
+        expect(reference.id).toMatch(/^[0-9A-Z]{13,17}$/);
+        expect(logIds.has(reference.id)).toBe(true);
+      }
     }
   });
 
-  it("builds listing cards from the seed catalog", () => {
-    const cards = CARD_SLUGS.map(listingCard);
-    expect(new Set(cards.map((card) => card.handoffMode))).toEqual(new Set(["direct", "same_room", "storage_hold"]));
-    expect(cards[0]).toMatchObject({ title: "Black balance arm desk lamp", priceCents: 1_600, sellerName: "Ava Lindqvist" });
+  it("raises exactly one item as next at handoff and explains the adjusted one", () => {
+    expect(HANDOFF.items.filter((item) => item.check === "next")).toHaveLength(1);
+    const adjusted = HANDOFF.items.filter((item) => item.check === "adjusted");
+    expect(adjusted).toHaveLength(1);
+    expect(adjusted[0].finding).toBe("new 3 cm tear. You pay $30 of $35");
+  });
+
+  it("lists Ava's lamp from the seed with its floor under the price", () => {
+    expect(SELL).toMatchObject({ title: "Black balance arm desk lamp", priceCents: 1_600, floorCents: 1_200, newCents: 4_900 });
+    expect(SELL.facts.map((fact) => fact.value)).toEqual(["$12", "Like new", "16.5 × 7 × 19 in", "Nov 17 to 25"]);
   });
 });

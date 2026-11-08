@@ -7,10 +7,24 @@ function channel(value: number): number {
   return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
 }
 
-export function relativeLuminance(hex: string): number {
+function rgb(hex: string): [number, number, number] {
   if (!HEX.test(hex)) throw new RangeError(`Expected a #RRGGBB color, got ${hex}.`);
   const value = Number.parseInt(hex.slice(1), 16);
-  return 0.2126 * channel(value >> 16) + 0.7152 * channel((value >> 8) & 0xff) + 0.0722 * channel(value & 0xff);
+  return [value >> 16, (value >> 8) & 0xff, value & 0xff];
+}
+
+export function relativeLuminance(hex: string): number {
+  const [r, g, b] = rgb(hex);
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+/** The sRGB mix CSS `color-mix(in srgb, base, other share)` produces, as #RRGGBB. */
+export function mixHex(base: string, other: string, share: number): string {
+  if (!(share >= 0 && share <= 1)) throw new RangeError(`Expected a share from 0 to 1, got ${share}.`);
+  const a = rgb(base);
+  const b = rgb(other);
+  const mixed = a.map((value, index) => Math.round(value * (1 - share) + b[index] * share));
+  return `#${mixed.map((value) => value.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
 }
 
 export function contrastRatio(a: string, b: string): number {

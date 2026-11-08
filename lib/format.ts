@@ -1,10 +1,9 @@
-import { CONDITION_GRADES, type ConditionGrade } from "@/lib/domain/listing";
-import type { HandoffMode } from "@/lib/domain/enums";
+import type { ConditionGrade } from "@/lib/domain/listing";
 
 const MINUS = "−";
 
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-const usdChange = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", signDisplay: "exceptZero" });
+const usdWhole = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
 function assertCents(cents: number): void {
   if (!Number.isSafeInteger(cents)) throw new RangeError(`Expected integer cents, got ${cents}.`);
@@ -16,10 +15,10 @@ export function formatUsd(cents: number): string {
   return usd.format(cents / 100).replace("-", MINUS);
 }
 
-/** A balance change, such as +$16.00 or −$136.00. Zero has no sign. */
-export function formatUsdChange(cents: number): string {
+/** Whole dollars drop their cents, so 5200 reads $52 and 3525 reads $35.25. */
+export function formatUsdShort(cents: number): string {
   assertCents(cents);
-  return usdChange.format(cents / 100).replace("-", MINUS);
+  return cents % 100 === 0 ? usdWhole.format(cents / 100).replace("-", MINUS) : formatUsd(cents);
 }
 
 export type SizeMm = readonly [width: number, depth: number, height: number];
@@ -57,13 +56,13 @@ export const CONDITION_LABEL: Readonly<Record<ConditionGrade, string>> = {
   worn: "Worn",
 };
 
-/** Like new scores 4 and worn scores 1, for the condition meter. */
-export function conditionScore(grade: ConditionGrade): number {
-  return CONDITION_GRADES.length - CONDITION_GRADES.indexOf(grade);
-}
+const campusDay = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", month: "short", day: "numeric" });
 
-export const HANDOFF_MODE_LABEL: Readonly<Record<HandoffMode, string>> = {
-  direct: "Direct handoff",
-  storage_hold: "Storage hold",
-  same_room: "Same room",
-};
+/** A campus date range, such as Nov 17 to 25, or Nov 30 to Dec 2 across a month. */
+export function formatDayRange(start: Date, end: Date): string {
+  const from = campusDay.formatToParts(start);
+  const to = campusDay.formatToParts(end);
+  const month = (parts: Intl.DateTimeFormatPart[]) => parts.find((part) => part.type === "month")?.value;
+  const day = (parts: Intl.DateTimeFormatPart[]) => parts.find((part) => part.type === "day")?.value;
+  return month(from) === month(to) ? `${month(from)} ${day(from)} to ${day(to)}` : `${campusDay.format(start)} to ${campusDay.format(end)}`;
+}

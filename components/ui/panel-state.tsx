@@ -40,13 +40,13 @@ export function PanelState({ kind, title, body, action }: PanelStateProps) {
     <div role={LIVE_REGION[kind]} className="flex flex-col items-start gap-3 py-2">
       <Mark kind={kind} />
       <div className="flex flex-col gap-1">
-        <p className="text-md font-semibold">{title}</p>
+        <p className="text-base font-semibold">{title}</p>
         <p className="max-w-prose text-sm text-flint">{body}</p>
       </div>
       {kind === "loading" && (
         <div aria-hidden="true" className="flex w-full flex-col gap-2 pt-1">
-          <span className="h-3 w-4/5 rounded-full bg-stone/20" />
-          <span className="h-3 w-3/5 rounded-full bg-stone/20" />
+          <span className="h-3 w-4/5 rounded-full bg-well" />
+          <span className="h-3 w-3/5 rounded-full bg-well" />
         </div>
       )}
       {action !== undefined && <div className="pt-1">{action}</div>}

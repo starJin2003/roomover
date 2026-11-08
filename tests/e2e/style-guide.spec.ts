@@ -24,7 +24,8 @@ test("style guide renders cleanly, passes axe, and stays out of search", async (
     }
     window.scrollTo(0, 0);
   });
-  await expect(page.locator("img")).toHaveCount(3);
+  // Five PayPal monograms and five handoff thumbnails.
+  await expect(page.locator("img")).toHaveCount(10);
   for (const image of await page.locator("img").all()) {
     await expect.poll(() => image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0)).toBe(true);
   }
@@ -38,6 +39,45 @@ test("style guide renders cleanly, passes axe, and stays out of search", async (
 
   await page.screenshot({ path: `${SCREENSHOT_DIR}/${testInfo.project.name}.png`, fullPage: true });
   expect(problems).toEqual([]);
+});
+
+test("Under the hood reveals the PayPal API name and sandbox ID under every PayPal step", async ({ page }) => {
+  await page.goto("/style-guide");
+  const moments = page.locator('section[aria-labelledby="paypal-moments-title"]');
+  const ids = ["8RU61172JS455403V", "0TF88542GM8203619", "2GG279541U471931P", "7XJ4TQ2HW9N3E"];
+  for (const id of ids) await expect(moments.getByText(id)).toHaveCount(0);
+
+  const toggle = moments.getByRole("switch", { name: "Under the hood" });
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  for (const id of ids) await expect(moments.getByText(id)).toBeVisible();
+  await expect(moments.getByText("PayPal Payments v2")).toHaveCount(2);
+
+  const done = page.locator('section[aria-labelledby="handoff-done-title"]');
+  await expect(done.getByText("7XJ4TQ2HW9N3E")).toHaveCount(0);
+  await done.getByRole("switch", { name: "Under the hood" }).click();
+  await expect(done.getByText("7XJ4TQ2HW9N3E")).toBeVisible();
+});
+
+test("sellers paid fills each row as its payout event arrives and ends on the full total", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/style-guide");
+  const done = page.locator('section[aria-labelledby="handoff-done-title"]');
+  const paidRows = done.locator('li[data-paid="true"]');
+  await expect(paidRows).toHaveCount(5);
+  await expect(done.getByText("sent to 5 sellers")).toBeVisible();
+
+  await done.getByRole("button", { name: "Replay payout events" }).click();
+  await expect(done.getByText("Payout pending")).toHaveCount(5);
+  await expect(paidRows).toHaveCount(1);
+  await expect(paidRows.first()).toContainText("Lea Moreau");
+  await expect(paidRows).toHaveCount(2);
+  await expect(paidRows.first()).toContainText("Jun Park");
+  await expect(paidRows).toHaveCount(5);
+  await expect(done.getByText("Paid with PayPal")).toHaveCount(5);
+  await expect(done.getByText("$136", { exact: true })).toBeVisible();
+  await expect(done.getByText("sent to 5 sellers")).toBeVisible();
 });
 
 test("the home page does not link to the style guide", async ({ page }) => {

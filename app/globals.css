@@ -2,8 +2,8 @@
 
 /*
  * Roomover tokens. Each namespace starts from `initial`, so screens can use
- * only these values. lib/design/tokens.ts holds the same values for the style
- * guide, and a unit test keeps both files in step.
+ * only these values. lib/design/tokens.ts holds the same values, and a unit
+ * test keeps both files in step.
  */
 @theme {
   --color-*: initial;
@@ -15,9 +15,21 @@
   --color-blue: #008CFF;
   --color-sky: #60CDFF;
   --color-brick: #A3341E;
+  --color-table: #E9E6E0;
+  --color-well: #EBE8E3;
+  --color-key: #343438;
+  --color-skirt: #C6C2BB;
+  --color-brick-skirt: #71291D;
+  --color-paypal-ground: #FFFFFF;
+  --color-hair: color-mix(in srgb, #14151A 9%, transparent);
 
   --font-*: initial;
   --font-sans: var(--font-recursive), ui-sans-serif, system-ui, sans-serif;
+
+  --font-weight-*: initial;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
 
   --text-*: initial;
   --text-xs: 12px;
@@ -26,71 +38,87 @@
   --text-sm--line-height: 20px;
   --text-base: 16px;
   --text-base--line-height: 24px;
-  --text-md: 18px;
-  --text-md--line-height: 28px;
-  --text-lg: 21px;
-  --text-lg--line-height: 30px;
-  --text-xl: 24px;
+  --text-lg: 20px;
+  --text-lg--line-height: 28px;
+  --text-xl: 28px;
   --text-xl--line-height: 32px;
-  --text-2xl: 36px;
-  --text-2xl--line-height: 40px;
-  --text-3xl: 48px;
-  --text-3xl--line-height: 52px;
-  --text-4xl: 72px;
-  --text-4xl--line-height: 72px;
+  --text-2xl: 40px;
+  --text-2xl--line-height: 44px;
+  --text-2xl--letter-spacing: -0.02em;
+  --text-3xl: 64px;
+  --text-3xl--line-height: 64px;
+  --text-3xl--letter-spacing: -0.02em;
 
   --radius-*: initial;
   --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
   --radius-full: 9999px;
 
-  /* Pressable things stand on a crisp edge. Nothing else casts a shadow. */
+  /*
+   * Depth has three levels. The table is the ground, Paper sheets float on a
+   * soft shadow, and keys stand on a skirt drawn inside their own box.
+   */
   --shadow-*: initial;
-  --shadow-key-pressed: 0 1px 0 0 color-mix(in srgb, var(--color-ink) 22%, transparent);
-  --shadow-key: 0 3px 0 0 color-mix(in srgb, var(--color-ink) 22%, transparent);
-  --shadow-key-raised: 0 4px 0 0 color-mix(in srgb, var(--color-ink) 22%, transparent);
-  --shadow-key-tall: 0 6px 0 0 color-mix(in srgb, var(--color-ink) 22%, transparent);
+  --shadow-sheet: 0 0 0 1px color-mix(in srgb, #14151A 9%, transparent), 0 1px 2px color-mix(in srgb, #14151A 6%, transparent),
+    0 16px 32px -16px color-mix(in srgb, #14151A 22%, transparent);
+  --shadow-ring: inset 0 0 0 1px color-mix(in srgb, #14151A 9%, transparent);
+  --shadow-ring-strong: inset 0 0 0 1.5px #67625A;
+  --shadow-knob: 0 1px 3px color-mix(in srgb, #14151A 30%, transparent);
+  --shadow-key-ink: inset 0 -4px 0 #14151A, inset 0 1px 0 color-mix(in srgb, #F6F3EE 18%, transparent),
+    0 2px 6px color-mix(in srgb, #14151A 22%, transparent);
+  --shadow-key-ink-down: inset 0 -1px 0 #14151A, inset 0 1px 0 color-mix(in srgb, #F6F3EE 18%, transparent),
+    0 1px 2px color-mix(in srgb, #14151A 22%, transparent);
+  --shadow-key-paper: inset 0 -4px 0 #C6C2BB, inset 0 0 0 1px color-mix(in srgb, #14151A 9%, transparent),
+    0 2px 6px color-mix(in srgb, #14151A 14%, transparent);
+  --shadow-key-paper-down: inset 0 -1px 0 #C6C2BB, inset 0 0 0 1px color-mix(in srgb, #14151A 9%, transparent),
+    0 1px 2px color-mix(in srgb, #14151A 14%, transparent);
+  --shadow-key-brick: inset 0 -4px 0 #71291D, inset 0 1px 0 color-mix(in srgb, #F6F3EE 18%, transparent),
+    0 2px 6px color-mix(in srgb, #14151A 22%, transparent);
+  --shadow-key-brick-down: inset 0 -1px 0 #71291D, inset 0 1px 0 color-mix(in srgb, #F6F3EE 18%, transparent),
+    0 1px 2px color-mix(in srgb, #14151A 22%, transparent);
+  --shadow-choice-ink: inset 0 -6px 0 #14151A, inset 0 1px 0 color-mix(in srgb, #F6F3EE 18%, transparent),
+    0 4px 12px color-mix(in srgb, #14151A 22%, transparent);
+  --shadow-choice-ink-down: inset 0 -2px 0 #14151A, inset 0 1px 0 color-mix(in srgb, #F6F3EE 18%, transparent),
+    0 1px 3px color-mix(in srgb, #14151A 22%, transparent);
+  --shadow-choice-paper: inset 0 -6px 0 #C6C2BB, inset 0 0 0 1px color-mix(in srgb, #14151A 9%, transparent),
+    0 4px 12px color-mix(in srgb, #14151A 12%, transparent);
+  --shadow-choice-paper-down: inset 0 -2px 0 #C6C2BB, inset 0 0 0 1px color-mix(in srgb, #14151A 9%, transparent),
+    0 1px 3px color-mix(in srgb, #14151A 12%, transparent);
 
   --ease-*: initial;
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   --duration-press: 80ms;
   --duration-quick: 160ms;
   --duration-settle: 320ms;
-  --duration-land: 560ms;
 
-  --animate-land: land var(--duration-land) var(--ease-spring) both;
   --animate-spin: spin 900ms linear infinite;
-
-  @keyframes land {
-    from {
-      transform: translateY(-48px);
-      opacity: 0;
-    }
-    60% {
-      opacity: 1;
-    }
-    to {
-      transform: translateY(0);
-      opacity: 1;
-    }
-  }
 }
 
 /*
- * The style guide shows hover and focus without a pointer through
- * data-preview. Real pointers get hover only where hover exists.
+ * The style guide shows key states without a pointer through data-preview.
+ * Real pointers get hover only where hover exists.
  */
 @custom-variant key-hover {
   @media (hover: hover) {
-    &:hover:not(:disabled, [aria-busy="true"]) {
+    &:hover:not(:disabled, [aria-busy="true"], [data-preview]) {
       @slot;
     }
   }
   &[data-preview="hover"] {
+    @slot;
+  }
+}
+
+@custom-variant key-press {
+  &:active:not(:disabled, [aria-busy="true"]) {
+    @slot;
+  }
+  &[data-preview="press"] {
     @slot;
   }
 }
@@ -110,7 +138,7 @@
 
 @layer base {
   html {
-    background: var(--color-paper);
+    background: var(--color-table);
     color: var(--color-ink);
     font-family: var(--font-sans);
     font-variation-settings: "MONO" 0;

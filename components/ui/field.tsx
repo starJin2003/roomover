@@ -8,7 +8,7 @@ interface FieldText {
 }
 
 const CONTROL =
-  "w-full rounded-md border border-stone bg-paper text-base text-ink placeholder:text-flint transition-[border-color,box-shadow] duration-(--duration-quick) ease-out key-hover:border-ink key-focus:border-ink key-focus:outline-2 key-focus:outline-offset-2 key-focus:outline-ink aria-invalid:border-brick aria-invalid:shadow-[inset_0_0_0_1px_var(--color-brick)] disabled:cursor-not-allowed disabled:border-stone/50 disabled:text-flint";
+  "w-full rounded-lg border border-stone bg-paper text-base text-ink placeholder:text-flint transition-[border-color,box-shadow] duration-(--duration-quick) ease-out key-hover:border-ink key-focus:border-ink key-focus:outline-2 key-focus:outline-offset-2 key-focus:outline-ink aria-invalid:border-brick aria-invalid:shadow-[inset_0_0_0_1px_var(--color-brick)] disabled:cursor-not-allowed disabled:border-stone/50 disabled:text-flint";
 
 function describedBy({ id, help, error }: FieldText): string | undefined {
   const ids = [help === undefined ? undefined : `${id}-help`, error === undefined ? undefined : `${id}-error`];
@@ -28,7 +28,7 @@ function ErrorMark() {
 function FieldFrame({ field, children }: { field: FieldText; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
-      <label htmlFor={field.id} className="text-sm font-semibold text-ink">
+      <label htmlFor={field.id} className="text-sm font-medium text-ink">
         {field.label}
       </label>
       {children}

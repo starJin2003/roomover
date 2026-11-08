@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONDITION_GRADES } from "@/lib/domain/listing";
-import { conditionScore, formatCentimeters, formatInches, formatUsd, formatUsdChange } from "@/lib/format";
+import { formatCentimeters, formatDayRange, formatInches, formatUsd, formatUsdShort } from "@/lib/format";
 import { seedListings } from "@/scripts/seed/listings";
 
 describe("formatUsd", () => {
@@ -13,13 +12,24 @@ describe("formatUsd", () => {
 
   it("refuses amounts that are not integer cents", () => {
     expect(() => formatUsd(16.5)).toThrow(RangeError);
-    expect(() => formatUsdChange(Number.NaN)).toThrow(RangeError);
+    expect(() => formatUsdShort(Number.NaN)).toThrow(RangeError);
   });
+});
 
-  it("signs balance changes and leaves zero unsigned", () => {
-    expect(formatUsdChange(1_600)).toBe("+$16.00");
-    expect(formatUsdChange(-13_600)).toBe("−$136.00");
-    expect(formatUsdChange(0)).toBe("$0.00");
+describe("formatUsdShort", () => {
+  it("drops the cents from whole dollars and keeps them otherwise", () => {
+    expect(formatUsdShort(5_200)).toBe("$52");
+    expect(formatUsdShort(14_100)).toBe("$141");
+    expect(formatUsdShort(3_525)).toBe("$35.25");
+    expect(formatUsdShort(123_400)).toBe("$1,234");
+    expect(formatUsdShort(-500)).toBe("−$5");
+  });
+});
+
+describe("formatDayRange", () => {
+  it("names the month once inside one month and twice across months, in campus time", () => {
+    expect(formatDayRange(new Date("2026-11-17T15:00:00Z"), new Date("2026-11-26T02:00:00Z"))).toBe("Nov 17 to 25");
+    expect(formatDayRange(new Date("2026-11-30T15:00:00Z"), new Date("2026-12-02T15:00:00Z"))).toBe("Nov 30 to Dec 2");
   });
 });
 
@@ -39,11 +49,5 @@ describe("dimensions", () => {
       const size = [listing.widthMm, listing.depthMm, listing.heightMm] as const;
       expect(`${formatInches(size)} ${formatCentimeters(size)}`).not.toMatch(/(^|\s)0(\s|$)/);
     }
-  });
-});
-
-describe("condition score", () => {
-  it("runs from 4 for like new down to 1 for worn", () => {
-    expect(CONDITION_GRADES.map(conditionScore)).toEqual([4, 3, 2, 1]);
   });
 });
