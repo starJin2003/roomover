@@ -1,0 +1,30 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# Next.js
+/.next/
+/out/
+/build
+next-env.d.ts
+*.tsbuildinfo
+
+# Environment
+.env*
+!.env.example
+*.pem
+
+# Tests
+/coverage
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# Logs
+npm-debug.log*
+.pnpm-debug.log*
+
+# macOS
+.DS_Store
