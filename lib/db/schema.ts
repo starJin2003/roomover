@@ -38,7 +38,7 @@ import type { HandoffPhoto, VerificationReport } from "../domain/handoff";
 import type { HallConstraint } from "../domain/hall-rules";
 import type { ConditionReport, ListingPhoto, ListingSpecs, RetailReference } from "../domain/listing";
 import type { OffersLog } from "../domain/negotiation";
-import { EMPTY_LAYOUT, type PlanLayout } from "../domain/plan";
+import { EMPTY_LAYOUT, type PlanLayout } from "../domain/layout";
 import type { RoomGeometry } from "../domain/room";
 
 // drizzle-kit does not read tsconfig paths, so this file uses relative imports.

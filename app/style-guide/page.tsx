@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { ActivitySummary } from "@/components/activity/activity-summary";
 import { ItemChecklist } from "@/components/handoff/item-checklist";
 import { PayPalCard } from "@/components/paypal/paypal-card";
 import { PayLaterMessageSlot, PayPalButtonSlot } from "@/components/paypal/sdk-slots";
 import { UnderTheHoodProvider, UnderTheHoodSwitch } from "@/components/paypal/under-the-hood";
-import { RoomStage } from "@/components/room/room-stage";
 import { ScheduleSection } from "@/components/schedule/schedule-section";
 import { Button, type ButtonVariant } from "@/components/ui/button";
 import { ChoiceKey } from "@/components/ui/choice-key";
@@ -19,6 +18,7 @@ import { BUYER_STEPS, SELL_STEPS, StepStrip } from "@/components/ui/step-strip";
 import { formatUsdShort } from "@/lib/format";
 import { ACTIVITY_LOG, BUDGET_CENTS, FURNISH, HANDOFF, MONEY, PAYOUT_ARRIVALS, PAYPAL_MOMENTS, SELL, SELLER_PAYOUTS } from "./demo-data";
 import { Colors, ContrastTable, MotionTokens, Shape, TypeScale } from "./foundations";
+import { FurnishRoom, RoomPending } from "./room-section";
 import { SellersPaidDemo } from "./sellers-paid-demo";
 
 export const metadata: Metadata = {
@@ -142,8 +142,10 @@ export default function StyleGuidePage() {
         </Section>
 
         <Section id="furnish" lead="The room fills on the table while the panel tells the story in three sentences. The PayPal approval happens on this screen.">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-12">
-            <RoomStage room={FURNISH.room} />
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-start lg:gap-12">
+            <Suspense fallback={<RoomPending />}>
+              <FurnishRoom label={FURNISH.room} />
+            </Suspense>
             <Panel id="furnish-panel" title={FURNISH.room} subtitle={FURNISH.subtitle}>
               <StepStrip steps={BUYER_STEPS} current={1} label="Furnish progress" />
               <ActivitySummary sentences={FURNISH.sentences} log={ACTIVITY_LOG} />

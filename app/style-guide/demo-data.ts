@@ -42,6 +42,9 @@ const CART = [
   { seller: "sofia", slug: "sofia-clamp-lamp", authorizedCents: seedListing("sofia-clamp-lamp").priceCents, capturedCents: seedListing("sofia-clamp-lamp").priceCents },
 ] as const satisfies readonly { seller: SellerSlug; slug: string; authorizedCents: number; capturedCents: number }[];
 
+/** What Jordan pays for each cart item, by listing ID. Jun's desk carries the negotiated price. */
+export const CART_PRICE_CENTS: ReadonlyMap<string, number> = new Map(CART.map((item) => [seedId("listing", item.slug), item.authorizedCents]));
+
 const desk = seedListing("jun-white-desk");
 const chair = seedListing("marcus-mesh-desk-chair");
 

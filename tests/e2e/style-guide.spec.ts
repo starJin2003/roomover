@@ -1,7 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-const SCREENSHOT_DIR = "local/screenshots/style-guide";
+// Screenshots go where SCREENSHOT_DIR points, and to the ignored test results folder otherwise.
+const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR ?? "test-results/screenshots";
 
 test("style guide renders cleanly, passes axe, and stays out of search", async ({ page }, testInfo) => {
   const problems: string[] = [];
@@ -24,6 +25,7 @@ test("style guide renders cleanly, passes axe, and stays out of search", async (
     }
     window.scrollTo(0, 0);
   });
+  await expect(page.locator('[data-room="harbor-hall-double"]')).toHaveAttribute("data-ready", "true", { timeout: 30_000 });
   // Five PayPal monograms and five handoff thumbnails.
   await expect(page.locator("img")).toHaveCount(10);
   for (const image of await page.locator("img").all()) {
@@ -37,7 +39,8 @@ test("style guide renders cleanly, passes axe, and stays out of search", async (
   const blocking = axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
   expect(blocking.map((violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`)).toEqual([]);
 
-  await page.screenshot({ path: `${SCREENSHOT_DIR}/${testInfo.project.name}.png`, fullPage: true });
+  // At 2x the mobile page runs past the GPU's largest capture, so full page shots use CSS pixels.
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/${testInfo.project.name}.png`, fullPage: true, scale: "css" });
   expect(problems).toEqual([]);
 });
 

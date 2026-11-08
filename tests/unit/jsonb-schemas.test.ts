@@ -9,7 +9,7 @@ import {
   retailReferenceSchema,
 } from "@/lib/domain/listing";
 import { offersLogSchema } from "@/lib/domain/negotiation";
-import { planLayoutSchema } from "@/lib/domain/plan";
+import { planLayoutSchema } from "@/lib/domain/layout";
 import { geometryProblems, roomGeometrySchema, type RoomGeometry } from "@/lib/domain/room";
 
 const LISTING_ID = "3f0c8a8e-2a4b-5c1d-9e7f-0a1b2c3d4e5f";
@@ -124,10 +124,12 @@ describe("hall constraints", () => {
 describe("plan layout", () => {
   const item = {
     key: "lamp-1",
-    category: "lamp",
+    furnitureType: "desk_lamp",
+    placement: "surface",
     widthMm: 180,
     depthMm: 160,
     heightMm: 460,
+    pieces: 1,
     xMm: 800,
     yMm: 400,
     elevationMm: 750,
@@ -138,19 +140,29 @@ describe("plan layout", () => {
     const layout = {
       items: [
         { ...item, source: "listing", listingId: LISTING_ID },
-        { ...item, key: "rug-1", category: "rug", source: "new_product", channel3ProductId: "c3-1", productName: "Rug", priceCents: 4_500 },
+        { ...item, key: "rug-1", furnitureType: "rug", placement: "underlay", elevationMm: 0, source: "new_product", channel3ProductId: "c3-1", productName: "Rug", priceCents: 4_500 },
       ],
     };
     expect(planLayoutSchema.parse(layout).items).toHaveLength(2);
   });
 
-  it("rejects duplicate keys and a new product without a price", () => {
+  it("rejects duplicate keys, a repeated listing, and a new product without a price", () => {
     const listingItem = { ...item, source: "listing", listingId: LISTING_ID };
     expect(planLayoutSchema.safeParse({ items: [listingItem, listingItem] }).success).toBe(false);
+    expect(planLayoutSchema.safeParse({ items: [listingItem, { ...listingItem, key: "lamp-2" }] }).success).toBe(false);
     expect(
       planLayoutSchema.safeParse({ items: [{ ...item, source: "new_product", channel3ProductId: "c3", productName: "Rug" }] })
         .success,
     ).toBe(false);
+  });
+
+  it("takes any whole degree of rotation and rejects unknown furniture types", () => {
+    const listingItem = { ...item, source: "listing", listingId: LISTING_ID };
+    expect(planLayoutSchema.safeParse({ items: [{ ...listingItem, rotationDeg: 45 }] }).success).toBe(true);
+    expect(planLayoutSchema.safeParse({ items: [{ ...listingItem, rotationDeg: 360 }] }).success).toBe(false);
+    expect(planLayoutSchema.safeParse({ items: [{ ...listingItem, rotationDeg: 12.5 }] }).success).toBe(false);
+    expect(planLayoutSchema.safeParse({ items: [{ ...listingItem, furnitureType: "lamp" }] }).success).toBe(false);
+    expect(planLayoutSchema.safeParse({ items: [{ ...listingItem, pieces: 0 }] }).success).toBe(false);
   });
 });
 

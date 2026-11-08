@@ -8,7 +8,9 @@ import { z } from "zod";
  * Openings sit on a wall at an offset from the wall's start. The north and
  * south walls start at their west end, and the east and west walls start at
  * their north end. Fixtures are placed by the center of their footprint, and
- * a quarter turn swaps their width and depth on the floor.
+ * a quarter turn swaps their width and depth on the floor. At 0 degrees a
+ * fixture's front faces south, and rotation turns clockwise as seen from
+ * above, so 90 faces west. A bed's front is its foot.
  */
 
 export const WALLS = ["north", "east", "south", "west"] as const;

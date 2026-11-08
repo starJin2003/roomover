@@ -3,6 +3,8 @@ import { defineConfig } from "@playwright/test";
 const port = 3100;
 const baseURL = `http://localhost:${port}`;
 const isCI = Boolean(process.env.CI);
+// The 3D room draws on the GPU. Without these flags, headless Chromium falls back to software WebGL.
+const gpuArgs = process.platform === "darwin" ? ["--use-angle=metal", "--ignore-gpu-blocklist"] : ["--ignore-gpu-blocklist"];
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -13,6 +15,7 @@ export default defineConfig({
     baseURL,
     browserName: "chromium",
     trace: "on-first-retry",
+    launchOptions: { args: gpuArgs },
   },
   projects: [
     {
