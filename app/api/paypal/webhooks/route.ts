@@ -4,6 +4,7 @@ import { paypalRest } from "@/lib/paypal/rest/client";
 import { readWebhookTransmission, verifyWebhookSignature } from "@/lib/paypal/rest/webhooks";
 import { dispatchWebhookEvent } from "@/lib/paypal/webhooks/dispatch";
 import { webhookEventSchema } from "@/lib/paypal/webhooks/events";
+import { recordWebhookEvent, type WebhookOutcome } from "@/lib/paypal/webhooks/store";
 
 function reply(status: number, body: Record<string, unknown>): Response {
   return Response.json(body, { status });
@@ -18,9 +19,10 @@ function configuredWebhookId(): string | undefined {
 }
 
 /**
- * PayPal retries any delivery that does not get a 2xx, so configuration and
- * upstream failures answer 503 and come back later, while forged or malformed
- * deliveries answer 400.
+ * PayPal retries any delivery that does not get a 2xx, so configuration,
+ * upstream, and database failures answer 503 and come back later, while
+ * forged or malformed deliveries answer 400. A redelivered event answers 200
+ * and runs nothing.
  */
 export async function POST(request: Request): Promise<Response> {
   const webhookId = configuredWebhookId();
@@ -64,6 +66,19 @@ export async function POST(request: Request): Promise<Response> {
     return reply(400, { error: "signature_verification_failed" });
   }
 
-  const handled = await dispatchWebhookEvent(event.data);
-  return reply(200, { received: true, handled });
+  let outcome: WebhookOutcome;
+  try {
+    outcome = await recordWebhookEvent(event.data, dispatchWebhookEvent);
+  } catch (error) {
+    console.error("paypal webhook not stored", {
+      eventId: event.data.id,
+      error: error instanceof Error ? error.name : "unknown",
+    });
+    return reply(503, { error: "storage_unavailable" });
+  }
+  if (outcome.duplicate) {
+    console.info("paypal webhook duplicate skipped", { eventId: event.data.id, type: event.data.event_type });
+    return reply(200, { received: true, duplicate: true });
+  }
+  return reply(200, { received: true, duplicate: false, handled: outcome.handled });
 }

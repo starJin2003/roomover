@@ -1,17 +1,23 @@
 import {
   isSubscribedEventType,
+  webhookResourceId,
   type PayPalWebhookEvent,
   type PayPalWebhookEventType,
 } from "@/lib/paypal/webhooks/events";
 
 type Handler = (event: PayPalWebhookEvent) => Promise<void>;
 
-// Each handler records the event and stops there. The database task turns
-// them into state machine transitions that ignore duplicate and stale events.
+// The route has already stored the event and skipped duplicates. Handlers log
+// for now, and later tasks turn them into state machine transitions that
+// ignore stale events.
 function logOnly(subject: string): Handler {
   return async (event) => {
-    const resourceId = typeof event.resource.id === "string" ? event.resource.id : undefined;
-    console.info("paypal webhook", { subject, eventId: event.id, type: event.event_type, resourceId });
+    console.info("paypal webhook", {
+      subject,
+      eventId: event.id,
+      type: event.event_type,
+      resourceId: webhookResourceId(event) ?? undefined,
+    });
   };
 }
 
@@ -25,8 +31,12 @@ const HANDLERS: Record<PayPalWebhookEventType, Handler> = {
   "PAYMENT.AUTHORIZATION.CREATED": authorization,
   "PAYMENT.AUTHORIZATION.VOIDED": authorization,
   "PAYMENT.CAPTURE.COMPLETED": capture,
+  "PAYMENT.CAPTURE.PENDING": capture,
+  "PAYMENT.CAPTURE.DECLINED": capture,
   "PAYMENT.CAPTURE.REFUNDED": capture,
+  "PAYMENT.CAPTURE.REVERSED": capture,
   "PAYMENT.PAYOUTSBATCH.SUCCESS": payoutBatch,
+  "PAYMENT.PAYOUTSBATCH.DENIED": payoutBatch,
   "PAYMENT.PAYOUTS-ITEM.SUCCEEDED": payoutItem,
   "PAYMENT.PAYOUTS-ITEM.FAILED": payoutItem,
   "PAYMENT.PAYOUTS-ITEM.BLOCKED": payoutItem,
@@ -37,6 +47,7 @@ const HANDLERS: Record<PayPalWebhookEventType, Handler> = {
   "PAYMENT.PAYOUTS-ITEM.UNCLAIMED": payoutItem,
   "CUSTOMER.DISPUTE.CREATED": dispute,
   "CUSTOMER.DISPUTE.UPDATED": dispute,
+  "CUSTOMER.DISPUTE.RESOLVED": dispute,
 };
 
 /** Returns false for an event type Roomover does not subscribe to. The route still acknowledges it so PayPal stops redelivering. */

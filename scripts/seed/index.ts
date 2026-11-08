@@ -1,6 +1,7 @@
 import type { PgColumn, PgInsertValue, PgTable } from "drizzle-orm/pg-core";
 import type { Database } from "@/lib/db/client";
 import { hallRules, halls, listings, roomPresets, users } from "@/lib/db/schema";
+import type { CampusDay } from "./campus";
 import { seedHallRules, seedHalls, seedRoomPresets } from "./halls";
 import { seedListings } from "./listings";
 import { seedUsers } from "./people";
@@ -8,13 +9,14 @@ import { conflictUpdate, insertedFlag, upsertCounts, type UpsertCounts } from ".
 
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
-export function buildSeed() {
+/** Listing windows count from `seedDay`, so a second run on the same campus day writes identical rows. */
+export function buildSeed(seedDay: CampusDay) {
   return {
     halls: seedHalls(),
     roomPresets: seedRoomPresets(),
     hallRules: seedHallRules(),
     users: seedUsers(),
-    listings: seedListings(),
+    listings: seedListings(seedDay),
   };
 }
 
@@ -38,10 +40,12 @@ async function upsert<TTable extends PgTable>(
 
 /**
  * Writes the demo campus in one transaction, parents before children. Rows
- * are keyed by deterministic IDs, so a second run inserts and updates nothing.
+ * are keyed by deterministic IDs, so a second run on the same campus day
+ * inserts and updates nothing, and a run on a later day moves only the
+ * listing windows.
  */
-export async function seedDatabase(db: Database): Promise<Map<string, UpsertCounts>> {
-  const data = buildSeed();
+export async function seedDatabase(db: Database, seedDay: CampusDay): Promise<Map<string, UpsertCounts>> {
+  const data = buildSeed(seedDay);
   return db.transaction(async (tx) => {
     const counts = new Map<string, UpsertCounts>();
     counts.set("halls", await upsert(tx, halls, halls.id, data.halls));

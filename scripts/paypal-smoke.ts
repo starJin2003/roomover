@@ -8,11 +8,11 @@
 import { z } from "zod";
 import { createPayPalReadTools } from "@/lib/agents/tools/paypal-read";
 import { readConfig } from "@/lib/config";
-import { PayPalApiError } from "@/lib/paypal/errors";
 import { orderCreateKey } from "@/lib/paypal/idempotency";
 import { appTokens } from "@/lib/paypal/rest/app-token";
 import { paypalSdk } from "@/lib/paypal/server-sdk/client";
 import { approvalLink, createOrder, getOrder, type CreateOrderInput } from "@/lib/paypal/server-sdk/orders";
+import { reportScriptError } from "./paypal/report-error";
 
 const toolOrderSchema = z.object({ id: z.string(), status: z.string() });
 
@@ -65,14 +65,4 @@ async function main(): Promise<void> {
   line("Approval link", approvalLink(fetched) ?? approvalLink(created) ?? "none");
 }
 
-main().catch((error: unknown) => {
-  if (error instanceof PayPalApiError) {
-    console.error(
-      `PayPal error on ${error.operation}: ${error.status} ${error.errorName}. ${error.message} (debug ID ${error.debugId ?? "none"})`,
-    );
-    for (const detail of error.details) console.error(`  ${detail.issue}: ${detail.description ?? ""}`);
-  } else {
-    console.error(error instanceof Error ? `${error.name}: ${error.message}` : "Unknown failure");
-  }
-  process.exitCode = 1;
-});
+main().catch(reportScriptError);

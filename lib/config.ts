@@ -10,6 +10,8 @@ const configSchema = z.object({
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
   SESSION_SECRET: z.string().min(32),
   APP_URL: z.url({ protocol: /^https?$/ }),
+  // Render sets this on every build and deploy. It stays unset locally.
+  RENDER_GIT_COMMIT: z.string().regex(/^[0-9a-f]{7,40}$/, "Expected a git commit SHA"),
 });
 
 export type Config = z.infer<typeof configSchema>;

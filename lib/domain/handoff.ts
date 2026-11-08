@@ -2,10 +2,15 @@ import { z } from "zod";
 import { HANDOFF_DECISIONS, type HandoffMode, type PaymentMode } from "./enums";
 import { defectSchema } from "./listing";
 
-/** PayPal keeps an authorization valid for 29 days. */
+/** PayPal keeps an authorization valid for 29 days, counted from checkout to capture. */
 export const AUTHORIZATION_VALIDITY_DAYS = 29;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+export interface TimeWindow {
+  startsAt: Date;
+  endsAt: Date;
+}
 
 export interface MoveWindows {
   moveOutStartsAt: Date;
@@ -14,31 +19,43 @@ export interface MoveWindows {
   moveInEndsAt: Date;
 }
 
-export function windowsOverlap(windows: MoveWindows): boolean {
-  return windows.moveOutStartsAt < windows.moveInEndsAt && windows.moveInStartsAt < windows.moveOutEndsAt;
-}
-
-/** Days from the end of move out to the start of move in. Zero or less when the windows overlap. */
-export function gapDays(windows: MoveWindows): number {
-  return (windows.moveInStartsAt.getTime() - windows.moveOutEndsAt.getTime()) / DAY_MS;
+/**
+ * When the buyer can take the item, or null when the handoff mode cannot
+ * serve the windows. A direct handoff needs both students on campus at once.
+ * Same room and storage hold handoffs need the seller gone before the buyer
+ * arrives, and the buyer takes the item during move in.
+ */
+export function handoffWindow(mode: HandoffMode, windows: MoveWindows): TimeWindow | null {
+  switch (mode) {
+    case "direct": {
+      const startsAt = new Date(Math.max(windows.moveOutStartsAt.getTime(), windows.moveInStartsAt.getTime()));
+      const endsAt = new Date(Math.min(windows.moveOutEndsAt.getTime(), windows.moveInEndsAt.getTime()));
+      return startsAt < endsAt ? { startsAt, endsAt } : null;
+    }
+    case "same_room":
+    case "storage_hold":
+      return windows.moveOutEndsAt <= windows.moveInStartsAt
+        ? { startsAt: windows.moveInStartsAt, endsAt: windows.moveInEndsAt }
+        : null;
+  }
 }
 
 /**
- * The payment mode a handoff mode implies for a pair of windows, or null when
- * the handoff mode cannot serve them. A direct handoff needs both students on
- * campus at once. A same room handoff authorizes while the gap fits inside one
- * authorization and captures at checkout after that. A storage hold always
- * captures at checkout.
+ * One order, one approval. The order authorizes at checkout and captures each
+ * item at its handoff when every handoff ends within 29 days of checkout. A
+ * single later handoff makes the whole order capture at checkout, and items
+ * rejected at handoff are refunded. Each window is the item's handoff window,
+ * or its agreed slot once the buyer and seller have one.
  */
-export function paymentModeFor(mode: HandoffMode, windows: MoveWindows): PaymentMode | null {
-  switch (mode) {
-    case "direct":
-      return windowsOverlap(windows) ? "authorize_then_capture" : null;
-    case "same_room":
-      return gapDays(windows) <= AUTHORIZATION_VALIDITY_DAYS ? "authorize_then_capture" : "capture_at_checkout";
-    case "storage_hold":
-      return "capture_at_checkout";
+export function checkoutPaymentMode(checkoutAt: Date, handoffs: readonly TimeWindow[]): PaymentMode {
+  if (handoffs.length === 0) throw new RangeError("A checkout needs at least one item.");
+  if (handoffs.some((handoff) => handoff.endsAt <= checkoutAt)) {
+    throw new RangeError("Every handoff window must end after checkout.");
   }
+  const latestEnd = Math.max(...handoffs.map((handoff) => handoff.endsAt.getTime()));
+  return latestEnd - checkoutAt.getTime() <= AUTHORIZATION_VALIDITY_DAYS * DAY_MS
+    ? "authorize_then_capture"
+    : "capture_at_checkout";
 }
 
 export const handoffPhotoSchema = z.strictObject({

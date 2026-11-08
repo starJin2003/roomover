@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { LISTING_CATEGORIES, HANDOFF_MODES } from "@/lib/domain/enums";
-import { AUTHORIZATION_VALIDITY_DAYS, gapDays, paymentModeFor, type MoveWindows } from "@/lib/domain/handoff";
+import { checkoutPaymentMode, handoffWindow, type MoveWindows } from "@/lib/domain/handoff";
 import { hallConstraintsSchema } from "@/lib/domain/hall-rules";
 import {
   conditionReportSchema,
@@ -14,7 +14,9 @@ import { geometryProblems, roomGeometrySchema } from "@/lib/domain/room";
 import { buildSeed } from "@/scripts/seed";
 import { SANDBOX_EMAILS } from "@/scripts/seed/people";
 
-const seed = buildSeed();
+const SEED_DAY = "2026-11-08";
+const SEED_INSTANT = new Date("2026-11-08T06:00:00Z");
+const seed = buildSeed(SEED_DAY);
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 const CREDITS = readFileSync(path.join(PUBLIC_DIR, "seed", "listings", "CREDITS.md"), "utf8");
 
@@ -88,9 +90,10 @@ describe("seed money and dimensions", () => {
   });
 
   it("lets a winter cart with one item from each seller land between 30 and 1,500 dollars", () => {
-    const winter = seed.listings.filter(
-      (listing) => listing.status === "active" && paymentModeFor(listing.handoffMode, windowsOf(listing)) === "authorize_then_capture",
-    );
+    const winter = seed.listings.filter((listing) => {
+      const handoff = handoffWindow(listing.handoffMode, windowsOf(listing));
+      return listing.status === "active" && handoff !== null && checkoutPaymentMode(SEED_INSTANT, [handoff]) === "authorize_then_capture";
+    });
     const sellers = new Set(winter.map((listing) => listing.sellerId));
     expect(sellers.size).toBe(5);
     const cheapest = [...sellers].map((seller) =>
@@ -112,15 +115,11 @@ describe("seed catalog", () => {
   it("exercises every handoff mode with windows that mode can serve", () => {
     expect(new Set(seed.listings.map((listing) => listing.handoffMode))).toEqual(new Set(HANDOFF_MODES));
     for (const listing of seed.listings) {
-      const windows = windowsOf(listing);
-      const mode = paymentModeFor(listing.handoffMode, windows);
-      expect(mode).not.toBeNull();
-      if (listing.handoffMode === "storage_hold") {
-        expect(gapDays(windows)).toBeGreaterThan(AUTHORIZATION_VALIDITY_DAYS);
-      } else {
-        expect(gapDays(windows)).toBeLessThanOrEqual(AUTHORIZATION_VALIDITY_DAYS);
-        expect(mode).toBe("authorize_then_capture");
-      }
+      const handoff = handoffWindow(listing.handoffMode, windowsOf(listing));
+      expect(handoff).not.toBeNull();
+      if (handoff === null) continue;
+      const mode = checkoutPaymentMode(SEED_INSTANT, [handoff]);
+      expect(mode).toBe(listing.handoffMode === "storage_hold" ? "capture_at_checkout" : "authorize_then_capture");
     }
   });
 

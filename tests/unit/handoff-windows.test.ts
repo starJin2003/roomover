@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gapDays, paymentModeFor, windowsOverlap, type MoveWindows } from "@/lib/domain/handoff";
+import { checkoutPaymentMode, handoffWindow, type MoveWindows, type TimeWindow } from "@/lib/domain/handoff";
 
 const windows = (moveOut: [string, string], moveIn: [string, string]): MoveWindows => ({
   moveOutStartsAt: new Date(moveOut[0]),
@@ -8,38 +8,78 @@ const windows = (moveOut: [string, string], moveIn: [string, string]): MoveWindo
   moveInEndsAt: new Date(moveIn[1]),
 });
 
-const december = windows(["2026-12-11T08:00:00-06:00", "2026-12-12T12:00:00-06:00"], ["2027-01-02T09:00:00-06:00", "2027-01-04T18:00:00-06:00"]);
-const overlapping = windows(["2026-12-14T09:00:00-06:00", "2027-01-05T20:00:00-06:00"], ["2027-01-02T09:00:00-06:00", "2027-01-04T18:00:00-06:00"]);
-const summer = windows(["2027-06-12T09:00:00-05:00", "2027-06-14T12:00:00-05:00"], ["2027-09-17T09:00:00-05:00", "2027-09-20T18:00:00-05:00"]);
+const span = (startsAt: string, endsAt: string): TimeWindow => ({ startsAt: new Date(startsAt), endsAt: new Date(endsAt) });
 
-describe("move windows", () => {
-  it("measures the gap from move out end to move in start", () => {
-    expect(gapDays(december)).toBeCloseTo(20.875, 3);
-    expect(gapDays(overlapping)).toBeLessThan(0);
-    expect(gapDays(summer)).toBeGreaterThan(29);
+const winterMoveIn: [string, string] = ["2026-11-22T09:00:00-06:00", "2026-11-24T18:00:00-06:00"];
+const fallMoveOut: [string, string] = ["2026-11-14T08:00:00-06:00", "2026-11-15T12:00:00-06:00"];
+const overlapping = windows(["2026-11-17T09:00:00-06:00", "2026-11-25T20:00:00-06:00"], winterMoveIn);
+const sequential = windows(fallMoveOut, winterMoveIn);
+
+describe("handoffWindow", () => {
+  it("gives a direct handoff the time both students are on campus", () => {
+    expect(handoffWindow("direct", overlapping)).toEqual(span("2026-11-22T09:00:00-06:00", "2026-11-24T18:00:00-06:00"));
+    const partial = windows(["2026-11-17T09:00:00-06:00", "2026-11-23T12:00:00-06:00"], winterMoveIn);
+    expect(handoffWindow("direct", partial)).toEqual(span("2026-11-22T09:00:00-06:00", "2026-11-23T12:00:00-06:00"));
   });
 
-  it("detects overlap", () => {
-    expect(windowsOverlap(overlapping)).toBe(true);
-    expect(windowsOverlap(december)).toBe(false);
+  it("rejects a direct handoff when the seller leaves before the buyer arrives", () => {
+    expect(handoffWindow("direct", sequential)).toBeNull();
+    const touching = windows(["2026-11-20T09:00:00-06:00", "2026-11-22T09:00:00-06:00"], winterMoveIn);
+    expect(handoffWindow("direct", touching)).toBeNull();
+  });
+
+  it("hands same room and storage items over during move in once the seller is gone", () => {
+    const moveIn = span(...winterMoveIn);
+    expect(handoffWindow("same_room", sequential)).toEqual(moveIn);
+    expect(handoffWindow("storage_hold", sequential)).toEqual(moveIn);
+  });
+
+  it("rejects same room and storage handoffs while the seller is still in the room", () => {
+    expect(handoffWindow("same_room", overlapping)).toBeNull();
+    expect(handoffWindow("storage_hold", overlapping)).toBeNull();
   });
 });
 
-describe("paymentModeFor", () => {
-  it("authorizes a direct handoff only when both students are on campus together", () => {
-    expect(paymentModeFor("direct", overlapping)).toBe("authorize_then_capture");
-    expect(paymentModeFor("direct", december)).toBeNull();
+describe("checkoutPaymentMode", () => {
+  const checkoutAt = new Date("2026-11-08T12:00:00Z");
+
+  it("authorizes when every handoff ends within 29 days of checkout", () => {
+    const handoffs = [span("2026-11-13T12:00:00Z", "2026-11-15T12:00:00Z"), span("2026-11-20T12:00:00Z", "2026-11-28T12:00:00Z")];
+    expect(checkoutPaymentMode(checkoutAt, handoffs)).toBe("authorize_then_capture");
   });
 
-  it("authorizes a same room handoff within 29 days and captures at checkout after that", () => {
-    expect(paymentModeFor("same_room", december)).toBe("authorize_then_capture");
-    expect(paymentModeFor("same_room", summer)).toBe("capture_at_checkout");
-    const exactly29 = windows(["2026-12-01T12:00:00Z", "2026-12-02T12:00:00Z"], ["2026-12-31T12:00:00Z", "2027-01-01T12:00:00Z"]);
-    expect(paymentModeFor("same_room", exactly29)).toBe("authorize_then_capture");
+  it("counts the 29 days from checkout and includes the last instant", () => {
+    const exactly29 = span("2026-12-01T12:00:00Z", "2026-12-07T12:00:00Z");
+    expect(checkoutPaymentMode(checkoutAt, [exactly29])).toBe("authorize_then_capture");
+    const oneSecondLater = span("2026-12-01T12:00:00Z", "2026-12-07T12:00:01Z");
+    expect(checkoutPaymentMode(checkoutAt, [oneSecondLater])).toBe("capture_at_checkout");
   });
 
-  it("always captures a storage hold at checkout", () => {
-    expect(paymentModeFor("storage_hold", summer)).toBe("capture_at_checkout");
-    expect(paymentModeFor("storage_hold", december)).toBe("capture_at_checkout");
+  it("captures the whole order at checkout when one handoff ends later", () => {
+    const handoffs = [
+      span("2026-11-13T12:00:00Z", "2026-11-15T12:00:00Z"),
+      span("2026-11-20T12:00:00Z", "2026-11-28T12:00:00Z"),
+      span("2027-04-01T14:00:00Z", "2027-04-04T23:00:00Z"),
+    ];
+    expect(checkoutPaymentMode(checkoutAt, handoffs)).toBe("capture_at_checkout");
+  });
+
+  it("measures from checkout, so the same handoff can flip modes as checkout moves", () => {
+    const handoff = span("2026-12-20T15:00:00Z", "2026-12-22T00:00:00Z");
+    expect(checkoutPaymentMode(new Date("2026-11-20T12:00:00Z"), [handoff])).toBe("capture_at_checkout");
+    expect(checkoutPaymentMode(new Date("2026-11-25T12:00:00Z"), [handoff])).toBe("authorize_then_capture");
+  });
+
+  it("accepts a handoff window that is already open at checkout", () => {
+    expect(checkoutPaymentMode(checkoutAt, [span("2026-11-07T12:00:00Z", "2026-11-09T12:00:00Z")])).toBe(
+      "authorize_then_capture",
+    );
+  });
+
+  it("rejects an empty cart and a handoff that ended before checkout", () => {
+    expect(() => checkoutPaymentMode(checkoutAt, [])).toThrow(RangeError);
+    expect(() => checkoutPaymentMode(checkoutAt, [span("2026-11-01T12:00:00Z", "2026-11-08T12:00:00Z")])).toThrow(
+      RangeError,
+    );
   });
 });

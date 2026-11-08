@@ -85,3 +85,49 @@ export async function listWebhooks(rest: PayPalRestClient): Promise<PayPalWebhoo
   });
   return result.webhooks;
 }
+
+/** PayPal's update call accepts only `replace` operations, here on the event list. */
+export function updateWebhookEventTypes(
+  rest: PayPalRestClient,
+  webhookId: string,
+  eventTypes: readonly string[],
+): Promise<PayPalWebhook> {
+  return rest.request({
+    method: "PATCH",
+    path: `/v1/notifications/webhooks/${encodeURIComponent(webhookId)}`,
+    body: {
+      kind: "json",
+      value: [{ op: "replace", path: "/event_types", value: eventTypes.map((name) => ({ name })) }],
+    },
+    schema: webhookSchema,
+  });
+}
+
+export interface WebhookRegistration {
+  readonly action: "created" | "updated" | "unchanged";
+  readonly webhook: PayPalWebhook;
+}
+
+const sameEventTypes = (webhook: PayPalWebhook, eventTypes: readonly string[]) => {
+  const current = new Set(webhook.event_types.map((type) => type.name));
+  return current.size === new Set(eventTypes).size && eventTypes.every((name) => current.has(name));
+};
+
+/**
+ * Keeps one webhook per URL on the app. An existing webhook for the URL gets
+ * its event list replaced when it differs, and a new one is created only
+ * when none exists, so running this again changes nothing.
+ */
+export async function ensureWebhook(
+  rest: PayPalRestClient,
+  input: { url: string; eventTypes: readonly string[] },
+): Promise<WebhookRegistration> {
+  const existing = (await listWebhooks(rest)).find((webhook) => webhook.url === input.url);
+  if (existing === undefined) {
+    return { action: "created", webhook: await createWebhook(rest, input) };
+  }
+  if (sameEventTypes(existing, input.eventTypes)) {
+    return { action: "unchanged", webhook: existing };
+  }
+  return { action: "updated", webhook: await updateWebhookEventTypes(rest, existing.id, input.eventTypes) };
+}

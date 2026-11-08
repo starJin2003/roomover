@@ -10,6 +10,7 @@ const validEnv = {
   DATABASE_URL: "postgresql://roomover:roomover@localhost:5432/roomover",
   SESSION_SECRET: "s".repeat(32),
   APP_URL: "http://localhost:3000",
+  RENDER_GIT_COMMIT: "28c438e0a1b2c3d4e5f60718293a4b5c6d7e8f90",
 } satisfies Record<ConfigKey, string>;
 
 const allKeys = Object.keys(validEnv) as ConfigKey[];
@@ -105,5 +106,13 @@ describe("readOptionalConfig", () => {
     );
     expect(error.variables).toEqual(["PAYPAL_WEBHOOK_ID"]);
     expect(error.message).not.toContain("your-sandbox-webhook-id");
+  });
+
+  it("accepts a short or full commit SHA from Render and rejects a branch name", () => {
+    expect(readOptionalConfig("RENDER_GIT_COMMIT", { RENDER_GIT_COMMIT: "28c438e" })).toBe("28c438e");
+    expect(readOptionalConfig("RENDER_GIT_COMMIT", validEnv)).toBe(validEnv.RENDER_GIT_COMMIT);
+    expect(captureConfigError(() => readOptionalConfig("RENDER_GIT_COMMIT", { RENDER_GIT_COMMIT: "main" })).variables).toEqual([
+      "RENDER_GIT_COMMIT",
+    ]);
   });
 });

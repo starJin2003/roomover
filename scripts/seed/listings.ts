@@ -9,7 +9,7 @@ import {
   type Defect,
   type ListingSpecs,
 } from "@/lib/domain/listing";
-import { CALENDAR, CAMPUS, PRESET_SLUGS, span, type Window } from "./campus";
+import { CAMPUS, campusCalendar, campusWindow, PRESET_SLUGS, type CampusDay, type Window } from "./campus";
 import { seedId } from "./ids";
 import { presetId, userId, type SellerSlug } from "./people";
 
@@ -22,40 +22,46 @@ interface HandoffPlan {
   room?: { presetSlug: string; number: string };
 }
 
+type HandoffKey = "avaWinter" | "avaStorage" | "marcusWinter" | "marcusStorage" | "junWinter" | "harbor214";
+
 /**
- * December plans overlap or sit within 29 days of winter move in, so they
- * authorize at checkout and capture at handoff. June plans wait about three
- * months for fall move in, so they capture at checkout and hold in storage.
+ * Winter plans hand over during winter move in, inside one authorization from
+ * a checkout on the seed day, so they authorize at checkout and capture at
+ * handoff. Storage plans wait for fall move in, so they capture at checkout.
  */
-const HANDOFFS = {
-  avaDecember: {
-    mode: "direct",
-    moveOut: span("2026-12-14T09:00:00-06:00", "2027-01-05T20:00:00-06:00"),
-    moveIn: CALENDAR.winter2027MoveIn,
-  },
-  avaJune: { mode: "storage_hold", moveOut: CALENDAR.spring2027MoveOut, moveIn: CALENDAR.fall2027MoveIn },
-  marcusDecember: {
-    mode: "direct",
-    moveOut: span("2026-12-15T10:00:00-06:00", "2027-01-08T20:00:00-06:00"),
-    moveIn: CALENDAR.winter2027MoveIn,
-  },
-  marcusJune: {
-    mode: "storage_hold",
-    moveOut: span("2027-06-25T09:00:00-05:00", "2027-06-30T17:00:00-05:00"),
-    moveIn: CALENDAR.fall2027MoveIn,
-  },
-  junDecember: {
-    mode: "direct",
-    moveOut: span("2026-12-12T09:00:00-06:00", "2027-01-04T20:00:00-06:00"),
-    moveIn: CALENDAR.winter2027MoveIn,
-  },
-  harbor214: {
-    mode: "same_room",
-    moveOut: CALENDAR.fall2026MoveOut,
-    moveIn: CALENDAR.winter2027MoveIn,
-    room: { presetSlug: PRESET_SLUGS.harborDouble, number: "214" },
-  },
-} satisfies Record<string, HandoffPlan>;
+function handoffPlans(seedDay: CampusDay): Record<HandoffKey, HandoffPlan> {
+  const calendar = campusCalendar(seedDay);
+  return {
+    avaWinter: {
+      mode: "direct",
+      moveOut: campusWindow(seedDay, [9, "09:00"], [17, "20:00"]),
+      moveIn: calendar.winterMoveIn,
+    },
+    avaStorage: { mode: "storage_hold", moveOut: calendar.springMoveOut, moveIn: calendar.fallMoveIn },
+    marcusWinter: {
+      mode: "direct",
+      moveOut: campusWindow(seedDay, [10, "10:00"], [20, "20:00"]),
+      moveIn: calendar.winterMoveIn,
+    },
+    // The lease ends two weeks after spring move out.
+    marcusStorage: {
+      mode: "storage_hold",
+      moveOut: campusWindow(seedDay, [88, "09:00"], [93, "17:00"]),
+      moveIn: calendar.fallMoveIn,
+    },
+    junWinter: {
+      mode: "direct",
+      moveOut: campusWindow(seedDay, [7, "09:00"], [16, "20:00"]),
+      moveIn: calendar.winterMoveIn,
+    },
+    harbor214: {
+      mode: "same_room",
+      moveOut: calendar.fallMoveOut,
+      moveIn: calendar.winterMoveIn,
+      room: { presetSlug: PRESET_SLUGS.harborDouble, number: "214" },
+    },
+  };
+}
 
 interface ListingSeed {
   slug: string;
@@ -76,14 +82,14 @@ interface ListingSeed {
   retail: { productName: string; newPriceCents: number };
   priceCents: number;
   floorPriceCents: number;
-  handoff: HandoffPlan;
+  handoff: HandoffKey;
 }
 
 const RETAIL_NOTE = "Typical new price for this product class at US home goods retailers.";
 const RETAIL_CHECKED_ON = "2026-11-08";
 
 const CATALOG: ListingSeed[] = [
-  // Ava Lindqvist, graduating. Extras go in December, the rest after commencement.
+  // Ava Lindqvist, graduating. Extras go at winter move in, the rest after commencement.
   {
     slug: "ava-desk-lamp",
     seller: "ava",
@@ -102,7 +108,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Balance arm desk lamp with metal dome shade", newPriceCents: 4_900 },
     priceCents: 1_600,
     floorPriceCents: 1_200,
-    handoff: HANDOFFS.avaDecember,
+    handoff: "avaWinter",
   },
   {
     slug: "ava-floral-area-rug",
@@ -121,7 +127,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "8 by 10 ft low pile floral area rug", newPriceCents: 32_900 },
     priceCents: 8_500,
     floorPriceCents: 6_500,
-    handoff: HANDOFFS.avaDecember,
+    handoff: "avaWinter",
   },
   {
     slug: "ava-narrow-bookcases",
@@ -141,7 +147,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Narrow open bookcase in beech, set of three", newPriceCents: 17_700 },
     priceCents: 4_500,
     floorPriceCents: 3_500,
-    handoff: HANDOFFS.avaJune,
+    handoff: "avaStorage",
   },
   {
     slug: "ava-drawer-tower",
@@ -163,10 +169,10 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Four drawer plastic storage tower", newPriceCents: 2_900 },
     priceCents: 1_000,
     floorPriceCents: 700,
-    handoff: HANDOFFS.avaJune,
+    handoff: "avaStorage",
   },
 
-  // Marcus Bell, lease end. In town all winter, apartment furniture goes to storage in June.
+  // Marcus Bell, lease end. In town all winter, apartment furniture goes to storage when the lease ends.
   {
     slug: "marcus-mesh-desk-chair",
     seller: "marcus",
@@ -188,7 +194,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Mesh back task chair with arms", newPriceCents: 14_900 },
     priceCents: 3_500,
     floorPriceCents: 2_500,
-    handoff: HANDOFFS.marcusDecember,
+    handoff: "marcusWinter",
   },
   {
     slug: "marcus-green-floor-lamp",
@@ -212,7 +218,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Metal floor reading lamp with dome shade", newPriceCents: 4_900 },
     priceCents: 1_200,
     floorPriceCents: 800,
-    handoff: HANDOFFS.marcusDecember,
+    handoff: "marcusWinter",
   },
   {
     slug: "marcus-oak-writing-table",
@@ -235,7 +241,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Solid oak writing table with leather inset and two drawers", newPriceCents: 89_900 },
     priceCents: 18_000,
     floorPriceCents: 14_000,
-    handoff: HANDOFFS.marcusJune,
+    handoff: "marcusStorage",
   },
   {
     slug: "marcus-bell-floor-lamp",
@@ -259,7 +265,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Floor lamp with fabric bell shade", newPriceCents: 6_900 },
     priceCents: 1_800,
     floorPriceCents: 1_200,
-    handoff: HANDOFFS.marcusJune,
+    handoff: "marcusStorage",
   },
   {
     slug: "marcus-mustard-armchair",
@@ -285,7 +291,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Upholstered wingback lounge chair", newPriceCents: 29_900 },
     priceCents: 6_500,
     floorPriceCents: 5_000,
-    handoff: HANDOFFS.marcusJune,
+    handoff: "marcusStorage",
   },
 
   // Sofia Navarro, transfer. Leaves a set up half of Harbor Hall 214.
@@ -306,7 +312,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Reversible cotton comforter, full size", newPriceCents: 7_900 },
     priceCents: 2_200,
     floorPriceCents: 1_500,
-    handoff: HANDOFFS.harbor214,
+    handoff: "harbor214",
   },
   {
     slug: "sofia-bed-pillows",
@@ -325,7 +331,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Standard bed pillows, set of three", newPriceCents: 4_500 },
     priceCents: 1_200,
     floorPriceCents: 800,
-    handoff: HANDOFFS.harbor214,
+    handoff: "harbor214",
   },
   {
     slug: "sofia-blue-drawer-unit",
@@ -343,7 +349,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Five drawer desktop organizer", newPriceCents: 2_500 },
     priceCents: 900,
     floorPriceCents: 600,
-    handoff: HANDOFFS.harbor214,
+    handoff: "harbor214",
   },
   {
     slug: "sofia-clamp-lamp",
@@ -366,7 +372,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Clamp reading lamp with metal shade", newPriceCents: 2_200 },
     priceCents: 800,
     floorPriceCents: 500,
-    handoff: HANDOFFS.harbor214,
+    handoff: "harbor214",
   },
   {
     slug: "sofia-woven-baskets",
@@ -386,10 +392,10 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Handwoven grass storage basket, pair", newPriceCents: 6_000 },
     priceCents: 1_400,
     floorPriceCents: 1_000,
-    handoff: HANDOFFS.harbor214,
+    handoff: "harbor214",
   },
 
-  // Jun Park, leave of absence. Stays nearby and meets buyers on campus until January 4.
+  // Jun Park, leave of absence. Stays nearby and meets buyers on campus until winter move in ends.
   {
     slug: "jun-white-desk",
     seller: "jun",
@@ -407,7 +413,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Desk with three drawers and solid oak legs", newPriceCents: 19_900 },
     priceCents: 5_500,
     floorPriceCents: 4_000,
-    handoff: HANDOFFS.junDecember,
+    handoff: "junWinter",
   },
   {
     slug: "jun-velvet-side-chair",
@@ -432,7 +438,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Upholstered wood side chair", newPriceCents: 8_900 },
     priceCents: 2_000,
     floorPriceCents: 1_400,
-    handoff: HANDOFFS.junDecember,
+    handoff: "junWinter",
   },
   {
     slug: "jun-compact-fridge",
@@ -452,7 +458,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "1.7 cubic foot compact refrigerator", newPriceCents: 13_900 },
     priceCents: 4_500,
     floorPriceCents: 3_500,
-    handoff: HANDOFFS.junDecember,
+    handoff: "junWinter",
   },
   {
     slug: "jun-round-jute-rug",
@@ -474,10 +480,10 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "4 ft round jute and cotton rug", newPriceCents: 6_900 },
     priceCents: 2_200,
     floorPriceCents: 1_500,
-    handoff: HANDOFFS.junDecember,
+    handoff: "junWinter",
   },
 
-  // Lea Moreau, exchange. Flies home December 13 and leaves the room essentials in Harbor Hall 214.
+  // Lea Moreau, exchange. Flies home after fall move out and leaves the room essentials in Harbor Hall 214.
   {
     slug: "lea-navy-bean-bag",
     seller: "lea",
@@ -495,7 +501,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Faux leather bean bag chair with pouf", newPriceCents: 12_900 },
     priceCents: 3_000,
     floorPriceCents: 2_200,
-    handoff: HANDOFFS.harbor214,
+    handoff: "harbor214",
   },
   {
     slug: "lea-crochet-throw",
@@ -513,7 +519,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Handmade crochet throw blanket", newPriceCents: 8_500 },
     priceCents: 1_800,
     floorPriceCents: 1_200,
-    handoff: HANDOFFS.harbor214,
+    handoff: "harbor214",
   },
   {
     slug: "lea-brass-table-lamp",
@@ -532,7 +538,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Brass urn table lamp with linen shade", newPriceCents: 5_900 },
     priceCents: 1_500,
     floorPriceCents: 1_000,
-    handoff: HANDOFFS.harbor214,
+    handoff: "harbor214",
   },
   {
     slug: "lea-kilim-rug",
@@ -557,7 +563,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Flat weave kilim area rug, 4 by 7 ft", newPriceCents: 14_900 },
     priceCents: 2_500,
     floorPriceCents: 1_800,
-    handoff: HANDOFFS.harbor214,
+    handoff: "harbor214",
   },
   {
     slug: "lea-felt-poufs",
@@ -576,7 +582,7 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Round felt pouf, set of three", newPriceCents: 17_700 },
     priceCents: 3_500,
     floorPriceCents: 2_500,
-    handoff: HANDOFFS.harbor214,
+    handoff: "harbor214",
   },
   {
     slug: "lea-moving-tote",
@@ -598,12 +604,11 @@ const CATALOG: ListingSeed[] = [
     retail: { productName: "Attached lid storage tote", newPriceCents: 3_500 },
     priceCents: 1_000,
     floorPriceCents: 700,
-    handoff: HANDOFFS.harbor214,
+    handoff: "harbor214",
   },
 ];
 
-function toRow(item: ListingSeed): SeedListing {
-  const { handoff } = item;
+function toRow(item: ListingSeed, handoff: HandoffPlan): SeedListing {
   return {
     id: seedId("listing", item.slug),
     sellerId: userId(item.seller),
@@ -646,6 +651,7 @@ function toRow(item: ListingSeed): SeedListing {
   };
 }
 
-export function seedListings(): SeedListing[] {
-  return CATALOG.map(toRow);
+export function seedListings(seedDay: CampusDay): SeedListing[] {
+  const plans = handoffPlans(seedDay);
+  return CATALOG.map((item) => toRow(item, plans[item.handoff]));
 }

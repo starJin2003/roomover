@@ -9,6 +9,7 @@ import { sql } from "drizzle-orm";
 import { MIGRATIONS_SCHEMA, runMigrations } from "@/lib/db/migrate";
 import { countRows, ENUM_NAMES, TABLE_NAMES } from "@/lib/db/tables";
 import { seedDatabase } from "../seed";
+import { campusDay } from "../seed/campus";
 import { printSeedReport } from "../seed/report";
 import { runScript } from "./run";
 
@@ -29,7 +30,7 @@ if (process.argv.slice(2).includes(CONFIRM_FLAG)) {
     });
     console.log(`Dropped ${TABLE_NAMES.length} tables, ${ENUM_NAMES.length} enums, and the migration journal.`);
     await runMigrations(db);
-    const seeded = await seedDatabase(db);
+    const seeded = await seedDatabase(db, campusDay(new Date()));
     printSeedReport(seeded, await countRows(db));
   });
 } else {

@@ -15,6 +15,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "paypal:smoke": "tsx --env-file-if-exists=.env.local scripts/paypal-smoke.ts",
+    "paypal:webhook": "tsx --env-file-if-exists=.env.local scripts/paypal/register-webhook.ts",
+    "paypal:payout-proof": "tsx --env-file-if-exists=.env.local scripts/paypal/payout-proof.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db/migrate.ts",
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/db/seed.ts",
