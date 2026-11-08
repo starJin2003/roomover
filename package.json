@@ -14,13 +14,20 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "paypal:smoke": "tsx --env-file-if-exists=.env.local scripts/paypal-smoke.ts"
+    "paypal:smoke": "tsx --env-file-if-exists=.env.local scripts/paypal-smoke.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db/migrate.ts",
+    "db:seed": "tsx --env-file-if-exists=.env.local scripts/db/seed.ts",
+    "db:reset": "tsx --env-file-if-exists=.env.local scripts/db/reset.ts",
+    "db:counts": "tsx --env-file-if-exists=.env.local scripts/db/counts.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.6.0",
     "@paypal/agent-toolkit": "1.11.0",
     "@paypal/paypal-server-sdk": "2.5.0",
+    "drizzle-orm": "0.45.4",
     "next": "16.4.5",
+    "pg": "8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zod": "4.6.7"
@@ -29,8 +36,10 @@
     "@playwright/test": "1.65.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^26.6.6",
+    "@types/pg": "8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "drizzle-kit": "0.31.11",
     "eslint": "^9",
     "eslint-config-next": "16.4.5",
     "tailwindcss": "^4",
