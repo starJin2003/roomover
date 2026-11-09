@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Page } from "@playwright/test";
 import { getDb } from "@/lib/db/client";
+import { agreedTerms } from "@/lib/db/negotiations";
 import { latestSessionPlan } from "@/lib/db/plans";
 import { listings, orderItems, orders, webhookEvents } from "@/lib/db/schema";
 import { expectNoPageScroll } from "./support/layout";
@@ -43,14 +44,14 @@ test("the student approves one PayPal checkout and PayPal holds the money for ev
   await page.goto("/furnish");
   await page.getByLabel("What should your room feel like?").fill("$150, cozy, I study late");
   await page.getByRole("button", { name: "Plan my room" }).click();
-  await expect(page.locator("ul[aria-live] [data-sentence]").last()).toHaveText("Your room is ready. 5 items from 4 students.", { timeout: 60_000 });
+  await expect(page.locator("ul[aria-live] [data-sentence]").last()).toHaveText("Your room is ready. 6 items from 4 students.", { timeout: 60_000 });
 
   // The official button, the Pay Later button, and the Pay Later message for the plan total.
   await expect(page.locator('[data-paypal-checkout="ready"]')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator("paypal-button")).toBeVisible();
   await expect(page.locator("paypal-pay-later-button")).toBeVisible();
-  if (LIVE) await expect(page.getByText(/Pay in 4 interest-free payments of \$25\.00/)).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator("[data-total]")).toHaveText("$100");
+  if (LIVE) await expect(page.getByText(/Pay in 4 interest-free payments of \$26\.75/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("[data-total]")).toHaveText("$107");
   await expectAccessible(page);
   await page.screenshot({ path: `${SCREENSHOT_DIR}/checkout-ready-1440.png`, fullPage: true, scale: "css" });
 
@@ -70,7 +71,7 @@ test("the student approves one PayPal checkout and PayPal holds the money for ev
   }
 
   // The panel turns to the held state, and Under the hood names the API and both IDs.
-  await expect(page.getByText("PayPal holds your $100 until handoff")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("PayPal holds your $107 until handoff")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("Each item is charged when you check it at handoff, and 4 students get paid then.")).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: /^Handoff$/ })).toHaveAttribute("aria-current", "step");
   await expect(page.locator("paypal-button")).toHaveCount(0);
@@ -92,12 +93,15 @@ test("the student approves one PayPal checkout and PayPal holds the money for ev
   await expectNoPageScroll(page);
   await page.screenshot({ path: `${SCREENSHOT_DIR}/checkout-held-1440.png`, fullPage: true, scale: "css" });
 
-  // The order rows match the plan with one line per listing at its listed price, and the listings are reserved.
+  // The order rows match the plan with one line per listing at its agreed or listed price, and the listings are reserved.
   const planListingIds = plan.layout.items.flatMap((item) => (item.source === "listing" ? [item.listingId] : []));
   const lines = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id)).orderBy(asc(orderItems.listingId));
   const listed = await db.select().from(listings).where(inArray(listings.id, planListingIds)).orderBy(asc(listings.id));
-  expect(lines.map((line) => [line.listingId, line.sellerId, line.amountCents, line.status])).toEqual(listed.map((listing) => [listing.id, listing.sellerId, listing.priceCents, "authorized"]));
-  expect(order.totalCents).toBe(listed.reduce((sum, listing) => sum + listing.priceCents, 0));
+  const agreed = await agreedTerms(db, plan.id, planListingIds);
+  expect(agreed.size).toBeGreaterThan(0);
+  const priceOf = (listing: (typeof listed)[number]) => agreed.get(listing.id)?.priceCents ?? listing.priceCents;
+  expect(lines.map((line) => [line.listingId, line.sellerId, line.amountCents, line.status])).toEqual(listed.map((listing) => [listing.id, listing.sellerId, priceOf(listing), "authorized"]));
+  expect(order.totalCents).toBe(listed.reduce((sum, listing) => sum + priceOf(listing), 0));
   expect(listed.every((listing) => listing.status === "reserved")).toBe(true);
 
   // A live run's PAYMENT.AUTHORIZATION.CREATED reaches the deployed route, which stores it once.

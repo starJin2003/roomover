@@ -97,6 +97,7 @@ export interface HandoffOrder {
   paypalAuthorizationId: string | null;
   paypalReauthorizationId: string | null;
   paypalCaptureId: string | null;
+  authorizationExpiresAt: Date | null;
   approvedAt: Date | null;
   reauthorizedAt: Date | null;
   voidedAt: Date | null;
@@ -119,6 +120,7 @@ const orderColumns = {
   paypalAuthorizationId: orders.paypalAuthorizationId,
   paypalReauthorizationId: orders.paypalReauthorizationId,
   paypalCaptureId: orders.paypalCaptureId,
+  authorizationExpiresAt: orders.authorizationExpiresAt,
   approvedAt: orders.approvedAt,
   reauthorizedAt: orders.reauthorizedAt,
   voidedAt: orders.voidedAt,

@@ -1,4 +1,6 @@
 allowBuilds:
+  '@bryntum/scheduler-trial': true
+  '@bryntum/scheduler-trial-lib': true
   esbuild: false
   sharp: false
   unrs-resolver: false

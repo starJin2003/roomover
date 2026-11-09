@@ -61,12 +61,12 @@ describe("make_offer", () => {
     const context = harborContext({ negotiator: port });
     await call(context, "place_item", { listingId: DESK, xMm: 1800, yMm: 600, rotationDeg: 0, reason: "Desk." });
     const outcome = await call(context, "make_offer", { listingIds: [DESK], priceDollars: 48, slot: MONDAY_2PM });
-    expect(result(outcome)).toMatchObject({ sent: true, answer: "accept", status: "agreed", priceDollars: 48, slot: { windowDay: 2, startHour: 14, label: "Mon Nov 23, 2 to 4 PM" } });
-    expect(sentences(outcome)).toEqual(["Jun's agent agreed to $48 with handoff Mon Nov 23, 2 to 4 PM."]);
+    expect(result(outcome)).toMatchObject({ sent: true, answer: "accept", status: "agreed", priceDollars: 48, slot: { windowDay: 2, startHour: 14, label: "Mon, Nov 23, 2 to 4 PM" } });
+    expect(sentences(outcome)).toEqual(["Jun's agent agreed to $48 with handoff Mon, Nov 23, 2 to 4 PM."]);
     expect(outcome.events.map((event) => event.agent ?? "buyer")).toEqual(["buyer", "seller"]);
     expect(planTotalCents(context.layout, context.catalog, context.negotiations)).toBe(4_800);
     expect(port.saved.at(-1)).toMatchObject([{ listingId: DESK, status: "agreed", agreedPriceCents: 4_800 }]);
-    expect(port.asked[0].facts).toMatchObject({ sellerFirstName: "Jun", items: [{ askingCents: 5_500, floorCents: 4_000 }], round: 1, offer: { priceCents: 4_800, slotLabel: "Mon Nov 23, 2 to 4 PM" } });
+    expect(port.asked[0].facts).toMatchObject({ sellerFirstName: "Jun", items: [{ askingCents: 5_500, floorCents: 4_000 }], round: 1, offer: { priceCents: 4_800, slotLabel: "Mon, Nov 23, 2 to 4 PM" } });
   });
 
   it("takes a counter through respond_to_offer", async () => {
@@ -76,7 +76,7 @@ describe("make_offer", () => {
     expect(sentences(offered)).toEqual(["Jun's agent countered at $50."]);
     const accepted = await call(context, "respond_to_offer", { listingIds: [DESK], action: "accept" });
     expect(result(accepted)).toMatchObject({ done: true, status: "agreed", priceDollars: 50 });
-    expect(sentences(accepted)).toEqual(["Took Jun's counter of $50 with handoff Mon Nov 23, 2 to 4 PM."]);
+    expect(sentences(accepted)).toEqual(["Took Jun's counter of $50 with handoff Mon, Nov 23, 2 to 4 PM."]);
   });
 
   it("holds the seller's floor in code, whatever the seller agent says", async () => {
@@ -96,7 +96,7 @@ describe("make_offer", () => {
   it("splits a bundle price over one seller's listings without going under any floor", async () => {
     const context = harborContext({ negotiator: negotiator(() => accept) });
     const outcome = await call(context, "make_offer", { listingIds: [DESK, CHAIR], priceDollars: 65, slot: MONDAY_2PM });
-    expect(sentences(outcome)).toEqual(["Jun's agent agreed to $65 for the desk and chair with handoff Mon Nov 23, 2 to 4 PM."]);
+    expect(sentences(outcome)).toEqual(["Jun's agent agreed to $65 for the desk and chair with handoff Mon, Nov 23, 2 to 4 PM."]);
     const shares = context.negotiations.get(DESK)?.shares;
     expect(shares?.get(DESK)).toBe(4_800);
     expect(shares?.get(CHAIR)).toBe(1_700);

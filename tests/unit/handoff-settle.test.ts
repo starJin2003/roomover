@@ -87,6 +87,7 @@ function freshOrder(paymentMode: HandoffOrder["paymentMode"], items: HandoffItem
     paypalAuthorizationId: paymentMode === "authorize_then_capture" ? "0VF52814937998046" : null,
     paypalReauthorizationId: null,
     paypalCaptureId: paymentMode === "capture_at_checkout" ? "2GG279541U471931P" : null,
+    authorizationExpiresAt: null,
     approvedAt: new Date(Date.now() - 60_000),
     reauthorizedAt: null,
     voidedAt: null,

@@ -263,7 +263,6 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
         Plan a room again
       </Link>
     ) : undefined;
-  const scheduleWords = `When each seller moves out, when ${buyerFirstName} moves in, and the handoff slot the agents agreed on`;
 
   return (
     <main className={SHELL_COLUMNS}>
@@ -271,7 +270,7 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
         <div className="flex min-h-0 flex-1 flex-col">
           <RoomStage label={view.roomLabel} preset={preset} items={roomItems} showList={false} mark={mark} fill />
         </div>
-        <ScheduleSection description={scheduleWords} collapsible />
+        <ScheduleSection schedule={view.schedule} planId={view.planId} collapsible onView={setView} />
       </section>
 
       <UnderTheHoodProvider>
@@ -377,8 +376,9 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
         </Panel>
       </UnderTheHoodProvider>
 
-      <div className="lg:hidden">
-        <ScheduleSection description={scheduleWords} />
+      {/* The timeline is far wider than a phone, so this grid item may shrink below it and scroll inside. */}
+      <div className="min-w-0 lg:hidden">
+        <ScheduleSection schedule={view.schedule} planId={view.planId} onView={setView} />
       </div>
     </main>
   );

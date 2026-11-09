@@ -79,7 +79,7 @@ describe("buildPlanView", () => {
       agreedSlot: SLOT,
     };
     const view = buildPlanView(META, HARBOR_214_DEMO_LAYOUT, listings, null, null, [negotiation]);
-    expect(view.items[0]).toMatchObject({ priceCents: 4_800, listPriceCents: 5_500, slotLabel: "Mon Nov 23, 2 to 4 PM" });
+    expect(view.items[0]).toMatchObject({ priceCents: 4_800, listPriceCents: 5_500, slotLabel: "Mon, Nov 23, 2 to 4 PM" });
     expect(view.usedCents).toBe(4_800 + 3_500 + 1_600 + 800 + 3_000);
     expect(view.negotiations).toEqual([
       {
@@ -89,11 +89,11 @@ describe("buildPlanView", () => {
         status: "agreed",
         askingCents: 5_500,
         agreedCents: 4_800,
-        slot: "Mon Nov 23, 2 to 4 PM",
+        slot: "Mon, Nov 23, 2 to 4 PM",
         rounds: [
-          { round: 1, from: "buyer", action: "offer", priceCents: 4_500, slot: "Mon Nov 23, 2 to 4 PM", message: "Offer of $45.", heldByCode: null },
-          { round: 1, from: "seller", action: "counter", priceCents: 4_800, slot: "Mon Nov 23, 2 to 4 PM", message: "Could you do $48?", heldByCode: null },
-          { round: 1, from: "buyer", action: "accept", priceCents: 4_800, slot: "Mon Nov 23, 2 to 4 PM", message: "Accepted $48.", heldByCode: null },
+          { round: 1, from: "buyer", action: "offer", priceCents: 4_500, slot: "Mon, Nov 23, 2 to 4 PM", message: "Offer of $45.", heldByCode: null },
+          { round: 1, from: "seller", action: "counter", priceCents: 4_800, slot: "Mon, Nov 23, 2 to 4 PM", message: "Could you do $48?", heldByCode: null },
+          { round: 1, from: "buyer", action: "accept", priceCents: 4_800, slot: "Mon, Nov 23, 2 to 4 PM", message: "Accepted $48.", heldByCode: null },
         ],
       },
     ]);

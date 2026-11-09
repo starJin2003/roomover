@@ -11,10 +11,10 @@ const FACTS: OfferFacts = {
   round: 1,
   roundLimit: 3,
   history: [],
-  offer: { priceCents: 4_500, slotLabel: "Mon Nov 23, 2 to 4 PM" },
+  offer: { priceCents: 4_500, slotLabel: "Mon, Nov 23, 2 to 4 PM" },
   slots: [
-    { number: 1, label: "Mon Nov 23, 12 to 2 PM" },
-    { number: 2, label: "Mon Nov 23, 4 to 6 PM" },
+    { number: 1, label: "Mon, Nov 23, noon to 2 PM" },
+    { number: 2, label: "Mon, Nov 23, 4 to 6 PM" },
   ],
 };
 
@@ -54,11 +54,11 @@ describe("the negotiating seller agent", () => {
   });
 
   it("reads the seller's facts, the round, and the slots it may propose", () => {
-    const message = negotiationMessage({ ...FACTS, round: 3, history: ["Round 1: The student's agent offered $40 for Mon Nov 23, 2 to 4 PM."] });
+    const message = negotiationMessage({ ...FACTS, round: 3, history: ["Round 1: The student's agent offered $40 for Mon, Nov 23, 2 to 4 PM."] });
     expect(message).toContain("- White three drawer desk with oak legs: asking $55, floor $40");
     expect(message).toContain("Round 3 of 3. Your counter is final.");
-    expect(message).toContain("This offer: $45 with handoff Mon Nov 23, 2 to 4 PM.");
-    expect(message).toContain("2. Mon Nov 23, 4 to 6 PM");
+    expect(message).toContain("This offer: $45 with handoff Mon, Nov 23, 2 to 4 PM.");
+    expect(message).toContain("2. Mon, Nov 23, 4 to 6 PM");
   });
 
   it("answers with the counter and counts its tokens", async () => {

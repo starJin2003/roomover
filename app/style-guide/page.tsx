@@ -5,7 +5,6 @@ import { ItemChecklist } from "@/components/handoff/item-checklist";
 import { PayPalCard } from "@/components/paypal/paypal-card";
 import { PayLaterMessageSlot, PayPalButtonSlot } from "@/components/paypal/sdk-slots";
 import { UnderTheHoodProvider, UnderTheHoodSwitch } from "@/components/paypal/under-the-hood";
-import { ScheduleSection } from "@/components/schedule/schedule-section";
 import { Button, type ButtonVariant } from "@/components/ui/button";
 import { ChoiceKey } from "@/components/ui/choice-key";
 import { FactList } from "@/components/ui/fact-list";
@@ -19,6 +18,7 @@ import { formatUsdShort } from "@/lib/format";
 import { ACTIVITY_LOG, BUDGET_CENTS, FURNISH, HANDOFF, MONEY, PAYOUT_ARRIVALS, PAYPAL_MOMENTS, SELL, SELLER_PAYOUTS } from "./demo-data";
 import { Colors, ContrastTable, MotionTokens, Shape, TypeScale } from "./foundations";
 import { FurnishRoom, RoomPending } from "./room-section";
+import { ScheduleDemo } from "./schedule-demo";
 import { SellersPaidDemo } from "./sellers-paid-demo";
 
 export const metadata: Metadata = {
@@ -208,7 +208,9 @@ export default function StyleGuidePage() {
               </Panel>
             </UnderTheHoodProvider>
           </div>
-          <ScheduleSection description="When each seller moves out, when Jordan moves in, and the handoff slot the agents agreed on" />
+          <Suspense fallback={null}>
+            <ScheduleDemo />
+          </Suspense>
         </Section>
 
         <Section id="sell" lead="The photo fills in the title, price, and details. One key lists the item.">

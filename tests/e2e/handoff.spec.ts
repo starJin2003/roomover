@@ -1,14 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { asc, eq, inArray } from "drizzle-orm";
-import type { Browser, Page } from "@playwright/test";
-import { readConfig } from "@/lib/config";
+import type { Page } from "@playwright/test";
 import { getDb } from "@/lib/db/client";
 import { listings, orderItems, orders, payoutItems, payouts } from "@/lib/db/schema";
-import { SESSION_COOKIE, signSession } from "@/lib/session";
 import { createDemoPlan } from "@/scripts/handoff/demo-plan";
+import { payDemoCart, payDemoCartAtDesktop } from "./support/demo-checkout";
 import { expectFitsDesktops } from "./support/layout";
-import { approveInPopup, BUYER_PASSWORD } from "./support/paypal-popup";
-import { LIVE, routeRecordedPayPal } from "./support/sandbox";
+import { BUYER_PASSWORD } from "./support/paypal-popup";
+import { LIVE } from "./support/sandbox";
 import { expect, test } from "./support/session";
 
 test.use({ holdsCatalog: true });
@@ -48,26 +47,6 @@ function watchConsole(page: Page): string[] {
   return problems;
 }
 
-/** Approves the fixture plan's checkout in a desktop window, since the PayPal popup is the desktop flow. */
-async function payAtDesktop(browser: Browser, baseURL: string, session: string): Promise<void> {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  await routeRecordedPayPal(context, baseURL);
-  await context.addCookies([{ name: SESSION_COOKIE, value: signSession(session, readConfig(["SESSION_SECRET"]).SESSION_SECRET), url: baseURL, httpOnly: true, sameSite: "Lax" }]);
-  const page = await context.newPage();
-  await pay(page);
-  await context.close();
-}
-
-async function pay(page: Page): Promise<void> {
-  await page.goto("/furnish");
-  await expect(page.locator("[data-total]")).toHaveText("$144");
-  await expect(page.locator('[data-paypal-checkout="ready"]')).toBeVisible({ timeout: 30_000 });
-  const popup = LIVE ? page.waitForEvent("popup") : null;
-  await page.locator("paypal-button").click();
-  if (popup !== null) await approveInPopup(await popup);
-  await expect(page.getByText("PayPal holds your $144 until handoff")).toBeVisible({ timeout: 60_000 });
-}
-
 /** Checks one item with its sample photo and waits for the verifier's sentence. */
 async function checkWithSample(page: Page, sample: "Use a sample photo" | "Sample with a new tear", finding: string) {
   await page.getByRole("button", { name: sample }).click();
@@ -83,10 +62,10 @@ test("the student checks every item, the torn chair costs $30, and PayPal pays f
   const planId = await createDemoPlan(getDb(), session);
 
   if (desktop) {
-    await pay(page);
+    await payDemoCart(page);
     await page.getByRole("link", { name: "Go to handoff" }).click();
   } else {
-    await payAtDesktop(browser, baseURL ?? "", session);
+    await payDemoCartAtDesktop(browser, baseURL ?? "", session);
     await page.goto("/handoff");
   }
   await expect(page).toHaveURL(new RegExp(`/handoff/${planId}$`));

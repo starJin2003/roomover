@@ -120,19 +120,34 @@ function shiftDay(day: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-function hourWords(hour: number): { value: string; meridiem: "AM" | "PM" } {
+/** A campus clock time as people say it, such as 9 AM, noon, 6:30 PM, or midnight. */
+function clockWords(hour: number, minute: number): { value: string; meridiem: "AM" | "PM" | null } {
+  if (minute === 0 && hour === 12) return { value: "noon", meridiem: null };
+  if (minute === 0 && (hour === 0 || hour === 24)) return { value: "midnight", meridiem: null };
   const meridiem = hour < 12 || hour === 24 ? "AM" : "PM";
-  const value = hour % 12 === 0 ? "12" : String(hour % 12);
+  const value = `${hour % 12 === 0 ? 12 : hour % 12}${minute === 0 ? "" : `:${String(minute).padStart(2, "0")}`}`;
   return { value, meridiem };
 }
 
-/** "Mon Nov 23, 2 to 4 PM", or "Mon Nov 23, 10 AM to 12 PM" when the slot crosses noon. */
+const said = (words: ReturnType<typeof clockWords>) => (words.meridiem === null ? words.value : `${words.value} ${words.meridiem}`);
+
+/** A campus day as the panel writes it, such as Tue, Nov 24. */
+export const formatCampusDay = (instant: Date): string => weekdayFormat.format(instant);
+
+/** A campus moment, such as Tue, Nov 24, 9 AM. */
+export function formatMoment(instant: Date): string {
+  const { hour, minute } = campusClock(instant);
+  return `${formatCampusDay(instant)}, ${said(clockWords(hour, minute))}`;
+}
+
+/** "Mon, Nov 23, 2 to 4 PM", or "Tue, Nov 24, 10 AM to noon" when the slot meets noon. */
 export function formatSlot(slot: TimeWindow): string {
-  const day = weekdayFormat.format(slot.startsAt).replace(",", "");
-  const from = hourWords(campusClock(slot.startsAt).hour);
-  const to = hourWords(campusClock(slot.endsAt).hour);
-  const range = from.meridiem === to.meridiem ? `${from.value} to ${to.value} ${to.meridiem}` : `${from.value} ${from.meridiem} to ${to.value} ${to.meridiem}`;
-  return `${day}, ${range}`;
+  const start = campusClock(slot.startsAt);
+  const end = campusClock(slot.endsAt);
+  const from = clockWords(start.hour, start.minute);
+  const to = clockWords(end.hour, end.minute);
+  const range = from.meridiem !== null && from.meridiem === to.meridiem ? `${from.value} to ${said(to)}` : `${said(from)} to ${said(to)}`;
+  return `${formatCampusDay(slot.startsAt)}, ${range}`;
 }
 
 /** A window as the agents read it, in campus wall clock time, such as 2026-11-23 09:00. */
@@ -151,7 +166,7 @@ export function windowDays(window: TimeWindow): { windowDay: number; date: strin
   const days: { windowDay: number; date: string; day: string }[] = [];
   for (let offset = 0; offset < 400; offset++) {
     const day = shiftDay(first, offset);
-    days.push({ windowDay: offset + 1, day, date: weekdayFormat.format(campusInstant(day, 12)).replace(",", "") });
+    days.push({ windowDay: offset + 1, day, date: formatCampusDay(campusInstant(day, 12)) });
     if (day === last) break;
   }
   return days;

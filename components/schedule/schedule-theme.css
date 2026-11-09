@@ -1,0 +1,281 @@
+/*
+ * Roomover's theme for the Bryntum Scheduler. Only the structural stylesheet
+ * loads, so every color here comes from the Roomover tokens: the table as the
+ * ground, Flint bars for move outs, a dotted Stone line while an item waits,
+ * a Paper band for the student's move in, and an Ink key for each handoff.
+ */
+
+.rv-schedule {
+  --rv-paper: var(--color-paper, #f6f3ee);
+  --rv-ink: var(--color-ink, #14151a);
+  --rv-stone: var(--color-stone, #8c877d);
+  --rv-flint: var(--color-flint, #67625a);
+  --rv-brick: var(--color-brick, #a3341e);
+  --rv-brick-skirt: var(--color-brick-skirt, #71291d);
+  --rv-hair: color-mix(in srgb, #14151a 9%, transparent);
+  --rv-hair-strong: color-mix(in srgb, #14151a 16%, transparent);
+  font-family: var(--font-sans);
+  border-radius: var(--radius-xl, 16px);
+  box-shadow: inset 0 0 0 1px var(--rv-hair);
+  overflow: hidden;
+}
+
+.rv-schedule .b-scheduler {
+  --b-primary: var(--rv-ink);
+  --b-widget-color: var(--rv-ink);
+  --b-widget-font-size: 14px;
+  --b-widget-focus-outline-color: var(--rv-ink);
+  --b-panel-background: transparent;
+  --b-grid-background: transparent;
+  --b-grid-cell-background: transparent;
+  --b-grid-cell-color: var(--rv-ink);
+  --b-grid-cell-border-color: var(--rv-hair);
+  --b-grid-cell-hover-background: transparent;
+  --b-grid-cell-selected-background: transparent;
+  --b-grid-cell-hover-selected-background: transparent;
+  --b-grid-cell-focused-outline-color: var(--rv-ink);
+  --b-grid-cell-padding-inline: 16px;
+  --b-grid-row-border-color: var(--rv-hair);
+  --b-grid-header-background: transparent;
+  --b-grid-header-color: var(--rv-flint);
+  --b-grid-header-font-size: 12px;
+  --b-grid-header-font-weight: 500;
+  --b-grid-header-text-transform: none;
+  --b-grid-header-border-color: var(--rv-hair);
+  --b-grid-header-hover-background: transparent;
+  --b-grid-header-padding: 0 16px;
+  --b-grid-splitter-color: var(--rv-hair);
+  --b-grid-splitter-narrow-color: var(--rv-hair);
+  --b-grid-splitter-width: 1px;
+  --b-sch-event-font-size: 12px;
+  --b-sch-event-font-weight: 500;
+  --b-resource-time-range-background: transparent;
+  --b-resource-time-range-color: transparent;
+  --b-time-range-background: var(--rv-paper);
+  background: transparent;
+  font-family: var(--font-sans);
+}
+
+.rv-schedule .b-grid-header-container,
+.rv-schedule .b-grid-header,
+.rv-schedule .b-grid-body-container,
+.rv-schedule .b-grid-row,
+.rv-schedule .b-grid-cell,
+.rv-schedule .b-timeline-sub-grid {
+  background: transparent;
+}
+
+/* Day lines only. The two hour ticks stay quiet, so the bars carry the picture. */
+.rv-schedule .b-column-line {
+  border-color: transparent;
+}
+
+.rv-schedule .b-column-line-major {
+  border-color: var(--rv-hair-strong);
+}
+
+.rv-schedule .b-sch-header-row-0 .b-sch-header-time-axis-cell {
+  justify-content: flex-start;
+  padding-inline: 8px;
+  color: var(--rv-ink);
+  font-weight: 500;
+  border-color: var(--rv-hair-strong);
+}
+
+.rv-schedule .b-sch-header-row-1 .b-sch-header-time-axis-cell {
+  color: var(--rv-flint);
+  font-weight: 400;
+  border-color: transparent;
+}
+
+.rv-schedule .b-sch-header-time-axis-cell {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* The corner above the names stays empty, as in the sketch. Screen readers still hear the column's name. */
+.rv-schedule .b-grid-header.rv-who-header .b-grid-header-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Who column: the seller's name with their items under it. */
+.rv-schedule .rv-who {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.rv-schedule .rv-who-name,
+.rv-schedule .rv-who-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rv-schedule .rv-who-name {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--rv-ink);
+}
+
+.rv-schedule .rv-who-detail {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--rv-flint);
+}
+
+/* The student's move in, across every row. */
+.rv-schedule .b-sch-time-range.rv-band {
+  background: var(--rv-paper);
+  box-shadow:
+    inset 1px 0 0 var(--rv-hair-strong),
+    inset -1px 0 0 var(--rv-hair-strong);
+}
+
+/* Windows inside one row, drawn as a bar through the middle of the row. */
+.rv-schedule .b-sch-resource-time-range.rv-range {
+  background: transparent;
+  color: transparent;
+  overflow: visible;
+}
+
+.rv-schedule .b-sch-resource-time-range.rv-range::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 50%;
+  height: 10px;
+  transform: translateY(-50%);
+  border-radius: 5px;
+}
+
+.rv-schedule .rv-range-move_out::before {
+  background: var(--rv-flint);
+}
+
+.rv-schedule .rv-range-move_in::before {
+  background: var(--rv-paper);
+  box-shadow: inset 0 0 0 1.5px var(--rv-flint);
+}
+
+.rv-schedule .rv-range-room::before,
+.rv-schedule .rv-range-storage::before {
+  height: 0;
+  border-radius: 0;
+  border-top: 2px dotted var(--rv-stone);
+}
+
+/* The handoff slot is a small Ink key, the one solid mark in the schedule. */
+.rv-schedule .b-sch-event-wrap {
+  overflow: visible;
+}
+
+.rv-schedule .b-sch-event.rv-slot {
+  justify-content: center;
+  padding: 0 0 2px;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--rv-ink);
+  color: var(--rv-paper);
+  box-shadow: var(--shadow-key-ink);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  cursor: default;
+  transition: box-shadow var(--duration-quick, 160ms) var(--ease-out, ease-out);
+}
+
+.rv-schedule .b-sch-event.rv-slot .b-sch-event-content {
+  margin: 0;
+  overflow: visible;
+}
+
+.rv-schedule .rv-slot-hour {
+  white-space: nowrap;
+}
+
+.rv-schedule .b-sch-event.rv-slot-movable {
+  cursor: grab;
+}
+
+@media (hover: hover) {
+  .rv-schedule .b-sch-event.rv-slot-movable:hover {
+    box-shadow: var(--shadow-choice-ink);
+  }
+}
+
+.rv-schedule .b-sch-event.rv-slot-fixed {
+  background: var(--rv-flint);
+  box-shadow: none;
+}
+
+.rv-schedule .b-sch-event.rv-slot-open {
+  background: transparent;
+  color: var(--rv-ink);
+  box-shadow: inset 0 0 0 1.5px var(--rv-ink);
+}
+
+.rv-schedule .b-sch-event-wrap:focus-visible .b-sch-event.rv-slot,
+.rv-schedule .b-sch-event.rv-slot:focus-visible {
+  outline: 2px solid var(--rv-ink);
+  outline-offset: 2px;
+}
+
+/* Lifted while it travels, and Brick over a spot the slot cannot take. The tip names the time, so the key drops its label. */
+.rv-schedule .b-sch-event-wrap.b-dragging {
+  opacity: 1;
+}
+
+.rv-schedule .b-sch-event-wrap.b-dragging .b-sch-event.rv-slot {
+  cursor: grabbing;
+  box-shadow: var(--shadow-choice-ink);
+}
+
+.rv-schedule .b-sch-event-wrap.b-dragging .rv-slot-hour {
+  visibility: hidden;
+}
+
+.rv-schedule .b-sch-event-wrap.b-drag-invalid .b-sch-event.rv-slot {
+  background: var(--rv-brick);
+  box-shadow: var(--shadow-key-brick);
+}
+
+/* The drag tip reads like the room's labels: Paper, a hairline, and Ink. */
+.b-tooltip.rv-drag-tip {
+  --b-tooltip-plain-background: var(--color-paper, #f6f3ee);
+  --b-tooltip-rich-background: var(--color-paper, #f6f3ee);
+  --b-tooltip-plain-color: var(--color-ink, #14151a);
+  --b-tooltip-rich-color: var(--color-ink, #14151a);
+  --b-tooltip-plain-padding: 0;
+  --b-tooltip-rich-padding: 0;
+  --b-widget-floating-box-shadow: 0 0 0 1px color-mix(in srgb, #14151a 9%, transparent), 0 4px 12px color-mix(in srgb, #14151a 14%, transparent);
+  background: var(--color-paper, #f6f3ee);
+  border-radius: var(--radius-sm, 6px);
+  font-family: var(--font-sans);
+}
+
+.b-tooltip.rv-drag-tip .b-anchor {
+  display: none;
+}
+
+.b-tooltip.rv-drag-tip .b-tooltip-content {
+  padding: 4px 8px;
+}
+
+.rv-tip {
+  max-width: 280px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--color-ink, #14151a);
+}
+
+.rv-tip.rv-tip-refused {
+  color: var(--color-brick, #a3341e);
+}

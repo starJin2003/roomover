@@ -5,8 +5,10 @@ import { choicesFor, settleChoice, type Finding, type HandoffChoice } from "@/li
 import { payoutBatchFinal, payoutItemWaiting } from "@/lib/domain/payout-state";
 import { settlementTotals } from "@/lib/domain/settlement";
 import type { Damage, Verdict } from "@/lib/domain/verdict";
+import type { ScheduleView } from "@/lib/domain/schedule";
 import type { ActivityEventView } from "@/lib/plan-view";
 import { samplesFor, type SampleOption } from "./samples";
+import { scheduleOf, type ScheduleWords } from "./schedule";
 import { findingSentence, firstNameOf, rowNote, shortNoun } from "./words";
 
 /** Where an item stands at handoff, in the order the student meets the states. */
@@ -79,6 +81,7 @@ export interface HandoffView {
   totals: { heldCents: number; agreedCents: number; releasedCents: number };
   payout: { senderBatchId: string; paypalBatchId: string | null; status: PayoutStatus; totalCents: number; waiting: boolean; sellers: SellerPaidView[] } | null;
   events: ActivityEventView[];
+  schedule: ScheduleView;
 }
 
 export interface LayoutRef {
@@ -120,12 +123,27 @@ const PHASE: Readonly<Record<OrderStatus, HandoffPhase>> = {
   refunded: "released",
 };
 
-export function buildHandoffView(input: { order: HandoffOrder; roomLabel: string; layout: ReadonlyMap<string, LayoutRef>; events: readonly ActivityEventView[] }): HandoffView {
+const nounOf = (item: HandoffOrder["items"][number], ref: LayoutRef | undefined) => (ref === undefined ? item.title.toLowerCase() : shortNoun(ref));
+const placedIn = (layout: ReadonlyMap<string, LayoutRef>) => (item: HandoffOrder["items"][number]) => layout.get(item.listingId)?.index ?? Number.MAX_SAFE_INTEGER;
+
+/** The words the schedule uses for an order: each item's noun and the checklist order. */
+export function scheduleWords(order: HandoffOrder, input: { layout: ReadonlyMap<string, LayoutRef>; roomLabel: string; buyerFirstName: string }): ScheduleWords {
+  const placed = placedIn(input.layout);
+  const items = [...order.items].sort((a, b) => placed(a) - placed(b));
+  return {
+    nouns: new Map(items.map((item) => [item.orderItemId, nounOf(item, input.layout.get(item.listingId))])),
+    order: items.map((item) => item.orderItemId),
+    buyerFirstName: input.buyerFirstName,
+    roomLabel: input.roomLabel,
+  };
+}
+
+export function buildHandoffView(input: { order: HandoffOrder; roomLabel: string; buyerFirstName: string; layout: ReadonlyMap<string, LayoutRef>; events: readonly ActivityEventView[] }): HandoffView {
   const { order } = input;
-  const placed = (listingId: string) => input.layout.get(listingId)?.index ?? Number.MAX_SAFE_INTEGER;
-  const items = [...order.items].sort((a, b) => placed(a.listingId) - placed(b.listingId)).map((item): HandoffItemView => {
+  const placed = placedIn(input.layout);
+  const items = [...order.items].sort((a, b) => placed(a) - placed(b)).map((item): HandoffItemView => {
     const ref = input.layout.get(item.listingId);
-    const noun = ref === undefined ? item.title.toLowerCase() : shortNoun(ref);
+    const noun = nounOf(item, ref);
     const sellerFirstName = firstNameOf(item.sellerName);
     const report = item.handoff?.report ?? null;
     const finding = findingOf(item);
@@ -160,7 +178,7 @@ export function buildHandoffView(input: { order: HandoffOrder; roomLabel: string
   const titles = new Map<string, string[]>();
   for (const item of order.items) if ((item.handoff?.payCents ?? 0) > 0) titles.set(item.sellerId, [...(titles.get(item.sellerId) ?? []), item.title]);
   // Sellers paid follows the checklist, by each seller's first item in the room.
-  const firstPlaced = (sellerId: string) => Math.min(...order.items.filter((item) => item.sellerId === sellerId).map((item) => placed(item.listingId)));
+  const firstPlaced = (sellerId: string) => Math.min(...order.items.filter((item) => item.sellerId === sellerId).map((item) => placed(item)));
 
   const slots = order.items.flatMap((item) => (item.handoff === null ? [] : [item.handoff]));
   const startsAt = Math.max(...slots.map((slot) => slot.slotStartsAt.getTime()));
@@ -206,5 +224,6 @@ export function buildHandoffView(input: { order: HandoffOrder; roomLabel: string
             })),
           },
     events: [...input.events],
+    schedule: scheduleOf(order, scheduleWords(order, input)),
   };
 }

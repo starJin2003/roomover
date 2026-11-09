@@ -28,8 +28,8 @@ describe("handoff slots", () => {
   it("builds two hour slots in campus time and names them", () => {
     const monday = slot("2026-11-23", 14);
     expect(monday.startsAt.toISOString()).toBe("2026-11-23T20:00:00.000Z");
-    expect(formatSlot(monday)).toBe("Mon Nov 23, 2 to 4 PM");
-    expect(formatSlot(slot("2026-11-23", 10))).toBe("Mon Nov 23, 10 AM to 12 PM");
+    expect(formatSlot(monday)).toBe("Mon, Nov 23, 2 to 4 PM");
+    expect(formatSlot(slot("2026-11-23", 10))).toBe("Mon, Nov 23, 10 AM to noon");
     expect(isSlotShape(monday)).toBe(true);
     expect(isSlotShape({ startsAt: monday.startsAt, endsAt: new Date(monday.endsAt.getTime() + 60_000) })).toBe(false);
     expect(isSlotShape(slot("2026-11-23", 11))).toBe(false);
@@ -43,18 +43,18 @@ describe("handoff slots", () => {
   it("lists every slot inside a window and numbers its days for the agents", () => {
     const slots = slotsInside(WINDOW);
     expect(slots).toHaveLength(14);
-    expect(formatSlot(slots[0])).toBe("Mon Nov 23, 10 AM to 12 PM");
-    expect(formatSlot(slots.at(-1) as (typeof slots)[number])).toBe("Wed Nov 25, 4 to 6 PM");
-    expect(windowDays(WINDOW).map((day) => day.date)).toEqual(["Mon Nov 23", "Tue Nov 24", "Wed Nov 25"]);
+    expect(formatSlot(slots[0])).toBe("Mon, Nov 23, 10 AM to noon");
+    expect(formatSlot(slots.at(-1) as (typeof slots)[number])).toBe("Wed, Nov 25, 4 to 6 PM");
+    expect(windowDays(WINDOW).map((day) => day.date)).toEqual(["Mon, Nov 23", "Tue, Nov 24", "Wed, Nov 25"]);
   });
 
   it("turns a window day into a slot and back, so recordings stay valid when the windows move", () => {
     const chosen = slotFromWindow(WINDOW, { windowDay: 2, startHour: 16 });
     expect(chosen).not.toBeNull();
-    expect(formatSlot(chosen as NonNullable<typeof chosen>)).toBe("Tue Nov 24, 4 to 6 PM");
+    expect(formatSlot(chosen as NonNullable<typeof chosen>)).toBe("Tue, Nov 24, 4 to 6 PM");
     expect(windowSlotOf(WINDOW, chosen as NonNullable<typeof chosen>)).toEqual({ windowDay: 2, startHour: 16 });
     const moved = { startsAt: campusInstant("2026-11-30", 9), endsAt: campusInstant("2026-12-02", 18) };
-    expect(formatSlot(slotFromWindow(moved, { windowDay: 2, startHour: 16 }) as NonNullable<typeof chosen>)).toBe("Tue Dec 1, 4 to 6 PM");
+    expect(formatSlot(slotFromWindow(moved, { windowDay: 2, startHour: 16 }) as NonNullable<typeof chosen>)).toBe("Tue, Dec 1, 4 to 6 PM");
     expect(slotFromWindow(WINDOW, { windowDay: 9, startHour: 10 })).toBeNull();
   });
 

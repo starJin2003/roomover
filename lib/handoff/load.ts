@@ -5,6 +5,7 @@ import { latestRun, loadPresetsWithRules, loadSessionPlan, orderEventViews, type
 import { canCheck } from "@/lib/domain/order-state";
 import type { PlanView } from "@/lib/plan-view";
 import { buildHandoffView, type HandoffView, type LayoutRef } from "./view";
+import { firstNameOf } from "./words";
 
 export interface HandoffScreenData {
   plan: PlanRow;
@@ -29,7 +30,7 @@ export async function loadHandoffView(db: Database, plan: PlanRow, preset: Prese
   const label = roomLabel(preset, plan.roomNumber);
   if (canCheck(order.status) && (await ensureHandoffs(db, order, label))) order = await loadHandoffOrder(db, plan.id);
   if (order === null) return null;
-  return buildHandoffView({ order, roomLabel: label, layout: layoutRefs(plan), events: await orderEventViews(db, order.id) });
+  return buildHandoffView({ order, roomLabel: label, buyerFirstName: firstNameOf(plan.buyerName), layout: layoutRefs(plan), events: await orderEventViews(db, order.id) });
 }
 
 /** Everything the Handoff page renders, only for the session that owns the plan. */

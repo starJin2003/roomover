@@ -19,7 +19,7 @@ import { expect, test } from "./support/session";
 
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR ?? "test-results/screenshots";
 const BEAN_BAG = "navy-bean-bag-chair-with-matching-pouf";
-const RECORDED_ITEMS = ["black-balance-arm-desk-lamp", "round-jute-and-cotton-rug-4-feet", BEAN_BAG, "reversible-comforter-blue-and-cream-prin", "orange-storage-tote-with-attached-lid"];
+const RECORDED_ITEMS = ["black-balance-arm-desk-lamp", "round-jute-and-cotton-rug-4-feet", BEAN_BAG, "granny-square-crochet-throw", "orange-storage-tote-with-attached-lid", "reversible-comforter-blue-and-cream-prin"];
 
 function watchConsole(page: Page): string[] {
   const problems: string[] = [];
@@ -103,17 +103,17 @@ test.describe("the buyer agent", () => {
     await capture(page, "filling", width);
 
     // The ready room covers seating, lighting, storage, the floor, and comfort within budget, prepares one PayPal order, and shows the official buttons.
-    await expect(sentences(page).last()).toHaveText("Your room is ready. 5 items from 4 students.", { timeout: 30_000 });
-    await expect(room).toHaveAttribute("data-placed", "5", { timeout: 10_000 });
+    await expect(sentences(page).last()).toHaveText("Your room is ready. 6 items from 4 students.", { timeout: 30_000 });
+    await expect(room).toHaveAttribute("data-placed", "6", { timeout: 10_000 });
     const keys = await room.locator("ol [data-item]").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-item")));
     expect(keys).toEqual(RECORDED_ITEMS);
-    await expect(page.locator("[data-total]")).toHaveText("$100");
-    await expect(page.getByText("$206.98 less than the cheapest comparable new items on Channel3")).toBeVisible();
-    await expect(page.getByText("Prepared one PayPal checkout for $100 from 4 students. It waits for your approval.")).toBeVisible();
+    await expect(page.locator("[data-total]")).toHaveText("$107");
+    await expect(page.getByText("$260.97 less than the cheapest comparable new items on Channel3")).toBeVisible();
+    await expect(page.getByText("Prepared one PayPal checkout for $107 from 4 students. It waits for your approval.")).toBeVisible();
     await expect(page.locator('[data-paypal-checkout="ready"]')).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("paypal-button")).toBeVisible();
     // The Pay Later message comes from PayPal's own servers, so only a live run shows its words.
-    if (LIVE) await expect(page.getByText(/Pay in 4 interest-free payments of \$25\.00/)).toBeVisible({ timeout: 30_000 });
+    if (LIVE) await expect(page.getByText(/Pay in 4 interest-free payments of \$26\.75/)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("listitem").filter({ hasText: /^Pay$/ })).toHaveAttribute("aria-current", "step");
     await expectNoOverflow(page);
     await expectAccessible(page);
@@ -142,7 +142,7 @@ test.describe("the buyer agent", () => {
     for (let press = 0; press < 30 && (await room.getAttribute("data-invalid")) !== "true"; press++) await page.keyboard.press("ArrowLeft");
     await expect(room).toHaveAttribute("data-invalid", "true");
     await expect(seatRow).toHaveAttribute("data-invalid", "true");
-    await expect(page.locator("[data-room-toolbar]").getByText("It would overlap the west bed.")).toBeVisible();
+    await expect(page.locator("[data-room-toolbar]").getByText("It would overlap the west desk chair.")).toBeVisible();
     await capture(page, "editing-invalid", width);
     await page.keyboard.press("Escape");
     await expect(room).toHaveAttribute("data-invalid", "false");
@@ -180,15 +180,15 @@ test.describe("the buyer agent", () => {
     // Asked in words, the agent moves the bean bag through the same tools and checks.
     await page.getByLabel("Ask the agent for a change").fill("Move the bean bag next to the window");
     await page.getByRole("button", { name: "Ask", exact: true }).click();
-    await expect(sentences(page).last()).toHaveText("Your room is updated. 5 items, $100 of $150.", { timeout: 30_000 });
-    await expect(page.getByText("Moved the bean bag under the window.")).toBeVisible();
+    await expect(sentences(page).last()).toHaveText("Your room is updated. 6 items, $107 of $150.", { timeout: 30_000 });
+    await expect(page.locator("[data-sentence]", { hasText: "Moved the bean bag under the window." })).toBeVisible();
 
     // A reload shows the same room and the same story.
     await page.reload();
     await expect(room).toHaveAttribute("data-ready", "true", { timeout: 30_000 });
-    await expect(room).toHaveAttribute("data-placed", "5");
-    await expect(sentences(page).last()).toHaveText("Your room is updated. 5 items, $100 of $150.");
-    await expect(page.locator("[data-total]")).toHaveText("$100");
+    await expect(room).toHaveAttribute("data-placed", "6");
+    await expect(sentences(page).last()).toHaveText("Your room is updated. 6 items, $107 of $150.");
+    await expect(page.locator("[data-total]")).toHaveText("$107");
     expect(problems).toEqual([]);
   });
 });

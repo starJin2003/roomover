@@ -117,6 +117,7 @@ describe("buildHandoffView", () => {
     paypalAuthorizationId: "AUTH",
     paypalReauthorizationId: null,
     paypalCaptureId: null,
+    authorizationExpiresAt: null,
     approvedAt: new Date(),
     reauthorizedAt: null,
     voidedAt: null,
@@ -133,6 +134,7 @@ describe("buildHandoffView", () => {
     const view = buildHandoffView({
       order: order([item("chair", "marcus", "Marcus Bell", 3_500, { status: "verified", report: torn, photos: [{ src: "/handoff-samples/marcus-mesh-desk-chair-torn.jpg", source: "sample", takenAt: new Date().toISOString() }] }), item("desk", "jun", "Jun Park", 5_500, { decision: "accepted", payCents: 5_500, decidedAt: new Date() })]),
       roomLabel: "Harbor Hall 214",
+      buyerFirstName: "Jordan",
       layout,
       events: [],
     });
@@ -152,11 +154,12 @@ describe("buildHandoffView", () => {
   });
 
   it("shows a failed comparison and counts the released money once every item is decided", () => {
-    const failed = buildHandoffView({ order: order([item("desk", "jun", "Jun Park", 5_500, { verifierError: "The verifier could not read this photo." })]), roomLabel: "Harbor Hall 214", layout, events: [] });
+    const failed = buildHandoffView({ order: order([item("desk", "jun", "Jun Park", 5_500, { verifierError: "The verifier could not read this photo." })]), roomLabel: "Harbor Hall 214", buyerFirstName: "Jordan", layout, events: [] });
     expect(failed.items[0].state).toBe("failed");
     const decided = buildHandoffView({
       order: order([item("desk", "jun", "Jun Park", 5_500, { decision: "accepted", payCents: 5_500, decidedAt: new Date() }), item("chair", "marcus", "Marcus Bell", 3_500, { decision: "adjusted", payCents: 3_000, decidedAt: new Date() })]),
       roomLabel: "Harbor Hall 214",
+      buyerFirstName: "Jordan",
       layout,
       events: [],
     });
