@@ -15,6 +15,8 @@ export const agentEventDetailSchema = z.strictObject({
   problems: z.array(z.string().min(1)).max(12).optional(),
   /** How many results a search returned. */
   count: z.number().int().nonnegative().optional(),
+  /** What the PayPal ID on the line names. */
+  paypalIdKind: z.enum(["order", "authorization", "capture"]).optional(),
 });
 
 export type AgentEventDetail = z.infer<typeof agentEventDetailSchema>;

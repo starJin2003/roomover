@@ -1,3 +1,6 @@
+import { onAuthorizationCreated, onCaptureCompleted } from "@/lib/checkout/webhooks";
+import type { Database } from "@/lib/db/client";
+import type { Transaction } from "@/lib/db/plans";
 import {
   isSubscribedEventType,
   webhookResourceId,
@@ -5,11 +8,12 @@ import {
   type PayPalWebhookEventType,
 } from "@/lib/paypal/webhooks/events";
 
-type Handler = (event: PayPalWebhookEvent) => Promise<void>;
+/** Runs inside the transaction that stored the event, so the state change and the event row commit together. */
+type Handler = (event: PayPalWebhookEvent, db: Database | Transaction) => Promise<void>;
 
-// The route has already stored the event and skipped duplicates. Handlers log
-// for now, and later tasks turn them into state machine transitions that
-// ignore stale events.
+// The route has already stored the event and skipped duplicates. Checkout
+// events move orders, and the rest log until later tasks give them
+// transitions that ignore stale events.
 function logOnly(subject: string): Handler {
   return async (event) => {
     console.info("paypal webhook", {
@@ -28,9 +32,9 @@ const payoutItem = logOnly("payout item");
 const dispute = logOnly("dispute");
 
 const HANDLERS: Record<PayPalWebhookEventType, Handler> = {
-  "PAYMENT.AUTHORIZATION.CREATED": authorization,
+  "PAYMENT.AUTHORIZATION.CREATED": onAuthorizationCreated,
   "PAYMENT.AUTHORIZATION.VOIDED": authorization,
-  "PAYMENT.CAPTURE.COMPLETED": capture,
+  "PAYMENT.CAPTURE.COMPLETED": onCaptureCompleted,
   "PAYMENT.CAPTURE.PENDING": capture,
   "PAYMENT.CAPTURE.DECLINED": capture,
   "PAYMENT.CAPTURE.REFUNDED": capture,
@@ -51,11 +55,11 @@ const HANDLERS: Record<PayPalWebhookEventType, Handler> = {
 };
 
 /** Returns false for an event type Roomover does not subscribe to. The route still acknowledges it so PayPal stops redelivering. */
-export async function dispatchWebhookEvent(event: PayPalWebhookEvent): Promise<boolean> {
+export async function dispatchWebhookEvent(event: PayPalWebhookEvent, db: Database | Transaction): Promise<boolean> {
   if (!isSubscribedEventType(event.event_type)) {
     console.info("paypal webhook ignored", { eventId: event.id, type: event.event_type });
     return false;
   }
-  await HANDLERS[event.event_type](event);
+  await HANDLERS[event.event_type](event, db);
   return true;
 }

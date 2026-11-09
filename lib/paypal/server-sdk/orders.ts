@@ -16,6 +16,8 @@ const PREFER_FULL = "return=representation";
 
 export interface CheckoutItem {
   readonly name: string;
+  /** Shown under the name in PayPal, such as who sells the item. */
+  readonly description?: string;
   readonly unitAmountCents: number;
   readonly quantity: number;
   /** Roomover listing ID, shown to the buyer as the SKU. */
@@ -54,6 +56,7 @@ export function buildOrderRequest(input: CreateOrderInput): OrderRequest {
         amount: { ...sdkMoney(itemTotal), breakdown: { itemTotal: sdkMoney(itemTotal) } },
         items: input.items.map((item) => ({
           name: item.name,
+          description: item.description,
           unitAmount: sdkMoney(item.unitAmountCents),
           quantity: String(item.quantity),
           sku: item.sku,
@@ -103,6 +106,17 @@ export function authorizeOrder(
 ): Promise<OrderAuthorizeResponse> {
   return callSdk(sdk, "POST /v2/checkout/orders/{id}/authorize", () =>
     new OrdersController(sdk.client).authorizeOrder({
+      id: orderId,
+      paypalRequestId: idempotencyKey,
+      prefer: PREFER_FULL,
+    }),
+  );
+}
+
+/** Captures an order created with intent CAPTURE once the buyer approves it. */
+export function captureOrder(sdk: PayPalSdk, orderId: string, idempotencyKey: string): Promise<Order> {
+  return callSdk(sdk, "POST /v2/checkout/orders/{id}/capture", () =>
+    new OrdersController(sdk.client).captureOrder({
       id: orderId,
       paypalRequestId: idempotencyKey,
       prefer: PREFER_FULL,

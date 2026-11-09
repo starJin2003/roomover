@@ -41,7 +41,8 @@ async function sessionPlan(session: string | null): Promise<{ plan: PlanView | n
 async function Furnish() {
   // Reading the cookie first marks the page as request time, before anything below can catch the bailout.
   const cookie = (await cookies()).get(SESSION_COOKIE)?.value;
-  const session = verifySession(cookie, readConfig(["SESSION_SECRET"]).SESSION_SECRET);
+  const { SESSION_SECRET, PAYPAL_CLIENT_ID } = readConfig(["SESSION_SECRET", "PAYPAL_CLIENT_ID"]);
+  const session = verifySession(cookie, SESSION_SECRET);
   const data = await Promise.all([furnishPresets(), activeListingCount(), sessionPlan(session)]).catch((error: unknown) => {
     console.error("furnish: page data did not load", { error: error instanceof Error ? error.name : "unknown" });
     return null;
@@ -56,7 +57,7 @@ async function Furnish() {
     );
   }
   const [presets, listingCount, current] = data;
-  return <FurnishScreen presets={presets} listingCount={listingCount} initialPlan={current.plan} initialEvents={current.events} />;
+  return <FurnishScreen paypalClientId={PAYPAL_CLIENT_ID} presets={presets} listingCount={listingCount} initialPlan={current.plan} initialEvents={current.events} />;
 }
 
 export default function FurnishPage() {

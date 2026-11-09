@@ -5,7 +5,8 @@ import { ActivityFeed } from "@/components/furnish/activity-feed";
 import { ChangeRequest } from "@/components/furnish/change-request";
 import { PlanForm } from "@/components/furnish/plan-form";
 import { usePlanStream } from "@/components/furnish/use-plan-stream";
-import { PayLaterMessageSlot, PayPalButtonSlot } from "@/components/paypal/sdk-slots";
+import { PaidPanel } from "@/components/furnish/paid-panel";
+import { PayPalCheckout } from "@/components/paypal/paypal-checkout";
 import { UnderTheHoodProvider, UnderTheHoodSwitch } from "@/components/paypal/under-the-hood";
 import { RoomStage, type MoveResult, type RoomEditing } from "@/components/room/room-stage";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,8 @@ const DEFAULT_PROMPT = "$150, cozy, I study late";
 const AGENT_BUSY = "The buyer agent is working on this room. You can move things when it finishes.";
 
 interface FurnishScreenProps {
+  /** The sandbox app's client ID, which the PayPal SDK loads with in the browser. */
+  paypalClientId: string;
   presets: readonly FurnishPreset[];
   listingCount: number;
   initialPlan: PlanView | null;
@@ -51,7 +54,9 @@ function mergeEvents(current: readonly ActivityEventView[], incoming: readonly A
   return fresh.length === 0 ? [...current] : [...current, ...fresh].sort((a, b) => a.seq - b.seq);
 }
 
-export function FurnishScreen({ presets, listingCount, initialPlan, initialEvents }: FurnishScreenProps) {
+const PAID_STATUSES: ReadonlySet<string> = new Set(["authorized", "capture_pending", "captured"]);
+
+export function FurnishScreen({ paypalClientId, presets, listingCount, initialPlan, initialEvents }: FurnishScreenProps) {
   const [plan, setPlan] = useState<PlanView | null>(initialPlan);
   const [events, setEvents] = useState<readonly ActivityEventView[]>(initialEvents);
   const [composing, setComposing] = useState(initialPlan === null || (initialPlan.items.length === 0 && initialPlan.run?.status !== "running"));
@@ -100,6 +105,7 @@ export function FurnishScreen({ presets, listingCount, initialPlan, initialEvent
         totalCents: 0,
         newCents: 0,
         run: { id: body.runId, kind: "plan", status: "running", request: null, error: null, startedAt, finishedAt: null },
+        checkout: null,
       });
       setComposing(false);
     } catch {
@@ -183,6 +189,9 @@ export function FurnishScreen({ presets, listingCount, initialPlan, initialEvent
   const saved = plan === null ? 0 : plan.newCents - plan.totalCents;
   const run = plan?.run ?? null;
   const failed = run?.status === "failed";
+  const checkout = plan?.checkout ?? null;
+  const paid = checkout !== null && PAID_STATUSES.has(checkout.status);
+  const step = phase !== "ready" || failed ? 0 : paid ? 2 : 1;
 
   return (
     <main className="mx-auto grid w-full max-w-[1360px] gap-6 px-4 pb-0 sm:px-10 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-start lg:gap-12 lg:pb-16">
@@ -200,7 +209,7 @@ export function FurnishScreen({ presets, listingCount, initialPlan, initialEvent
           action={phase === "plan" ? undefined : <UnderTheHoodSwitch />}
           className="lg:sticky lg:top-6"
         >
-          <StepStrip steps={BUYER_STEPS} current={phase === "ready" && !failed ? 1 : 0} label="Furnish progress" />
+          <StepStrip steps={BUYER_STEPS} current={step} label="Furnish progress" />
 
           {phase === "plan" && (
             <>
@@ -253,29 +262,37 @@ export function FurnishScreen({ presets, listingCount, initialPlan, initialEvent
                 )}
               </div>
 
-              {phase === "ready" && (
+              {phase === "ready" && paid && checkout !== null && <PaidPanel checkout={checkout} />}
+              {phase === "ready" && !paid && (
                 <>
                   {failed && plan.items.length > 0 && run?.kind === "edit" && (
                     <p className="text-sm font-medium text-brick">The change did not finish. {run.error}</p>
                   )}
                   <ChangeRequest example={exampleRequest} busy={asking} disabledReason={running ? AGENT_BUSY : null} error={askError} onSend={ask} />
                   <div className="sticky bottom-0 -mx-5 flex flex-col gap-3 border-t border-hair bg-paper px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] lg:static lg:m-0 lg:border-0 lg:p-0">
-                    <PayPalButtonSlot />
-                    <PayLaterMessageSlot amountCents={plan.totalCents} />
+                    <PayPalCheckout
+                      clientId={paypalClientId}
+                      planId={plan.id}
+                      amountCents={plan.totalCents}
+                      disabledReason={running ? "The buttons wait until the buyer agent finishes your change." : null}
+                      onPaid={setPlan}
+                    />
                   </div>
-                  <Button
-                    variant="quiet"
-                    size="sm"
-                    className="self-start"
-                    disabled={running}
-                    onClick={() => {
-                      setPresetSlug(plan.presetSlug);
-                      setComposing(true);
-                    }}
-                  >
-                    Start a new plan
-                  </Button>
                 </>
+              )}
+              {phase === "ready" && (
+                <Button
+                  variant="quiet"
+                  size="sm"
+                  className="self-start"
+                  disabled={running}
+                  onClick={() => {
+                    setPresetSlug(plan.presetSlug);
+                    setComposing(true);
+                  }}
+                >
+                  Start a new plan
+                </Button>
               )}
             </>
           )}

@@ -1,4 +1,8 @@
+import { existsSync } from "node:fs";
 import { defineConfig } from "@playwright/test";
+
+// Tests sign their own tagged sessions and clean the shared database, so they read the same local settings as the server.
+if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 
 const port = 3100;
 const baseURL = `http://localhost:${port}`;
@@ -8,6 +12,7 @@ const gpuArgs = process.platform === "darwin" ? ["--use-angle=metal", "--ignore-
 
 export default defineConfig({
   testDir: "tests/e2e",
+  globalTeardown: "./tests/e2e/support/teardown.ts",
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
   reporter: isCI ? "github" : "list",

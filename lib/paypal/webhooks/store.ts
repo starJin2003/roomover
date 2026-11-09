@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { getDb, type Database } from "@/lib/db/client";
+import type { Transaction } from "@/lib/db/plans";
 import { webhookEvents } from "@/lib/db/schema";
 import { webhookResourceId, type PayPalWebhookEvent } from "@/lib/paypal/webhooks/events";
 
@@ -14,7 +15,7 @@ export type WebhookOutcome = { readonly duplicate: true } | { readonly duplicate
  */
 export function recordWebhookEvent(
   event: PayPalWebhookEvent,
-  dispatch: (event: PayPalWebhookEvent) => Promise<boolean>,
+  dispatch: (event: PayPalWebhookEvent, tx: Transaction) => Promise<boolean>,
   db: Database = getDb(),
 ): Promise<WebhookOutcome> {
   return db.transaction(async (tx) => {
@@ -31,7 +32,7 @@ export function recordWebhookEvent(
       .returning({ id: webhookEvents.id });
     if (stored === undefined) return { duplicate: true };
 
-    const handled = await dispatch(event);
+    const handled = await dispatch(event, tx);
     await tx.update(webhookEvents).set({ processedAt: sql`now()` }).where(eq(webhookEvents.id, stored.id));
     return { duplicate: false, handled };
   });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LISTING_CATEGORIES } from "@/lib/domain/enums";
+import { LISTING_CATEGORIES, type ListingCategory } from "@/lib/domain/enums";
 import { checkFit, doorZone } from "@/lib/domain/fit";
 import { bounds, rectangle } from "@/lib/domain/geometry";
 import { hallRuleViolations, type RuleViolation } from "@/lib/domain/hall-check";
@@ -7,6 +7,7 @@ import { furnitureTypeFor } from "@/lib/domain/furniture";
 import { footprint, type LayoutItem, type PlanLayout } from "@/lib/domain/layout";
 import { layoutItemFor, moveItem, putItem, removeItem, riders, settle, supportFor, type Spot } from "@/lib/domain/placement";
 import { QUARTER_TURNS } from "@/lib/domain/room";
+import { needCoverage } from "@/lib/domain/room-needs";
 import { itemNoun, whereIs, withArticle } from "@/lib/domain/room-words";
 import { formatUsdShort } from "@/lib/format";
 import { firstName, planTotalCents, type BuyerContext, type CatalogListing, type EventDraft } from "./context";
@@ -16,8 +17,9 @@ import { FLOOR_MAP_LEGEND, floorMap } from "./floor-map";
  * The buyer agent's tools. The model proposes a listing and a spot, and every
  * hard limit (the listing exists and is active, the hall rules, the budget,
  * and the fit with its egress path) is checked here in code before anything
- * changes. Negotiation (`make_offer`) and Channel3 gap filling
- * (`search_new_products`) join this list as further specs.
+ * changes. create_checkout takes no input at all, so the order's amounts
+ * always come from the listings. Negotiation (`make_offer`) and Channel3 gap
+ * filling (`search_new_products`) join this list as further specs.
  */
 
 export interface ToolOutcome {
@@ -32,7 +34,7 @@ export interface BuyerTool<S extends z.ZodType = z.ZodType> {
   name: string;
   description: string;
   input: S;
-  run: (context: BuyerContext, input: z.infer<S>) => ToolOutcome;
+  run: (context: BuyerContext, input: z.infer<S>) => ToolOutcome | Promise<ToolOutcome>;
 }
 
 const defineTool = <S extends z.ZodType>(tool: BuyerTool<S>): BuyerTool => tool as unknown as BuyerTool;
@@ -45,6 +47,11 @@ const spot = {
 };
 
 const usd = formatUsdShort;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The latest day from today the student can collect a listing, or null when no handoff can happen. */
+const pickupWithinDays = (context: BuyerContext, listing: CatalogListing) =>
+  listing.pickup === null ? null : Math.max(0, Math.ceil((listing.pickup.endsAt.getTime() - context.now.getTime()) / DAY_MS));
 
 function listingOrError(context: BuyerContext, id: string): CatalogListing | string {
   return context.catalog.get(id) ?? `No active listing ${id}. Use a listingId from search_listings.`;
@@ -104,6 +111,34 @@ function budgetState(context: BuyerContext, layout: PlanLayout = context.layout)
   return { budgetCents: context.budgetCents, spentCents, remainingCents: context.budgetCents - spentCents };
 }
 
+/** The budget and the room needs no placed item covers yet, which every change reports back. */
+function planState(context: BuyerContext, layout: PlanLayout = context.layout) {
+  const categories = layout.items.flatMap((item) => {
+    const listing = item.source === "listing" ? context.catalog.get(item.listingId) : undefined;
+    return listing === undefined ? [] : [listing.category];
+  });
+  const needs = needCoverage(categories);
+  return { ...budgetState(context, layout), needsCovered: needs.covered, needsOpen: needs.open };
+}
+
+const CATEGORY_WORDS: Readonly<Record<ListingCategory, readonly [string, string]>> = {
+  bed_accessory: ["piece of bedding", "pieces of bedding"],
+  desk: ["desk", "desks"],
+  chair: ["chair", "chairs"],
+  shelf: ["bookcase", "bookcases"],
+  lamp: ["lamp", "lamps"],
+  rug: ["rug", "rugs"],
+  mini_fridge: ["mini fridge", "mini fridges"],
+  storage: ["storage piece", "storage pieces"],
+};
+
+function searchSentence(count: number, category: ListingCategory | undefined, maxPriceCents: number | undefined): string | undefined {
+  if (count === 0) return undefined;
+  const [one, many] = category === undefined ? ["listing", "listings"] : CATEGORY_WORDS[category];
+  const price = maxPriceCents === undefined ? "" : ` up to ${usd(maxPriceCents)}`;
+  return `Looking at ${count} ${count === 1 ? one : many}${price}.`;
+}
+
 const box = (polygon: ReturnType<typeof footprint>) => {
   const { minX, minY, maxX, maxY } = bounds(polygon);
   return { minX: Math.round(minX), minY: Math.round(minY), maxX: Math.round(maxX), maxY: Math.round(maxY) };
@@ -129,7 +164,7 @@ function describePlaced(context: BuyerContext, layout: PlanLayout) {
 const searchListings = defineTool({
   name: "search_listings",
   description:
-    "Search the used items students on this campus have listed. Returns active listings not yet in the plan, best matches first, with size in millimeters (width, depth, height of one piece), price in cents, the seller's first name, and any hall rule the item breaks. Items that break a hall rule cannot be placed.",
+    "Search the used items students on this campus have listed. Returns active listings not yet in the plan, best matches first, with size in millimeters (width, depth, height of one piece), price in cents, the seller's first name, pickupWithinDays (the latest day from today the student can collect the item), and any hall rule the item breaks. Items that break a hall rule cannot be placed.",
   input: z.strictObject({
     query: z.string().max(80).optional().describe("Words to match against titles, descriptions, colors, and style tags, such as \"lamp warm light\"."),
     category: z.enum(LISTING_CATEGORIES).optional(),
@@ -176,6 +211,7 @@ const searchListings = defineTool({
         newPriceCents: listing.newPriceCents,
         condition: listing.condition,
         seller: firstName(listing.sellerName),
+        pickupWithinDays: pickupWithinDays(context, listing),
         color: listing.color,
         styleTags: listing.styleTags,
         ...(violations.length > 0 ? { breaksHallRule: ruleText(context, violations[0]) } : {}),
@@ -190,6 +226,7 @@ const searchListings = defineTool({
     events.unshift({
       tool: "search_listings",
       summary: `Searched listings${filters.length > 0 ? ` for ${filters.join(", ")}` : ""} and found ${results.length}.`,
+      sentence: searchSentence(results.length, input.category, input.maxPriceCents),
       detail: { count: results.length },
     });
     return { result: { results, ...budgetState(context) }, events };
@@ -199,7 +236,7 @@ const searchListings = defineTool({
 const getRoomPreset = defineTool({
   name: "get_room_preset",
   description:
-    "Read the room: its size, doors, windows, the furniture the university provides, a character map of the floor, and every item already in the plan with its spot. Call it before placing anything.",
+    "Read the room: its size, doors, windows, the furniture the university provides, a character map of the floor, every item already in the plan with its spot, and the needs still open. Code calls it at the start of every run, so call it again only for a fresh floor map.",
   input: z.strictObject({}),
   run(context) {
     const { room } = context;
@@ -234,15 +271,17 @@ const getRoomPreset = defineTool({
       floorMap: floorMap(room, context.layout),
       floorMapLegend: FLOOR_MAP_LEGEND,
       placed: describePlaced(context, context.layout),
-      ...budgetState(context),
+      ...planState(context),
     };
     const size = `${(room.widthMm / 1000).toFixed(1)} by ${(room.depthMm / 1000).toFixed(1)} meters`;
+    const windows = room.geometry.windows.length === 1 ? "1 window" : `${room.geometry.windows.length} windows`;
     return {
       result,
       events: [
         {
           tool: "get_room_preset",
-          summary: `Read ${context.roomLabel}, a ${context.presetName} of ${size} with ${room.geometry.doors.length} door and ${room.geometry.windows.length} windows.`,
+          summary: `Read ${context.roomLabel}, a ${context.presetName} of ${size} with ${room.geometry.doors.length} door and ${windows}.`,
+          sentence: `Measuring ${context.roomLabel}, ${size} with ${windows}.`,
         },
       ],
     };
@@ -261,6 +300,7 @@ const getHallRules = defineTool({
         {
           tool: "get_hall_rules",
           summary: `Read the ${context.hallName} room standards, ${rules.length} rules that code checks on every placement, including a ${context.room.egressPathMm} mm path from each bed to the door.`,
+          sentence: `Reading the ${context.hallName} rules, including the ${context.room.egressPathMm} mm path from each bed to the door.`,
         },
       ],
     };
@@ -319,7 +359,7 @@ const placeItem = defineTool({
     const { layout, item, moving } = evaluation;
     const where = whereIs(context.room, layout, item);
     const noun = itemNoun(item);
-    const state = budgetState(context, layout);
+    const state = planState(context, layout);
     const support = supportFor(context.room, { items: layout.items.filter((other) => other.key !== item.key) }, item);
     return {
       layout,
@@ -355,7 +395,7 @@ const removeItemTool = defineTool({
     }
     const layout = removeItem(context.layout, item.key);
     const listing = item.source === "listing" ? context.catalog.get(item.listingId) : undefined;
-    const state = budgetState(context, layout);
+    const state = planState(context, layout);
     const owner = listing === undefined ? "" : ` from ${firstName(listing.sellerName)}`;
     return {
       layout,
@@ -372,6 +412,45 @@ const removeItemTool = defineTool({
   },
 });
 
-export const BUYER_TOOLS: readonly BuyerTool[] = [getRoomPreset, getHallRules, searchListings, checkFitTool, placeItem, removeItemTool];
+const createCheckout = defineTool({
+  name: "create_checkout",
+  description:
+    "Prepare the one PayPal order the student approves for every item in the plan. Code reads each price from the listings and decides from the handoff dates whether PayPal holds the money until handoff or takes it now, so you pass nothing. Call it once the room is complete, and again after a change that adds or removes an item. No money moves until the student approves in PayPal.",
+  input: z.strictObject({}),
+  async run(context) {
+    if (context.checkout === undefined) return { result: { prepared: false, problems: ["Checkout is not available in this run."] }, events: [] };
+    const outcome = await context.checkout.prepare(context.layout);
+    if (!outcome.ok) {
+      return {
+        result: { prepared: false, problems: [outcome.problem] },
+        events: [{ tool: "create_checkout", blocked: true, summary: `Did not prepare the PayPal order. ${outcome.problem}` }],
+      };
+    }
+    const total = usd(outcome.totalCents);
+    const students = outcome.sellerCount === 1 ? "1 student" : `${outcome.sellerCount} students`;
+    const holds = outcome.paymentMode === "authorize_then_capture";
+    return {
+      result: {
+        prepared: true,
+        paypalOrderId: outcome.paypalOrderId,
+        totalCents: outcome.totalCents,
+        items: outcome.itemCount,
+        sellers: outcome.sellerCount,
+        payment: holds ? "PayPal holds the money until each handoff." : "PayPal takes the money now, and Roomover holds it until each handoff.",
+      },
+      events: [
+        {
+          tool: "create_checkout",
+          summary: `${outcome.created ? "Created" : "Kept"} PayPal order ${outcome.paypalOrderId} for ${total}, ${outcome.itemCount} items from ${outcome.sellerCount} sellers, intent ${holds ? "AUTHORIZE" : "CAPTURE"}.`,
+          sentence: outcome.created ? `Prepared one PayPal checkout for ${total} from ${students}. It waits for your approval.` : undefined,
+          detail: { totalCents: outcome.totalCents, paypalIdKind: "order" },
+          paypal: { api: "Orders v2", id: outcome.paypalOrderId },
+        },
+      ],
+    };
+  },
+});
+
+export const BUYER_TOOLS: readonly BuyerTool[] = [getRoomPreset, getHallRules, searchListings, checkFitTool, placeItem, removeItemTool, createCheckout];
 
 export const toolByName = (name: string): BuyerTool | undefined => BUYER_TOOLS.find((tool) => tool.name === name);

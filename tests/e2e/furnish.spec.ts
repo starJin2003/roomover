@@ -1,16 +1,19 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./support/session";
 
 /**
  * The Furnish flow end to end against a recorded Claude conversation, which
  * the test server replays (see playwright.config.ts). Every hard check runs
  * for real on the server, so the recorded placements still pass through the
- * budget, hall rule, and fit checks.
+ * budget, hall rule, and fit checks, and create_checkout prepares a real
+ * sandbox order. Each test runs in a tagged session whose plans, runs,
+ * events, and orders are deleted when it ends.
  */
 
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR ?? "test-results/screenshots";
-const LAMP = "floor-lamp-with-cream-bell-shade";
-const RECORDED_ITEMS = ["black-balance-arm-desk-lamp", "round-jute-and-cotton-rug-4-feet", "granny-square-crochet-throw", LAMP];
+const BEAN_BAG = "navy-bean-bag-chair-with-matching-pouf";
+const RECORDED_ITEMS = ["black-balance-arm-desk-lamp", "round-jute-and-cotton-rug-4-feet", BEAN_BAG, "reversible-comforter-blue-and-cream-prin", "orange-storage-tote-with-attached-lid"];
 
 function watchConsole(page: Page): string[] {
   const problems: string[] = [];
@@ -74,7 +77,7 @@ test("Sell shows the steps to come and leads back to Furnish", async ({ page }) 
   expect(problems).toEqual([]);
 });
 
-test("the buyer agent furnishes Harbor Hall 214, and edits by hand and in words persist", async ({ page }, testInfo) => {
+test("the buyer agent furnishes Harbor Hall 214, prepares checkout, and edits by hand and in words persist", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const width = widthOf(testInfo.project.name);
   const problems = watchConsole(page);
@@ -97,39 +100,46 @@ test("the buyer agent furnishes Harbor Hall 214, and edits by hand and in words 
   await page.getByRole("button", { name: "Plan my room" }).click();
 
   // While the room fills, items land one at a time and the panel tells the story.
-  await expect(sentences(page).first()).toHaveText("Reading the Harbor Hall rules and 24 listings for your $150 budget.");
   await expect(room).toHaveAttribute("data-placed", "1", { timeout: 20_000 });
   await expect(page.getByText(/^Placing items, \d so far$/)).toBeVisible();
   await capture(page, "filling", width);
 
-  // The ready room holds four items within budget, says the hall rule skip out loud, and shows the PayPal slots.
-  await expect(sentences(page).last()).toHaveText("Your room is ready. 4 items from 4 students.", { timeout: 30_000 });
-  await expect(room).toHaveAttribute("data-placed", "4", { timeout: 10_000 });
+  // The ready room covers seating, lighting, storage, the floor, and comfort within budget, prepares one PayPal order, and shows the official buttons.
+  await expect(sentences(page).last()).toHaveText("Your room is ready. 5 items from 4 students.", { timeout: 30_000 });
+  await expect(room).toHaveAttribute("data-placed", "5", { timeout: 10_000 });
   const keys = await room.locator("ol [data-item]").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-item")));
   expect(keys).toEqual(RECORDED_ITEMS);
-  await expect(page.locator("[data-total]")).toHaveText("$74");
-  await expect(page.getByText("$198 less than buying these new")).toBeVisible();
-  await expect(page.getByText("PayPal button slot, JavaScript SDK v6")).toBeVisible();
+  await expect(page.locator("[data-total]")).toHaveText("$100");
+  await expect(page.getByText("$261 less than buying these new")).toBeVisible();
+  await expect(page.getByText("Prepared one PayPal checkout for $100 from 4 students. It waits for your approval.")).toBeVisible();
+  await expect(page.locator('[data-paypal-checkout="ready"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("paypal-button")).toBeVisible();
+  await expect(page.getByText(/Pay in 4 interest-free payments of \$25\.00/)).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("listitem").filter({ hasText: /^Pay$/ })).toHaveAttribute("aria-current", "step");
   await expectNoOverflow(page);
   await expectAccessible(page);
   await capture(page, "ready", width);
   await page.locator("summary", { hasText: /^Details, \d+ steps$/ }).click();
+  // Code reads the rules and the room before the first model call, so those steps come right after the start.
+  const steps = page.locator("details ol > li");
+  await expect(steps.nth(1)).toContainText("Read the Harbor Hall room standards");
+  await expect(steps.nth(2)).toContainText("Read Harbor Hall 214");
   await expect(page.getByText(/Green metal floor reading lamp, halogen bulb from Marcus Bell\. Harbor Hall rule 1\.1/)).toBeVisible();
   await page.getByRole("switch", { name: "Under the hood" }).click();
   await expect(page.locator("code", { hasText: "place_item" }).first()).toBeVisible();
   await expect(page.getByText(/^Run [0-9a-f-]{36}$/).first()).toBeVisible();
+  await expect(page.getByText(/^Order [A-Z0-9]{17}, sandbox$/)).toBeVisible();
   await expectNoOverflow(page);
   await expectAccessible(page);
   await capture(page, "under-the-hood", width);
   await page.locator("summary", { hasText: /^Details, \d+ steps$/ }).click();
 
-  // The keyboard walks the floor lamp into the west bed, which shows the Brick outline, and Escape puts it back.
-  const lampRow = page.locator(`[data-item="${LAMP}"]`);
-  await lampRow.focus();
-  for (let press = 0; press < 6; press++) await page.keyboard.press("ArrowLeft");
+  // The keyboard walks the bean bag west until it fails, which shows the Brick outline, and Escape puts it back.
+  const seatRow = page.locator(`[data-item="${BEAN_BAG}"]`);
+  await seatRow.focus();
+  for (let press = 0; press < 30 && (await room.getAttribute("data-invalid")) !== "true"; press++) await page.keyboard.press("ArrowLeft");
   await expect(room).toHaveAttribute("data-invalid", "true");
-  await expect(lampRow).toHaveAttribute("data-invalid", "true");
+  await expect(seatRow).toHaveAttribute("data-invalid", "true");
   await expect(page.locator("[data-room-toolbar]").getByText("It would overlap the west bed.")).toBeVisible();
   await capture(page, "editing-invalid", width);
   await page.keyboard.press("Escape");
@@ -137,7 +147,7 @@ test("the buyer agent furnishes Harbor Hall 214, and edits by hand and in words 
 
   // A valid nudge saves on its own after a short pause.
   const saved = page.waitForResponse((response) => response.url().endsWith("/layout") && response.request().method() === "PATCH");
-  await lampRow.focus();
+  await seatRow.focus();
   await page.keyboard.press("ArrowUp");
   expect((await saved).status()).toBe(200);
 
@@ -147,7 +157,7 @@ test("the buyer agent furnishes Harbor Hall 214, and edits by hand and in words 
     page.on("request", (request) => {
       if (request.method() === "PATCH") patches += 1;
     });
-    await lampRow.hover();
+    await seatRow.hover();
     const tag = page.locator("[data-room-tag]");
     await expect(tag).toBeVisible();
     const box = await page.locator("[data-room-box]").boundingBox();
@@ -165,17 +175,17 @@ test("the buyer agent furnishes Harbor Hall 214, and edits by hand and in words 
     expect(patches).toBe(0);
   }
 
-  // Asked in words, the agent moves the lamp through the same tools and checks.
-  await page.getByLabel("Ask the agent for a change").fill("Move the floor lamp to the window");
+  // Asked in words, the agent moves the bean bag through the same tools and checks.
+  await page.getByLabel("Ask the agent for a change").fill("Move the bean bag next to the window");
   await page.getByRole("button", { name: "Ask", exact: true }).click();
-  await expect(sentences(page).last()).toHaveText("Your room is updated. 4 items, $74 of $150.", { timeout: 30_000 });
-  await expect(page.getByText("Moved the floor lamp by the window.")).toBeVisible();
+  await expect(sentences(page).last()).toHaveText("Your room is updated. 5 items, $100 of $150.", { timeout: 30_000 });
+  await expect(page.getByText("Moved the bean bag under the window.")).toBeVisible();
 
   // A reload shows the same room and the same story.
   await page.reload();
   await expect(room).toHaveAttribute("data-ready", "true", { timeout: 30_000 });
-  await expect(room).toHaveAttribute("data-placed", "4");
-  await expect(sentences(page).last()).toHaveText("Your room is updated. 4 items, $74 of $150.");
-  await expect(page.locator("[data-total]")).toHaveText("$74");
+  await expect(room).toHaveAttribute("data-placed", "5");
+  await expect(sentences(page).last()).toHaveText("Your room is updated. 5 items, $100 of $150.");
+  await expect(page.locator("[data-total]")).toHaveText("$100");
   expect(problems).toEqual([]);
 });

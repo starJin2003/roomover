@@ -91,8 +91,10 @@ describe("webhook event list", () => {
 
   it.each(PAYPAL_WEBHOOK_EVENT_TYPES)("has a handler for %s", async (eventType) => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const event: PayPalWebhookEvent = { id: "WH-1", event_type: eventType, create_time: "2026-11-08T12:00:00Z", resource: {} };
-    await expect(dispatchWebhookEvent(event)).resolves.toBe(true);
+    // A resource without an order never reaches the database, so no executor is needed.
+    await expect(dispatchWebhookEvent(event, {} as never)).resolves.toBe(true);
   });
 });
 

@@ -3,6 +3,8 @@ import type { FitRoom } from "@/lib/domain/fit";
 import type { RuleListing } from "@/lib/domain/hall-check";
 import type { HallConstraint } from "@/lib/domain/hall-rules";
 import type { PlanLayout } from "@/lib/domain/layout";
+import type { PaymentMode } from "@/lib/domain/enums";
+import type { TimeWindow } from "@/lib/domain/handoff";
 import type { ConditionGrade, ListingColor } from "@/lib/domain/listing";
 import type { PlaceableListing } from "@/lib/domain/placement";
 
@@ -15,6 +17,17 @@ export interface CatalogListing extends RuleListing, PlaceableListing {
   color: string;
   colors: ListingColor[];
   styleTags: string[];
+  /** When the buyer can collect the item, from its handoff mode and windows. Null when they cannot. */
+  pickup: TimeWindow | null;
+}
+
+export type CheckoutOutcome =
+  | { ok: true; created: boolean; paypalOrderId: string; totalCents: number; itemCount: number; sellerCount: number; paymentMode: PaymentMode }
+  | { ok: false; problem: string };
+
+/** Prepares the plan's PayPal order. The run wires it to Postgres and the Server SDK, and tests to a fake. */
+export interface CheckoutPort {
+  prepare(layout: PlanLayout): Promise<CheckoutOutcome>;
 }
 
 /**
@@ -36,6 +49,10 @@ export interface BuyerContext {
   layout: PlanLayout;
   /** Listings already announced as breaking a hall rule, so each is skipped out loud once. */
   announcedSkips: Set<string>;
+  /** Absent when the run cannot reach checkout, and create_checkout says so. */
+  checkout?: CheckoutPort;
+  /** The run's clock, which pickup days count from. */
+  now: Date;
 }
 
 /** One line for the activity panel. `sentence` is the everyday version a student reads. */
@@ -45,6 +62,8 @@ export interface EventDraft {
   sentence?: string;
   blocked?: boolean;
   detail?: AgentEventDetail;
+  /** The PayPal API a step called and the sandbox ID it produced. */
+  paypal?: { api: string; id: string };
 }
 
 export const firstName = (name: string) => name.split(" ")[0];

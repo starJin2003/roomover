@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PRIMARY_LINK } from "@/components/furnish/paid-panel";
 import { SiteHeader } from "@/components/site/site-header";
 import { Panel } from "@/components/ui/panel";
 import { SELL_STEPS, StepStrip } from "@/components/ui/step-strip";
@@ -22,10 +23,7 @@ export default function SellPage() {
           </p>
           <p className="text-sm text-flint">Log in with PayPal comes with this screen, so payouts reach the account you choose.</p>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Link
-              href="/furnish"
-              className="inline-flex h-13 flex-1 items-center justify-center rounded-lg bg-key px-6 pb-1 text-base font-semibold text-paper shadow-key-ink transition-[translate,box-shadow] duration-(--duration-press) ease-out key-hover:-translate-y-px key-press:translate-y-0.5 key-press:shadow-key-ink-down key-focus:outline-2 key-focus:outline-offset-2 key-focus:outline-ink"
-            >
+            <Link href="/furnish" className={`${PRIMARY_LINK} flex-1`}>
               Furnish a room
             </Link>
             <Link

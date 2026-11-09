@@ -31,19 +31,22 @@ const text = (value: string) => ({ type: "text", text: value });
 const FINAL = text('{"summary": "A desk under the window."}');
 const PLACE_DESK = call("place_item", { listingId: listingId("jun-white-desk"), xMm: 1800, yMm: 600, rotationDeg: 0, reason: "Desk under the window." });
 
-/** Replies in order and keeps every request it was sent. */
+/** Replies in order, hands over each block as a stream would, and keeps every request it was sent. */
 function scripted(replies: Message[]): ClaudeTransport & { requests: BuyerRequest[] } {
   const requests: BuyerRequest[] = [];
   return {
     requests,
-    async send(request) {
+    async send(request, onBlock) {
       requests.push(structuredClone(request));
       const reply = replies.shift();
       if (reply === undefined) throw new Error("No scripted reply left.");
+      for (const block of reply.content) onBlock(block);
       return reply;
     },
   };
 }
+
+const ignore = () => undefined;
 
 function hooks() {
   const events: EventDraft[] = [];
@@ -66,7 +69,7 @@ function hooks() {
 
 describe("runBuyerLoop", () => {
   it("runs tools, writes the layout, and ends on the summary JSON", async () => {
-    const transport = scripted([message([call("get_room_preset", {}), call("get_hall_rules", {})]), message([PLACE_DESK]), message([FINAL], "end_turn")]);
+    const transport = scripted([message([call("search_listings", { category: "desk" }), call("search_listings", { category: "rug" })]), message([PLACE_DESK]), message([FINAL], "end_turn")]);
     const recorder = hooks();
     const context = harborContext();
     const outcome = await runBuyerLoop({ transport, context, kind: "plan", hooks: recorder.value });
@@ -74,10 +77,52 @@ describe("runBuyerLoop", () => {
     expect(recorder.calls()).toBe(3);
     expect(recorder.layouts).toHaveLength(1);
     expect(context.layout.items).toHaveLength(1);
-    expect(recorder.events.map((event) => event.tool)).toEqual(["get_room_preset", "get_hall_rules", "place_item"]);
+    expect(recorder.events.map((event) => event.tool)).toEqual(["get_hall_rules", "get_room_preset", "search_listings", "search_listings", "place_item"]);
     // Both results of the first turn go back in one user message.
     const second = transport.requests[1].messages;
     expect(second.at(-1)).toMatchObject({ role: "user", content: [{ type: "tool_result" }, { type: "tool_result" }] });
+  });
+
+  it("reads the rules and the room in code before the first call, so the first sentences need no model turn", async () => {
+    const transport = scripted([message([FINAL], "end_turn")]);
+    const recorder = hooks();
+    let eventsBeforeCall = -1;
+    await runBuyerLoop({ transport, context: harborContext(), kind: "plan", hooks: { ...recorder.value, beforeCall: async () => void (eventsBeforeCall = recorder.events.length) } });
+    expect(eventsBeforeCall).toBe(2);
+    expect(recorder.events.map((event) => event.sentence)).toEqual([
+      "Reading the Harbor Hall rules, including the 915 mm path from each bed to the door.",
+      "Measuring Harbor Hall 214, 3.6 by 4.5 meters with 3 windows.",
+    ]);
+    const opening = transport.requests[0].messages[0].content as string;
+    expect(opening).toContain("Code already called get_hall_rules and get_room_preset for you.");
+    expect(opening).toMatch(/<get_room_preset>\n\{.*"needsOpen":\["seating","lighting","storage","floor","comfort"\]/);
+  });
+
+  it("runs each tool call as soon as its block streams in, before the reply ends", async () => {
+    const recorder = hooks();
+    let placedBeforeReplyEnded = false;
+    const replies = [message([PLACE_DESK]), message([FINAL], "end_turn")];
+    const streaming: ClaudeTransport = {
+      async send(_request, onBlock) {
+        const reply = replies.shift() as Message;
+        for (const block of reply.content) onBlock(block);
+        // The rest of the reply is still on its way when the call runs.
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        placedBeforeReplyEnded ||= recorder.layouts.length > 0;
+        return reply;
+      },
+    };
+    expect((await runBuyerLoop({ transport: streaming, context: harborContext(), kind: "plan", hooks: recorder.value })).status).toBe("succeeded");
+    expect(placedBeforeReplyEnded).toBe(true);
+    expect(recorder.layouts).toHaveLength(1);
+  });
+
+  it("runs a call the transport never streamed once the reply arrives", async () => {
+    const replies = [message([PLACE_DESK]), message([FINAL], "end_turn")];
+    const whole: ClaudeTransport = { send: async () => replies.shift() as Message };
+    const context = harborContext();
+    expect((await runBuyerLoop({ transport: whole, context, kind: "plan", hooks: hooks().value })).status).toBe("succeeded");
+    expect(context.layout.items).toHaveLength(1);
   });
 
   it("sends the model, effort, fallback, tools, and three cache breakpoints", async () => {
@@ -146,14 +191,17 @@ describe("runBuyerLoop", () => {
     });
   });
 
-  it("opens an edit run with the student's request and the current plan", async () => {
+  it("opens an edit run with the student's request, the current plan, and a fresh room read kept out of the sentences", async () => {
     const context = harborContext();
     await runBuyerLoop({ transport: scripted([message([PLACE_DESK]), message([FINAL], "end_turn")]), context, kind: "plan", hooks: hooks().value });
     const transport = scripted([message([FINAL], "end_turn")]);
-    await runBuyerLoop({ transport, context, kind: "edit", request: "Move the desk to the east wall", hooks: hooks().value });
+    const recorder = hooks();
+    await runBuyerLoop({ transport, context, kind: "edit", request: "Move the desk to the east wall", hooks: recorder.value });
     const opening = transport.requests[0].messages[0].content as string;
     expect(opening).toContain('Jordan asked for a change: "Move the desk to the east wall"');
     expect(opening).toContain("white-three-drawer-desk-with-oak-legs: White three drawer desk with oak legs, under the window, at 1800, 600 mm");
+    expect(opening).toContain("Code already called get_room_preset for you.");
+    expect(recorder.events).toEqual([expect.objectContaining({ tool: "get_room_preset", sentence: undefined })]);
   });
 
   it("lets a hook stop the run before a call", async () => {
@@ -170,8 +218,10 @@ describe("Claude transports", () => {
     const path = join(folder, "recording.json");
     await writeFile(path, JSON.stringify({ version: 1, runs: { plan: [message([FINAL], "end_turn")], edit: [] } }));
     const transport = await replayTransport(path, "plan");
-    expect((await transport.send({} as BuyerRequest)).content).toEqual([FINAL]);
-    await expect(transport.send({} as BuyerRequest)).rejects.toThrow("The recorded plan conversation has no reply 2.");
+    const blocks: unknown[] = [];
+    expect((await transport.send({} as BuyerRequest, (block) => blocks.push(block))).content).toEqual([FINAL]);
+    expect(blocks).toEqual([FINAL]);
+    await expect(transport.send({} as BuyerRequest, ignore)).rejects.toThrow("The recorded plan conversation has no reply 2.");
   });
 
   it("records each reply under its run kind and keeps the other kind", async () => {
@@ -179,8 +229,10 @@ describe("Claude transports", () => {
     const path = join(folder, "recording.json");
     await writeFile(path, JSON.stringify({ version: 1, runs: { plan: [message([FINAL], "end_turn")], edit: [] } }));
     const transport = recordingTransport(scripted([message([PLACE_DESK]), message([FINAL], "end_turn")]), path, "edit");
-    await transport.send({} as BuyerRequest);
-    await transport.send({} as BuyerRequest);
+    const blocks: unknown[] = [];
+    await transport.send({} as BuyerRequest, (block) => blocks.push(block));
+    await transport.send({} as BuyerRequest, ignore);
+    expect(blocks).toEqual([PLACE_DESK]);
     const saved = JSON.parse(await readFile(path, "utf8")) as { runs: { plan: unknown[]; edit: unknown[] } };
     expect(saved.runs.plan).toHaveLength(1);
     expect(saved.runs.edit).toHaveLength(2);
@@ -194,5 +246,8 @@ describe("Claude transports", () => {
       expect(replies.at(-1)?.stop_reason).toBe("end_turn");
       expect(replies.every((reply) => reply.model.startsWith("claude-sonnet-5-5"))).toBe(true);
     }
+    const planCalls = fixture.runs.plan.flatMap((reply) => reply.content.flatMap((block) => (block.type === "tool_use" ? [block.name] : [])));
+    expect(planCalls).toContain("create_checkout");
+    expect(planCalls).not.toContain("get_hall_rules");
   });
 });

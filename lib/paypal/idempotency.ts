@@ -11,6 +11,7 @@
 export type IdempotentAction =
   | "order-create"
   | "order-authorize"
+  | "order-capture"
   | "capture"
   | "void"
   | "reauthorize"
@@ -42,6 +43,9 @@ export const orderCreateKey = (checkoutId: string, attempt: number) =>
 
 export const orderAuthorizeKey = (orderId: string, attempt: number) =>
   idempotencyKey("order-authorize", orderId, attempt);
+
+export const orderCaptureKey = (orderId: string, attempt: number) =>
+  idempotencyKey("order-capture", orderId, attempt);
 
 export const captureKey = (orderItemId: string, attempt: number) =>
   idempotencyKey("capture", orderItemId, attempt);

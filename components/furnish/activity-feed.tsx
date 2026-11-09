@@ -14,9 +14,12 @@ const dayFormat = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago"
 
 export const timeLabel = (iso: string) => `${dayFormat.format(new Date(iso))}, ${timeFormat.format(new Date(iso))}`;
 
+const ACTORS = { buyer: "Buyer agent", seller: "Seller agent", verifier: "Verifier agent", platform: "Roomover" } as const;
+const ID_LABELS = { order: "Order", authorization: "Authorization", capture: "Capture" } as const;
+
 function toEntry(event: ActivityEventView): ActivityEntry {
   const refs = [
-    { label: "Run", value: event.runId },
+    { label: event.agent === "platform" ? "Order record" : "Run", value: event.runId },
     ...(event.detail.listingId === undefined ? [] : [{ label: "Listing", value: event.detail.listingId }]),
     ...(event.detail.itemKey === undefined ? [] : [{ label: "Item", value: event.detail.itemKey }]),
   ];
@@ -24,11 +27,12 @@ function toEntry(event: ActivityEventView): ActivityEntry {
   return {
     id: String(event.seq),
     agent: event.agent,
-    actor: "Buyer agent",
+    actor: ACTORS[event.agent],
     tool: event.tool,
     at: { iso: event.at, label: timeLabel(event.at) },
     summary: `${event.summary}${note}`,
     blocked: event.blocked && event.tool !== "run_failed",
+    paypal: event.paypal === null ? undefined : { api: event.paypal.api, idLabel: ID_LABELS[event.detail.paypalIdKind ?? "order"], id: event.paypal.id },
     refs,
   };
 }
@@ -51,7 +55,13 @@ export function ActivityFeed({ events }: { events: readonly ActivityEventView[] 
                 <time dateTime={event.at} className="mono">
                   {timeFormat.format(new Date(event.at))}
                 </time>{" "}
-                <code className="mono">{event.tool}</code>
+                <code className="mono">{event.paypal?.api ?? event.tool}</code>
+                {event.paypal !== null && (
+                  <>
+                    {" "}
+                    <span className="mono text-ink">{event.paypal.id}</span>
+                  </>
+                )}
               </span>
             )}
           </li>

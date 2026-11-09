@@ -1,6 +1,6 @@
 import type { RoomItemData } from "@/components/room/types";
 import type { AgentEventDetail } from "@/lib/domain/agent-events";
-import type { AgentName, AgentRunKind, AgentRunStatus, PlanStatus } from "@/lib/domain/enums";
+import type { AgentName, AgentRunKind, AgentRunStatus, OrderStatus, PaymentMode, PlanStatus } from "@/lib/domain/enums";
 import type { PlanLayout } from "@/lib/domain/layout";
 import type { ConditionGrade, ListingColor } from "@/lib/domain/listing";
 import { CONDITION_LABEL } from "@/lib/format";
@@ -21,6 +21,7 @@ export interface ActivityEventView {
   sentence: string | null;
   blocked: boolean;
   detail: AgentEventDetail;
+  paypal: { api: string; id: string } | null;
 }
 
 export interface RunView {
@@ -31,6 +32,17 @@ export interface RunView {
   error: string | null;
   startedAt: string;
   finishedAt: string | null;
+}
+
+/** The plan's PayPal order as the panel shows it. */
+export interface CheckoutView {
+  status: OrderStatus;
+  paymentMode: PaymentMode;
+  totalCents: number;
+  sellerCount: number;
+  paypalOrderId: string | null;
+  authorizationId: string | null;
+  captureId: string | null;
 }
 
 export interface PlanView {
@@ -45,6 +57,7 @@ export interface PlanView {
   /** What the same items cost new. */
   newCents: number;
   run: RunView | null;
+  checkout: CheckoutView | null;
 }
 
 export type PlanMessage = { type: "plan"; plan: PlanView } | { type: "event"; event: ActivityEventView };
@@ -70,7 +83,7 @@ export interface PlanMeta {
   stylePrompt: string;
 }
 
-export function buildPlanView(plan: PlanMeta, layout: PlanLayout, listings: ReadonlyMap<string, PlanListing>, run: RunView | null): PlanView {
+export function buildPlanView(plan: PlanMeta, layout: PlanLayout, listings: ReadonlyMap<string, PlanListing>, run: RunView | null, checkout: CheckoutView | null = null): PlanView {
   let totalCents = 0;
   let newCents = 0;
   const items = layout.items.flatMap((item): RoomItemData[] => {
@@ -91,5 +104,5 @@ export function buildPlanView(plan: PlanMeta, layout: PlanLayout, listings: Read
       },
     ];
   });
-  return { ...plan, items, totalCents, newCents, run };
+  return { ...plan, items, totalCents, newCents, run, checkout };
 }

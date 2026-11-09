@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PayPalApiError } from "@/lib/paypal/errors";
 import type { AppTokenSource } from "@/lib/paypal/rest/app-token";
 import { createPayPalSdk } from "@/lib/paypal/server-sdk/client";
-import { approvalLink, buildOrderRequest, createOrder, type CreateOrderInput } from "@/lib/paypal/server-sdk/orders";
+import { approvalLink, buildOrderRequest, captureOrder, createOrder, type CreateOrderInput } from "@/lib/paypal/server-sdk/orders";
 import { captureAuthorization } from "@/lib/paypal/server-sdk/payments";
 import { searchTransactions } from "@/lib/paypal/server-sdk/transactions";
 
@@ -103,6 +103,21 @@ describe("Server SDK wrappers", () => {
       purchase_units: [{ reference_id: "order_8", amount: { currency_code: "USD", value: "31.00" } }],
       payment_source: { paypal: { experience_context: { shipping_preference: "NO_SHIPPING" } } },
     });
+  });
+
+  it("sends each item's description, such as the seller's name", () => {
+    const [unit] = buildOrderRequest({ ...cart, items: [{ name: "Navy bean bag chair", description: "From Lea Moreau", unitAmountCents: 3_000, quantity: 1, sku: "listing_3" }] }).purchaseUnits;
+    expect(unit.items?.[0]).toMatchObject({ name: "Navy bean bag chair", description: "From Lea Moreau", sku: "listing_3", quantity: "1" });
+  });
+
+  it("captures an order with its own idempotency key", async () => {
+    const { sdk, requests } = sdkReturning(201, { id: "5O190127TN364715T", status: "COMPLETED" });
+    await captureOrder(sdk, "5O190127TN364715T", "rmv.order-capture.order_8.1");
+    const [request] = requests;
+    expect(request.method.toUpperCase()).toBe("POST");
+    expect(request.url).toBe("https://api-m.sandbox.paypal.com/v2/checkout/orders/5O190127TN364715T/capture");
+    expect(headerOf(request, "paypal-request-id")).toBe("rmv.order-capture.order_8.1");
+    expect(headerOf(request, "prefer")).toBe("return=representation");
   });
 
   it("sends a partial capture amount and final_capture", async () => {

@@ -1,6 +1,9 @@
 import { publish } from "@/lib/agents/bus";
+import { prepareCheckout } from "@/lib/checkout/prepare";
+import { readConfig } from "@/lib/config";
 import { RUN_LIMITS, RunStopped } from "@/lib/agents/limits";
 import { getDb, type Database } from "@/lib/db/client";
+import { currentOrder, type OrderWithLines } from "@/lib/db/orders";
 import {
   addRunUsage,
   claudeCallsToday,
@@ -18,13 +21,16 @@ import {
   type PresetWithRules,
   type RunRow,
 } from "@/lib/db/plans";
+import { CheckoutRefused } from "@/lib/domain/checkout";
 import { EGRESS_PATH_MM } from "@/lib/domain/egress";
 import type { AgentRunKind, ClaudeMode } from "@/lib/domain/enums";
 import type { PlanLayout } from "@/lib/domain/layout";
 import { formatUsdShort } from "@/lib/format";
-import { buildPlanView, type PlanListing, type PlanMeta, type PlanView } from "@/lib/plan-view";
+import { PayPalApiError } from "@/lib/paypal/errors";
+import { paypalSdk } from "@/lib/paypal/server-sdk/client";
+import { buildPlanView, type CheckoutView, type PlanListing, type PlanMeta, type PlanView } from "@/lib/plan-view";
 import { claudeMode, transportFor } from "./claude";
-import { planTotalCents, type BuyerContext, type CatalogListing, type EventDraft } from "./context";
+import { planTotalCents, type BuyerContext, type CatalogListing, type CheckoutPort, type EventDraft } from "./context";
 import { runBuyerLoop } from "./loop";
 
 /** Names the room for the student, such as Harbor Hall 214. */
@@ -54,10 +60,51 @@ const toPlanListing = (listing: CatalogListing): PlanListing => ({
   colors: listing.colors,
 });
 
+export function checkoutView(order: OrderWithLines | null): CheckoutView | null {
+  if (order === null) return null;
+  return {
+    status: order.status,
+    paymentMode: order.paymentMode,
+    totalCents: order.totalCents,
+    sellerCount: new Set(order.lines.map((line) => line.sellerId)).size,
+    paypalOrderId: order.paypalOrderId,
+    authorizationId: order.paypalAuthorizationId,
+    captureId: order.paypalCaptureId,
+  };
+}
+
 /** The snapshot for a plan as it stands in Postgres, for the page and for new streams. */
 export async function loadPlanView(db: Database, plan: PlanRow, preset: PresetWithRules, run: RunRow | null): Promise<PlanView> {
   const ids = plan.layout.items.flatMap((item) => (item.source === "listing" ? [item.listingId] : []));
-  return buildPlanView(planMeta(plan, preset), plan.layout, await loadPlanListings(db, ids), run === null ? null : runView(run));
+  const [listings, order] = await Promise.all([loadPlanListings(db, ids), currentOrder(db, plan.id)]);
+  return buildPlanView(planMeta(plan, preset), plan.layout, listings, run === null ? null : runView(run), checkoutView(order));
+}
+
+/** create_checkout as a run sees it, backed by Postgres and the Server SDK. */
+function checkoutPort(db: Database, plan: PlanRow): CheckoutPort {
+  return {
+    async prepare(layout) {
+      try {
+        const prepared = await prepareCheckout({ db, sdk: paypalSdk(), appUrl: readConfig(["APP_URL"]).APP_URL, now: new Date() }, { id: plan.id, buyerId: plan.buyerId, layout });
+        return {
+          ok: true,
+          created: prepared.created,
+          paypalOrderId: prepared.paypalOrderId,
+          totalCents: prepared.checkout.totalCents,
+          itemCount: prepared.checkout.lines.length,
+          sellerCount: prepared.checkout.sellerCount,
+          paymentMode: prepared.checkout.paymentMode,
+        };
+      } catch (error) {
+        if (error instanceof CheckoutRefused) return { ok: false, problem: error.message };
+        if (error instanceof PayPalApiError) {
+          console.error("create_checkout: PayPal refused the order", { planId: plan.id, status: error.status, debugId: error.debugId });
+          return { ok: false, problem: "PayPal did not create the order this time. The student can still pay from the panel, which prepares it again." };
+        }
+        throw error;
+      }
+    },
+  };
 }
 
 function buildContext(plan: PlanRow, preset: PresetWithRules, catalog: CatalogListing[]): BuyerContext {
@@ -81,14 +128,10 @@ function buildContext(plan: PlanRow, preset: PresetWithRules, catalog: CatalogLi
     catalog: new Map(catalog.map((listing) => [listing.id, listing])),
     layout: plan.layout,
     announcedSkips: new Set(),
+    now: new Date(),
   };
 }
 
-function startSentence(kind: AgentRunKind, context: BuyerContext): string {
-  return kind === "edit"
-    ? "Working on your change."
-    : `Reading the ${context.hallName} rules and ${context.catalog.size} listings for your ${formatUsdShort(context.budgetCents)} budget.`;
-}
 
 function finishSentence(kind: AgentRunKind, context: BuyerContext, unchanged: boolean): string {
   if (kind === "edit" && unchanged) return "The agent could not make that change, so the room stays as it was.";
@@ -141,7 +184,7 @@ async function executeRun(db: Database, input: StartRunInput, run: RunRow, mode:
   // The run lock is held now, so this read sees every hand edit saved before the run started.
   const plan = (await loadSessionPlan(db, input.plan.id, input.sessionId)) ?? input.plan;
   const catalog = await loadCatalog(db, preset.campus);
-  const context = buildContext(plan, preset, catalog);
+  const context: BuyerContext = { ...buildContext(plan, preset, catalog), checkout: checkoutPort(db, plan) };
   const meta = planMeta({ ...plan, status: "planning" }, preset);
   const listings = new Map<string, PlanListing>(catalog.map((listing) => [listing.id, toPlanListing(listing)]));
   // Items placed before this run keep their tags even if their listings left the catalog.
@@ -160,7 +203,8 @@ async function executeRun(db: Database, input: StartRunInput, run: RunRow, mode:
   let outcome: { status: "succeeded" } | { status: "failed"; error: string };
   try {
     snapshot(context.layout);
-    await record([{ tool: "run_started", summary: `${kind === "edit" ? "Edit" : "Plan"} run ${run.id} started with ${catalog.length} active listings.`, sentence: startSentence(kind, context) }]);
+    // A plan run's first sentences come from its opening reads, which follow at once.
+    await record([{ tool: "run_started", summary: `${kind === "edit" ? "Edit" : "Plan"} run ${run.id} started with ${catalog.length} active listings.`, sentence: kind === "edit" ? "Working on your change." : undefined }]);
     const { transport } = await transportFor(kind);
     const result = await runBuyerLoop({
       transport,

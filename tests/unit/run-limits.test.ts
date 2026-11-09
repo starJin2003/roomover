@@ -6,6 +6,10 @@ const NOW = new Date("2026-11-08T20:30:00Z");
 const free: LimitCounts = { session: { count: 0, oldest: null }, client: { count: 0, oldest: null }, claudeCallsToday: 0 };
 
 describe("decideLimit", () => {
+  it("holds the demo to 6 runs per browser and 15 per network each hour, and 400 Claude calls a day", () => {
+    expect(RUN_LIMITS).toEqual({ sessionRunsPerHour: 6, clientRunsPerHour: 15, claudeCallsPerDay: 400 });
+  });
+
   it("allows a run under every limit", () => {
     expect(decideLimit(free, "plan", NOW)).toEqual({ allowed: true });
   });

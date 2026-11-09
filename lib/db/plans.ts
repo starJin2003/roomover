@@ -4,6 +4,7 @@ import { decideLimit, RunConflictError, RunLimitError, startOfUtcDay, type Limit
 import { agentEventDetailSchema } from "@/lib/domain/agent-events";
 import type { AgentName, AgentRunKind, AgentRunStatus, ClaudeMode, PlanStatus, RoomType } from "@/lib/domain/enums";
 import { hallConstraintsSchema, type HallConstraint } from "@/lib/domain/hall-rules";
+import { handoffWindow } from "@/lib/domain/handoff";
 import { planLayoutSchema, type PlanLayout } from "@/lib/domain/layout";
 import { listingColorsSchema, listingSpecsSchema } from "@/lib/domain/listing";
 import { roomGeometrySchema, type RoomGeometry } from "@/lib/domain/room";
@@ -11,7 +12,7 @@ import type { ActivityEventView, PlanListing, RunView } from "@/lib/plan-view";
 import type { Database } from "./client";
 import { agentEvents, agentRuns, hallRules, halls, listings, plans, roomPresets, users } from "./schema";
 
-type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /** A run still marked running after this long belongs to a process that stopped. */
 const STALE_RUN_MS = 10 * 60 * 1000;
@@ -72,14 +73,20 @@ const listingColumns = {
   colors: listings.colors,
   styleTags: listings.styleTags,
   sellerName: users.displayName,
+  handoffMode: listings.handoffMode,
+  moveOutStartsAt: listings.moveOutStartsAt,
+  moveOutEndsAt: listings.moveOutEndsAt,
+  moveInStartsAt: listings.moveInStartsAt,
+  moveInEndsAt: listings.moveInEndsAt,
 };
 
 type ListingRow = { [K in keyof typeof listingColumns]: (typeof listingColumns)[K]["_"]["data"] };
 
 function toCatalogListing(row: ListingRow): CatalogListing {
-  const { retailReference, conditionReport, specs, colors, ...rest } = row;
+  const { retailReference, conditionReport, specs, colors, handoffMode, moveOutStartsAt, moveOutEndsAt, moveInStartsAt, moveInEndsAt, ...rest } = row;
   return {
     ...rest,
+    pickup: handoffWindow(handoffMode, { moveOutStartsAt, moveOutEndsAt, moveInStartsAt, moveInEndsAt }),
     specs: listingSpecsSchema.parse(specs),
     colors: colors.length === 0 ? [] : listingColorsSchema.parse(colors),
     newPriceCents: retailReference.newPriceCents,
@@ -341,13 +348,24 @@ const eventColumns = {
   sentence: agentEvents.sentence,
   blocked: agentEvents.blocked,
   detail: agentEvents.detail,
+  paypalApi: agentEvents.paypalApi,
+  paypalId: agentEvents.paypalId,
 };
 
-type EventRow = Omit<ActivityEventView, "at" | "detail"> & { at: Date; detail: unknown };
+type EventRow = Omit<ActivityEventView, "at" | "detail" | "paypal"> & { at: Date; detail: unknown; paypalApi: string | null; paypalId: string | null };
 
-const toEventView = (row: EventRow): ActivityEventView => ({ ...row, at: row.at.toISOString(), detail: agentEventDetailSchema.parse(row.detail) });
+const toEventView = ({ paypalApi, paypalId, ...row }: EventRow): ActivityEventView => ({
+  ...row,
+  at: row.at.toISOString(),
+  detail: agentEventDetailSchema.parse(row.detail),
+  paypal: paypalApi === null || paypalId === null ? null : { api: paypalApi, id: paypalId },
+});
 
-export async function insertEvents(db: Database, input: { runId: string; planId: string; agent: AgentName; drafts: readonly EventDraft[] }): Promise<ActivityEventView[]> {
+/** Writes activity lines. Checkout steps pass the order they belong to, and their run ID is the order's ID. */
+export async function insertEvents(
+  db: Database | Transaction,
+  input: { runId: string; planId: string; orderId?: string; agent: AgentName; drafts: readonly EventDraft[] },
+): Promise<ActivityEventView[]> {
   if (input.drafts.length === 0) return [];
   const rows = await db
     .insert(agentEvents)
@@ -361,6 +379,9 @@ export async function insertEvents(db: Database, input: { runId: string; planId:
         sentence: draft.sentence ?? null,
         blocked: draft.blocked ?? false,
         detail: agentEventDetailSchema.parse(draft.detail ?? {}),
+        paypalApi: draft.paypal?.api ?? null,
+        paypalId: draft.paypal?.id ?? null,
+        orderId: input.orderId ?? null,
       })),
     )
     .returning(eventColumns);

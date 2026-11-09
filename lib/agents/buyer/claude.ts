@@ -6,9 +6,12 @@ import type { AgentRunKind, ClaudeMode } from "@/lib/domain/enums";
 import type { BuyerRequest, ClaudeTransport } from "./loop";
 
 type BetaMessage = Anthropic.Beta.Messages.BetaMessage;
+type BetaContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
 
 /** Replies arrive at a steady pace, so the activity panel fills the way it does live. */
 const REPLAY_DELAY_MS = 350;
+/** The gap between tool calls inside one replayed reply, like blocks streaming in. */
+const REPLAY_BLOCK_MS = 300;
 const REQUEST_TIMEOUT_MS = 120_000;
 
 /** A recorded conversation per run kind, in the order the API sent the replies. */
@@ -24,7 +27,13 @@ type Recording = z.infer<typeof recordingSchema>;
 
 export function liveTransport(apiKey: string): ClaudeTransport {
   const client = new Anthropic({ apiKey, timeout: REQUEST_TIMEOUT_MS });
-  return { send: (request: BuyerRequest) => client.beta.messages.create(request) };
+  return {
+    send(request: BuyerRequest, onBlock) {
+      const stream = client.beta.messages.stream(request);
+      stream.on("contentBlock", onBlock);
+      return stream.finalMessage();
+    },
+  };
 }
 
 async function readRecording(path: string): Promise<Recording> {
@@ -34,13 +43,20 @@ async function readRecording(path: string): Promise<Recording> {
 export async function replayTransport(path: string, kind: AgentRunKind): Promise<ClaudeTransport> {
   const replies = (await readRecording(path)).runs[kind];
   let next = 0;
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   return {
-    async send() {
-      const reply = replies[next];
+    async send(_request, onBlock) {
+      const reply = replies[next] as unknown as BetaMessage | undefined;
       if (reply === undefined) throw new Error(`The recorded ${kind} conversation has no reply ${next + 1}.`);
       next += 1;
-      await new Promise((resolve) => setTimeout(resolve, REPLAY_DELAY_MS));
-      return reply as unknown as BetaMessage;
+      await wait(REPLAY_DELAY_MS);
+      let first = true;
+      for (const block of reply.content as BetaContentBlock[]) {
+        if (block.type === "tool_use" && !first) await wait(REPLAY_BLOCK_MS);
+        if (block.type === "tool_use") first = false;
+        onBlock(block);
+      }
+      return reply;
     },
   };
 }
@@ -49,8 +65,8 @@ export async function replayTransport(path: string, kind: AgentRunKind): Promise
 export function recordingTransport(inner: ClaudeTransport, path: string, kind: AgentRunKind): ClaudeTransport {
   const replies: BetaMessage[] = [];
   return {
-    async send(request) {
-      const reply = await inner.send(request);
+    async send(request, onBlock) {
+      const reply = await inner.send(request, onBlock);
       replies.push(reply);
       const existing = await readRecording(path).catch((): Recording => ({ version: 1, runs: { plan: [], edit: [] } }));
       const recording = { ...existing, runs: { ...existing.runs, [kind]: replies } };

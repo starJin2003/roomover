@@ -8,7 +8,7 @@ import { MAX_TURNS } from "./buyer/loop";
 export const RUN_LIMITS = {
   sessionRunsPerHour: 6,
   clientRunsPerHour: 15,
-  claudeCallsPerDay: 800,
+  claudeCallsPerDay: 400,
 } as const;
 
 export type RunLimits = typeof RUN_LIMITS;

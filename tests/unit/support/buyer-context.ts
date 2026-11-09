@@ -1,4 +1,5 @@
 import type { BuyerContext, CatalogListing } from "@/lib/agents/buyer/context";
+import { handoffWindow } from "@/lib/domain/handoff";
 import { listingColorsSchema } from "@/lib/domain/listing";
 import { PRESET_SLUGS } from "@/scripts/seed/campus";
 import { seedHallRules, seedRoomPresets } from "@/scripts/seed/halls";
@@ -26,6 +27,7 @@ export function seedCatalog(): CatalogListing[] {
     colors: listingColorsSchema.parse(listing.colors),
     styleTags: listing.styleTags ?? [],
     sellerName: names.get(listing.sellerId) ?? "Unknown",
+    pickup: handoffWindow(listing.handoffMode, listing),
   }));
 }
 
@@ -49,6 +51,7 @@ export function harborContext(overrides: Partial<BuyerContext> = {}): BuyerConte
     catalog: new Map(seedCatalog().map((listing) => [listing.id, listing])),
     layout: { items: [] },
     announcedSkips: new Set(),
+    now: new Date("2026-11-08T18:00:00Z"),
     ...overrides,
   };
 }

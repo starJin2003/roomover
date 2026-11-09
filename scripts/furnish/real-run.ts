@@ -13,8 +13,9 @@ import { readConfig } from "@/lib/config";
  * Drives one full Furnish run in a real browser against a running server and
  * records it on video: plan, the room filling, one drag edit that passes over
  * a spot that fails before it drops on one that fits, one change asked for
- * in words, and a reload. It prints timings, token use, and whether the
- * edits survived the reload.
+ * in words, and a reload. It prints timings from the click to the first
+ * sentence and the first item, token use, and whether the edits survived
+ * the reload.
  *
  *   pnpm furnish:run --base http://127.0.0.1:3000 --out <folder>
  */
@@ -71,6 +72,8 @@ async function main() {
   await page.getByLabel("What should your room feel like?").fill(PROMPT);
   const started = Date.now();
   await page.getByRole("button", { name: "Plan my room" }).click();
+  await panel.locator("ul[aria-live] [data-sentence]").first().waitFor({ timeout: 60_000 });
+  const firstSentenceMs = Date.now() - started;
   await page.waitForSelector('[data-placed="1"]', { timeout: 120_000 });
   const firstItemMs = Date.now() - started;
   await page.waitForTimeout(1200);
@@ -144,6 +147,7 @@ async function main() {
     JSON.stringify(
       {
         planId: planned.id,
+        firstSentence: seconds(firstSentenceMs),
         firstItem: seconds(firstItemMs),
         planTotal: seconds(totalMs),
         finished,

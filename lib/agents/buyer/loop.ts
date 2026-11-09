@@ -7,6 +7,8 @@ import { editRequest, planRequest, systemBlocks } from "./prompt";
 import { BUYER_TOOLS, toolByName, type BuyerTool } from "./tools";
 
 type BetaMessage = Anthropic.Beta.Messages.BetaMessage;
+type BetaContentBlock = Anthropic.Beta.Messages.BetaContentBlock;
+type ToolUse = Anthropic.Beta.Messages.BetaToolUseBlock;
 type BetaMessageParam = Anthropic.Beta.Messages.BetaMessageParam;
 type BetaTool = Anthropic.Beta.Messages.BetaTool;
 type ToolResult = Anthropic.Beta.Messages.BetaToolResultBlockParam;
@@ -21,9 +23,13 @@ const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
 export const MAX_TURNS: Readonly<Record<AgentRunKind, number>> = { plan: 30, edit: 12 };
 
-/** How Claude is reached. The live transport calls the API, and the fixture transport replays a recording. */
+/**
+ * How Claude is reached. The live transport streams from the API, and the
+ * fixture transport replays a recording. Both hand over each content block
+ * the moment it is complete, before the whole reply has arrived.
+ */
 export interface ClaudeTransport {
-  send(request: BuyerRequest): Promise<BetaMessage>;
+  send(request: BuyerRequest, onBlock: (block: BetaContentBlock) => void): Promise<BetaMessage>;
 }
 
 export interface Usage {
@@ -100,6 +106,31 @@ function parseFinal(message: BetaMessage): { ok: true; summary: string } | { ok:
 const json = (value: unknown) => JSON.stringify(value);
 
 /**
+ * Reads every run starts with. Code runs them before the first model call,
+ * so the panel speaks within a moment of the start and the model skips a
+ * turn. A plan run reads the rules and the room, and an edit run the room
+ * with its floor map as it stands.
+ */
+const OPENING_READS: Readonly<Record<AgentRunKind, readonly string[]>> = {
+  plan: ["get_hall_rules", "get_room_preset"],
+  edit: ["get_room_preset"],
+};
+
+async function openingReads(context: BuyerContext, kind: AgentRunKind): Promise<{ events: EventDraft[]; text: string }> {
+  const events: EventDraft[] = [];
+  const sections: string[] = [];
+  for (const name of OPENING_READS[kind]) {
+    const tool = toolByName(name);
+    if (tool === undefined) throw new Error(`The opening read ${name} is not a buyer tool.`);
+    const outcome = await tool.run(context, {});
+    // An edit keeps its own opening sentence, so its reads stay in the Details log.
+    events.push(...(kind === "edit" ? outcome.events.map((event) => ({ ...event, sentence: undefined })) : outcome.events));
+    sections.push(`<${name}>\n${json(outcome.result)}\n</${name}>`);
+  }
+  return { events, text: `Code already called ${OPENING_READS[kind].join(" and ")} for you. Their results:\n\n${sections.join("\n\n")}` };
+}
+
+/**
  * Runs the buyer agent until it replies with its summary. The history only
  * ever grows, so cached turns and thinking blocks stay valid. A tool call
  * with invalid input, or a final reply that fails its schema, gets the
@@ -114,12 +145,51 @@ export async function runBuyerLoop(options: {
 }): Promise<LoopResult> {
   const { transport, context, kind, hooks } = options;
   const opening = kind === "edit" ? editRequest(context, options.request ?? "") : planRequest(context);
-  const messages: BetaMessageParam[] = [{ role: "user", content: opening }];
+  const reads = await openingReads(context, kind);
+  await hooks.onEvents(reads.events);
+  const messages: BetaMessageParam[] = [{ role: "user", content: `${opening}\n\n${reads.text}` }];
   let retried = false;
+
+  /** Runs one tool call and reports whether its input was valid. */
+  const runCall = async (call: ToolUse): Promise<{ result: ToolResult; valid: boolean }> => {
+    const tool = toolByName(call.name);
+    const parsed = tool?.input.safeParse(call.input);
+    if (tool === undefined || parsed === undefined || !parsed.success) {
+      const error = tool === undefined ? `There is no tool named ${call.name}.` : `Invalid input for ${call.name}. ${parsed?.success === false ? z.prettifyError(parsed.error) : ""}`;
+      return { result: { type: "tool_result", tool_use_id: call.id, is_error: true, content: error }, valid: false };
+    }
+    const outcome = await tool.run(context, parsed.data);
+    if (outcome.layout !== undefined) {
+      context.layout = outcome.layout;
+      await hooks.onLayout(outcome.layout);
+    }
+    if (outcome.events.length > 0) await hooks.onEvents(outcome.events);
+    return { result: { type: "tool_result", tool_use_id: call.id, content: json(outcome.result) }, valid: true };
+  };
 
   for (let turn = 0; turn < MAX_TURNS[kind]; turn++) {
     await hooks.beforeCall();
-    const response = await transport.send(buildRequest(context, messages));
+    // Each call runs as soon as its block streams in, in the order the model wrote them, so items land one by one during a long reply.
+    const done = new Map<string, { result: ToolResult; valid: boolean }>();
+    let queue = Promise.resolve();
+    let failure: { error: unknown } | null = null;
+    const onBlock = (block: BetaContentBlock) => {
+      if (block.type !== "tool_use") return;
+      queue = queue
+        .then(async () => {
+          if (failure === null) done.set(block.id, await runCall(block));
+        })
+        .catch((error: unknown) => {
+          failure ??= { error };
+        });
+    };
+    let response: BetaMessage;
+    try {
+      response = await transport.send(buildRequest(context, messages), onBlock);
+    } finally {
+      await queue;
+    }
+    if (failure !== null) throw (failure as { error: unknown }).error;
     await hooks.afterCall(usageOf(response));
 
     if (response.stop_reason === "refusal") {
@@ -128,7 +198,7 @@ export async function runBuyerLoop(options: {
     messages.push({ role: "assistant", content: response.content });
     if (response.stop_reason === "pause_turn") continue;
 
-    const calls = response.content.filter((block): block is Anthropic.Beta.Messages.BetaToolUseBlock => block.type === "tool_use");
+    const calls = response.content.filter((block): block is ToolUse => block.type === "tool_use");
     if (calls.length === 0) {
       const final = response.stop_reason === "max_tokens" ? ({ ok: false, error: "Your reply was cut off. Reply with only the summary JSON." } as const) : parseFinal(response);
       if (final.ok) return { status: "succeeded", summary: final.summary };
@@ -138,28 +208,12 @@ export async function runBuyerLoop(options: {
       continue;
     }
 
-    const results: ToolResult[] = [];
-    let invalid = false;
-    for (const call of calls) {
-      const tool = toolByName(call.name);
-      const parsed = tool?.input.safeParse(call.input);
-      if (tool === undefined || parsed === undefined || !parsed.success) {
-        invalid = true;
-        const error = tool === undefined ? `There is no tool named ${call.name}.` : `Invalid input for ${call.name}. ${parsed?.success === false ? z.prettifyError(parsed.error) : ""}`;
-        results.push({ type: "tool_result", tool_use_id: call.id, is_error: true, content: error });
-        continue;
-      }
-      const outcome = tool.run(context, parsed.data);
-      if (outcome.layout !== undefined) {
-        context.layout = outcome.layout;
-        await hooks.onLayout(outcome.layout);
-      }
-      if (outcome.events.length > 0) await hooks.onEvents(outcome.events);
-      results.push({ type: "tool_result", tool_use_id: call.id, content: json(outcome.result) });
-    }
+    const outcomes: { result: ToolResult; valid: boolean }[] = [];
+    for (const call of calls) outcomes.push(done.get(call.id) ?? (await runCall(call)));
+    const invalid = outcomes.some((outcome) => !outcome.valid);
     if (invalid && retried) return { status: "failed", error: "The buyer agent sent invalid tool input twice in a row." };
     retried = invalid;
-    messages.push({ role: "user", content: results });
+    messages.push({ role: "user", content: outcomes.map((outcome) => outcome.result) });
   }
   return { status: "failed", error: `The buyer agent did not finish within ${MAX_TURNS[kind]} steps.` };
 }

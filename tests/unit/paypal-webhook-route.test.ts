@@ -124,12 +124,8 @@ describe("POST /api/paypal/webhooks", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ received: true, duplicate: false, handled: true });
     expect(store.eventIds).toEqual(["WH-58D329510W468432D-8HN650336L201105X"]);
-    expect(console.info).toHaveBeenCalledWith("paypal webhook", {
-      subject: "capture",
-      eventId: "WH-58D329510W468432D-8HN650336L201105X",
-      type: "PAYMENT.CAPTURE.COMPLETED",
-      resourceId: "2GG279541U471931P",
-    });
+    // The capture names no order, so the checkout handler acknowledges it and moves nothing.
+    expect(console.warn).toHaveBeenCalledWith("paypal webhook capture without an order", { eventId: "WH-58D329510W468432D-8HN650336L201105X" });
 
     const verify = calls.find((call) => call.url === VERIFY_URL);
     expect(new Headers(verify?.init.headers).get("Authorization")).toBe("Bearer token-1");
