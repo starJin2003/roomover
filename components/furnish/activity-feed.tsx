@@ -36,8 +36,8 @@ function toEntry(event: ActivityEventView): ActivityEntry {
   return {
     id: String(event.seq),
     agent: event.agent,
-    actor: ACTORS[event.agent],
-    tool: event.tool,
+    actor: event.detail.mcp === undefined ? ACTORS[event.agent] : `${ACTORS[event.agent]}, via MCP`,
+    tool: event.detail.mcp?.tool ?? event.tool,
     at: { iso: event.at, label: timeLabel(event.at) },
     summary: `${event.summary}${note}`,
     blocked: event.blocked && event.tool !== "run_failed",
@@ -64,12 +64,18 @@ export function ActivityFeed({ events, shown = SENTENCES_SHOWN }: { events: read
                 <time dateTime={event.at} className="mono">
                   {timeFormat.format(new Date(event.at))}
                 </time>{" "}
-                <code className="mono">{event.paypal?.api ?? event.tool}</code>
+                <code className="mono">{event.paypal?.api ?? event.detail.mcp?.tool ?? event.tool}</code>
                 {event.paypal !== null && (
                   <>
                     {" "}
                     <span className="mono text-ink">{event.paypal.id}</span>
                   </>
+                )}
+                {event.detail.mcp !== undefined && (
+                  <span data-via-mcp className="text-ink">
+                    {" "}
+                    via MCP from {event.detail.mcp.client}
+                  </span>
                 )}
               </span>
             )}

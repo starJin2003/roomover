@@ -28,3 +28,6 @@ npm-debug.log*
 
 # macOS
 .DS_Store
+
+# Bryntum scheduler, copied from node_modules at build time
+/public/bryntum/

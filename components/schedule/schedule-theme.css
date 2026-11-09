@@ -246,8 +246,13 @@
   box-shadow: var(--shadow-key-brick);
 }
 
-/* The drag tip reads like the room's labels: Paper, a hairline, and Ink. */
+/*
+ * The drag tip reads like the room's labels: Paper, a hairline, and Ink. It
+ * never takes the pointer, because Bryntum refuses a drop over a widget that
+ * is not the schedule, and the tip can sit right under the pointer.
+ */
 .b-tooltip.rv-drag-tip {
+  pointer-events: none;
   --b-tooltip-plain-background: var(--color-paper, #f6f3ee);
   --b-tooltip-rich-background: var(--color-paper, #f6f3ee);
   --b-tooltip-plain-color: var(--color-ink, #14151a);
@@ -278,4 +283,19 @@
 
 .rv-tip.rv-tip-refused {
   color: var(--color-brick, #a3341e);
+}
+
+/* A keyboard move in progress lifts the key like a drag, and Brick marks a time the slot cannot take. */
+.rv-schedule .b-sch-event.rv-slot-pending {
+  box-shadow: var(--shadow-choice-ink);
+}
+
+.rv-schedule .b-sch-event.rv-slot.rv-slot-refused {
+  background: var(--rv-brick);
+  box-shadow: var(--shadow-key-brick);
+}
+
+/* In the whole gap a two hour slot is a sliver, so each key keeps room for its hour. */
+.rv-schedule.rv-zoom-gap .b-sch-event-wrap {
+  min-width: 40px;
 }

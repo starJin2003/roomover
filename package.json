@@ -7,8 +7,8 @@
     "node": ">=26.13.0 <27"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "node scripts/bryntum-assets.mjs && next dev",
+    "build": "node scripts/bryntum-assets.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
@@ -39,8 +39,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "1.6.0",
     "@bryntum/scheduler": "npm:@bryntum/scheduler-trial@7.3.8",
-    "@bryntum/scheduler-react": "7.3.8",
     "@channel3/sdk": "4.8.0",
+    "@modelcontextprotocol/server": "2.4.0",
     "@paypal/agent-toolkit": "1.11.0",
     "@paypal/paypal-server-sdk": "2.5.0",
     "@react-three/drei": "10.7.9",
@@ -57,6 +57,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
+    "@modelcontextprotocol/client": "2.4.0",
     "@playwright/test": "1.65.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^26.6.6",

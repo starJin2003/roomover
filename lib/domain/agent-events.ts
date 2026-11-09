@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MCP_TOOL_NAMES } from "./mcp";
 
 export const PAYPAL_ID_KINDS = ["order", "authorization", "capture", "refund", "reauthorization", "payout_batch", "payout_item"] as const;
 export type PayPalIdKind = (typeof PAYPAL_ID_KINDS)[number];
@@ -55,6 +56,8 @@ export const agentEventDetailSchema = z.strictObject({
       keys: z.array(z.string().regex(/^[0-9a-f]{64}$/)).max(24).optional(),
     })
     .optional(),
+  /** A step an outside assistant asked for over MCP, with the client's own name for itself. */
+  mcp: z.strictObject({ tool: z.enum(MCP_TOOL_NAMES), client: z.string().min(1).max(80) }).optional(),
   /** A new item placed from Channel3, which the student buys from the retailer. */
   newProduct: z.strictObject({ productId: z.string().min(1), retailer: z.string().min(1), buyUrl: z.url() }).optional(),
 });

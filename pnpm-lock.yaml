@@ -172,12 +172,12 @@ importers:
       '@bryntum/scheduler':
         specifier: npm:@bryntum/scheduler-trial@7.3.8
         version: '@bryntum/scheduler-trial@7.3.8'
-      '@bryntum/scheduler-react':
-        specifier: 7.3.8
-        version: 7.3.8
       '@channel3/sdk':
         specifier: 4.8.0
         version: 4.8.0
+      '@modelcontextprotocol/server':
+        specifier: 2.4.0
+        version: 2.4.0
       '@paypal/agent-toolkit':
         specifier: 1.11.0
         version: 1.11.0(react@19.3.0)(supports-color@7.2.0)
@@ -221,6 +221,9 @@ importers:
       '@axe-core/playwright':
         specifier: 4.14.0
         version: 4.14.0(playwright-core@1.65.0)
+      '@modelcontextprotocol/client':
+        specifier: 2.4.0
+        version: 2.4.0
       '@playwright/test':
         specifier: 1.65.0
         version: 1.65.0
@@ -428,10 +431,6 @@ packages:
   '@babel/types@7.29.11':
     resolution: {integrity: sha512-WCsemW40Cpc6gouC1SrY6PBaZ+oLRlEVY9XBvZBI7il/HyUrb2nJ505wE1MHEFyDZNnrWDEuy4jL50WVHfTTSQ==}
     engines: {node: '>=6.9.0'}
-
-  '@bryntum/scheduler-react@7.3.8':
-    resolution: {integrity: sha512-PTzGFzsCrRoqLbbVqHlJ4sO8BSEEPzIkpVsCEwVy4Ci9hQlbVD62dTKcU35kTp81NhuDPw85l9Jj0xeQfCpZGg==}
-    engines: {node: '>=0.10.0'}
 
   '@bryntum/scheduler-trial-lib@1.0.1':
     resolution: {integrity: sha512-gTrNKz2O7JdNalEU9hma0fYyZ1mGhXXb6yCn/+E+SPjRyg/qFad1bQ7vfBUFitw3S3eB66IdtAZLD+QCtiIUKw==}
@@ -1167,6 +1166,14 @@ packages:
   '@mediapipe/tasks-vision@0.10.17':
     resolution: {integrity: sha512-CZWV/q6TTe8ta61cZXjfnnHsfWIdFhms03M9T7Cnd5y2mdpylJM0rF1qRq+wsQVRMLz1OYPVEBU9ph2Bx8cxrg==}
 
+  '@modelcontextprotocol/client@2.4.0':
+    resolution: {integrity: sha512-LgrD2OphHuG12vfKFKz6SOnq7bKHQmhGJIAYdD+MZBn2npHEyry6uD8zvktodtl5CQM85MO0anUyD9JwmUmxww==}
+    engines: {node: '>=20'}
+
+  '@modelcontextprotocol/core@2.4.0':
+    resolution: {integrity: sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q==}
+    engines: {node: '>=20'}
+
   '@modelcontextprotocol/sdk@1.32.2':
     resolution: {integrity: sha512-SWsVtH/0vULSQStoZ6xxH2K09Li8fXYTMC64ZeogCdpZ3XSi1eCPOByV1OpuJxuI3OcmHhosDWYyii07tpPsLw==}
     engines: {node: '>=18'}
@@ -1176,6 +1183,10 @@ packages:
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
+
+  '@modelcontextprotocol/server@2.4.0':
+    resolution: {integrity: sha512-rgR9yxSaAJ+bcsi/XroT/S2AfPiIWloXAnrdfYSCms9ivVju0ishu/wW0J21Ho6+ZOR1r7RyeRbjiRuF87ix5Q==}
+    engines: {node: '>=20'}
 
   '@monogrid/gainmap-js@3.7.3':
     resolution: {integrity: sha512-YjgdH65wZ9lQnzkVWerrR9FJR0JYhn3ahV7DJqDZVtIvR/kWv7XzFbMSIOFS/47+nWbZ5zFTRxsFhq0OX//SuA==}
@@ -4505,8 +4516,6 @@ snapshots:
       '@babel/helper-string-parser': 7.29.13
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@bryntum/scheduler-react@7.3.8': {}
-
   '@bryntum/scheduler-trial-lib@1.0.1': {}
 
   '@bryntum/scheduler-trial@7.3.8':
@@ -4992,6 +5001,20 @@ snapshots:
 
   '@mediapipe/tasks-vision@0.10.17': {}
 
+  '@modelcontextprotocol/client@2.4.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.4.0
+      cross-spawn: 7.0.6
+      eventsource: 3.0.7
+      eventsource-parser: 3.1.1
+      jose: 6.2.15
+      pkce-challenge: 5.0.1
+      zod: 4.6.7
+
+  '@modelcontextprotocol/core@2.4.0':
+    dependencies:
+      zod: 4.6.7
+
   '@modelcontextprotocol/sdk@1.32.2(supports-color@7.2.0)(zod@3.25.76)':
     dependencies:
       '@hono/node-server': 2.1.6(hono@4.13.17)
@@ -5013,6 +5036,11 @@ snapshots:
       zod-to-json-schema: 3.25.2(zod@3.25.76)
     transitivePeerDependencies:
       - supports-color
+
+  '@modelcontextprotocol/server@2.4.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.4.0
+      zod: 4.6.7
 
   '@monogrid/gainmap-js@3.7.3(three@0.182.0)':
     dependencies:

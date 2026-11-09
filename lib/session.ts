@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { MCP_SESSION_TAG } from "@/lib/domain/mcp";
 
 /**
  * The demo identity. Buyers do not log in, so judges can test freely. Each
@@ -46,4 +47,10 @@ export function clientAddress(headers: Headers): string {
 /** A keyed hash of the client address, so rate limits work without storing addresses. */
 export function clientHash(address: string, secret: string): string {
   return createHmac("sha256", secret).update(`client.${address}`).digest("hex").slice(0, 32);
+}
+
+/** The buyer session an MCP session acts through, keyed so that no client can name another session's plans. */
+export function mcpBuyerSession(mcpSessionId: string, secret: string): string {
+  const digest = createHmac("sha256", secret).update(`mcp.${mcpSessionId}`).digest("base64url");
+  return `${MCP_SESSION_TAG}${digest.slice(0, 20)}`;
 }

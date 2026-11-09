@@ -17,8 +17,10 @@ test.use({ holdsCatalog: true });
 /**
  * The Bryntum schedule on Handoff for the five seller demo cart, whose items
  * carry agreed slots. It loads only when opened, shows a row per seller and
- * one for Jordan, saves a slot dragged inside both windows, keeps it after a
- * reload, and snaps a slot dragged past Jordan's move in back with a sentence.
+ * one for Jordan, opens on the whole gap with no sideways scroll, saves a
+ * slot dragged inside both windows on the handoff days, keeps it after a
+ * reload, snaps a slot dragged past Jordan's move in back with a sentence,
+ * and moves a slot from the keyboard with the same check.
  */
 
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR ?? "test-results/screenshots";
@@ -65,6 +67,18 @@ async function tick(section: Locator, day: string, hour: string): Promise<{ x: n
 
 type BryntumGlobal = { bryntum: { fromElement(element: Element, type: string): { scrollLeft: number } } };
 
+/** How far the timeline reaches past its frame, which is zero when the whole span fits. */
+async function sidewaysOverflow(section: Locator): Promise<number> {
+  return section.locator(".rv-schedule .b-timeline-sub-grid").first().evaluate((element) => element.scrollWidth - element.clientWidth);
+}
+
+async function zoomTo(section: Locator, zoom: "Whole gap" | "Handoff days"): Promise<void> {
+  await section.getByRole("button", { name: zoom }).click();
+  await expect(section.getByRole("button", { name: zoom })).toHaveAttribute("aria-pressed", "true");
+  await expect(section.locator(".rv-schedule .b-sch-event").first()).toBeVisible();
+  await section.page().waitForTimeout(400);
+}
+
 /** Scrolls the timeline sideways through the scheduler itself, as a trackpad or the scrollbar does. */
 async function scrollTimeline(section: Locator, by: number): Promise<void> {
   await section.locator(".rv-schedule .b-sch-event").first().evaluate((element, distance) => {
@@ -76,6 +90,7 @@ async function scrollTimeline(section: Locator, by: number): Promise<void> {
 
 /** Drags Jun's slot along his row to a tick, taking a capture on the way when asked. */
 const junKey = (section: Locator) => section.locator('.b-sch-event-wrap[aria-label^="Handoff with Jun,"] .b-sch-event');
+const junWrap = (section: Locator) => section.locator('.b-sch-event-wrap[aria-label^="Handoff with Jun,"]');
 
 async function dragJun(page: Page, section: Locator, day: string, hour: string, capture?: string): Promise<void> {
   const slot = junKey(section);
@@ -140,8 +155,11 @@ test("the schedule shows each seller and Jordan, saves a valid drag, and snaps a
   await expect(section.getByText(new RegExp(`^Sofia and Lea leave by ${day}, \\d+ days before Jordan arrives, so Roomover keeps their items in Harbor Hall 214 until the handoff\\.$`))).toBeVisible();
   await expect(section.locator(".b-sch-resource-time-range.rv-range-room")).toHaveCount(2);
   await expect(section.locator(".b-sch-resource-time-range.rv-range-move_in")).toHaveCount(1);
-  await expect(section.locator("[data-schedule-message]")).toHaveText("Drag a handoff to another time while Jordan is on campus. Moving one changes no payment.");
-  // The timeline scrolls inside its frame, so the page never grows sideways and a phone never zooms out.
+  await expect(section.locator("[data-schedule-message]")).toHaveText("Drag a handoff to another time while Jordan is on campus, or use the arrow keys on one. Moving one changes no payment.");
+  // The schedule opens on the whole gap, from the first move out to the end of move in, with nothing past the frame.
+  await expect(section.getByRole("button", { name: "Whole gap" })).toHaveAttribute("aria-pressed", "true");
+  expect(await sidewaysOverflow(section)).toBeLessThanOrEqual(1);
+  // The page never grows sideways either, so a phone never zooms out.
   expect(await page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth")).toBeLessThanOrEqual(0);
   await page.waitForTimeout(600);
 
@@ -155,9 +173,20 @@ test("the schedule shows each seller and Jordan, saves a valid drag, and snaps a
     return;
   }
 
-  await page.screenshot({ path: `${SCREENSHOT_DIR}/schedule-open-${width}.png`, scale: "css" });
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/schedule-gap-${width}.png`, scale: "css" });
   await expectAccessible(page);
   await expectFitsDesktops(page, SCREENSHOT_DIR, "handoff-schedule");
+  // At 1280 the whole gap still fits the frame.
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.waitForTimeout(600);
+  expect(await sidewaysOverflow(section)).toBeLessThanOrEqual(1);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(600);
+
+  // The handoff days show two hour ticks and scroll inside the frame.
+  await zoomTo(section, "Handoff days");
+  expect(await sidewaysOverflow(section)).toBeGreaterThan(0);
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/schedule-open-${width}.png`, scale: "css" });
 
   const before = await junSlot(planId);
   const dayHeadings = (await section.locator(".b-sch-header-row-0 .b-sch-header-time-axis-cell").allInnerTexts()).map((text) => text.trim());
@@ -185,6 +214,7 @@ test("the schedule shows each seller and Jordan, saves a valid drag, and snaps a
   const reopened = await openSchedule(page, desktop);
   await expect(reopened.getByRole("list", { name: "Handoff slots" }).getByRole("listitem").first()).toHaveText(`Jun's desk, ${formatSlot(moved)}`);
   await expect(junKey(reopened)).toHaveText("10 AM");
+  await zoomTo(reopened, "Handoff days");
 
   // Past Jordan's last move in hour, the slot goes back where it was with a sentence, and nothing is saved.
   const lastDay = dayHeadings[junDay + 2];
@@ -194,5 +224,33 @@ test("the schedule shows each seller and Jordan, saves a valid drag, and snaps a
   await expect(junKey(reopened)).toHaveText("10 AM");
   expect(formatSlot(await junSlot(planId))).toBe(formatSlot(moved));
   expect(saves).toBe(1);
+
+  // From the keyboard in the whole gap: an odd hour is refused with the drag's sentence, Escape puts the slot back.
+  await zoomTo(reopened, "Whole gap");
+  const message = reopened.locator("[data-schedule-message]");
+  await junWrap(reopened).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(message).toHaveText(`Jun's handoff, ${dayHeadings[junDay + 1]}, 11 AM to 1 PM. Handoffs take two hours and start at 10 AM, noon, 2 PM, 4 PM, or 6 PM.`);
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/schedule-keys-refused-${width}.png`, scale: "css" });
+  await page.keyboard.press("Escape");
+  await expect(message).toHaveText(`Jun's handoff stays at ${formatSlot(moved)}.`);
+  expect(saves).toBe(1);
+
+  // Two hours later is a slot hour, so Enter saves it, and the focused slot carries its new time.
+  await junWrap(reopened).focus();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect(message).toHaveText(`Jun's handoff, ${dayHeadings[junDay + 1]}, noon to 2 PM. Press Enter to save or Escape to cancel.`);
+  // The key eases back from Brick, so the capture waits for it.
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/schedule-keys-${width}.png`, scale: "css" });
+  const keyed = page.waitForResponse((response) => response.url().endsWith(`/api/handoff/${planId}/slots`));
+  await page.keyboard.press("Enter");
+  expect((await keyed).status()).toBe(200);
+  await expect(message).toHaveText(`Moved Jun's handoff to ${dayHeadings[junDay + 1]}, noon to 2 PM.`);
+  expect(formatSlot(await junSlot(planId))).toBe(`${dayHeadings[junDay + 1]}, noon to 2 PM`);
+  await expect(junWrap(reopened)).toHaveAttribute("aria-label", new RegExp(`^Handoff with Jun, ${dayHeadings[junDay + 1]}, noon to 2 PM`));
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "")).toMatch(/^Handoff with Jun, /);
+  expect(saves).toBe(2);
   expect(problems).toEqual([]);
 });

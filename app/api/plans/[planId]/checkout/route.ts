@@ -3,7 +3,7 @@ import { prepareCheckout } from "@/lib/checkout/prepare";
 import { readConfig } from "@/lib/config";
 import { getDb } from "@/lib/db/client";
 import { insertOrderEvents } from "@/lib/db/orders";
-import { latestRun, loadSessionPlan } from "@/lib/db/plans";
+import { latestRun, loadPayablePlan } from "@/lib/db/plans";
 import { publish } from "@/lib/agents/bus";
 import { CheckoutRefused } from "@/lib/domain/checkout";
 import { formatUsdShort } from "@/lib/format";
@@ -18,10 +18,10 @@ import { paypalSdk } from "@/lib/paypal/server-sdk/client";
  */
 export async function POST(request: NextRequest, context: RouteContext<"/api/plans/[planId]/checkout">): Promise<Response> {
   const { planId } = await context.params;
-  const session = sessionFrom(request);
-  if (session === null || !planIdSchema.safeParse(planId).success) return jsonResponse(404, { error: "No such plan." });
+  if (!planIdSchema.safeParse(planId).success) return jsonResponse(404, { error: "No such plan." });
   const db = getDb();
-  const plan = await loadSessionPlan(db, planId, session);
+  // The browser's own plan, or one an outside assistant shared through its preview link.
+  const plan = await loadPayablePlan(db, planId, sessionFrom(request));
   if (plan === null) return jsonResponse(404, { error: "No such plan." });
   if ((await latestRun(db, planId))?.status === "running") return jsonResponse(409, { error: "The buyer agent is still working on this room. Pay when it finishes." });
 

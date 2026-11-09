@@ -6,9 +6,15 @@ import { ChevronDownIcon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
 import { checkSlotMove, type ScheduleSlot, type ScheduleView } from "@/lib/domain/schedule";
 import type { HandoffView } from "@/lib/handoff/view";
-import type { SlotMoveResult } from "./bryntum-schedule";
+import type { ScheduleNotice, ScheduleZoom, SlotMoveResult } from "./bryntum-schedule";
+import { loadBryntum } from "./load-bryntum";
 
 const loadScheduler = () => import("./bryntum-schedule");
+/** Hovering or focusing the heading starts both downloads, so the schedule is ready when it opens. */
+const warmUp = () => {
+  void loadScheduler();
+  void loadBryntum().catch(() => undefined);
+};
 
 const HEADER_PX = 56;
 const ROW_PX = 48;
@@ -28,7 +34,31 @@ function Waiting({ height }: { height: number | string }) {
 
 const BryntumSchedule = dynamic(loadScheduler, { ssr: false, loading: () => <Waiting height={240} /> });
 
-type Message = { text: string; tone: "hint" | "busy" | "done" | "refused" };
+type Message = { text: string; tone: ScheduleNotice["tone"] | "busy" | "done" };
+
+const ZOOMS: { value: ScheduleZoom; label: string }[] = [
+  { value: "gap", label: "Whole gap" },
+  { value: "days", label: "Handoff days" },
+];
+
+/** Two keys that switch the timeline between the whole gap and the handoff days hour by hour. */
+function ZoomSwitch({ zoom, onChange }: { zoom: ScheduleZoom; onChange: (zoom: ScheduleZoom) => void }) {
+  return (
+    <div role="group" aria-label="Schedule zoom" className="inline-flex shrink-0 gap-1 rounded-lg bg-well p-1">
+      {ZOOMS.map((choice) => (
+        <button
+          key={choice.value}
+          type="button"
+          aria-pressed={zoom === choice.value}
+          onClick={() => onChange(choice.value)}
+          className="min-h-9 rounded-md px-3 text-xs font-medium text-flint transition-colors duration-(--duration-quick) ease-out hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink aria-pressed:bg-paper aria-pressed:text-ink aria-pressed:shadow-ring"
+        >
+          {choice.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function Swatch({ kind }: { kind: "move_out" | "hold" | "move_in" | "slot" }) {
   const shape = {
@@ -81,6 +111,7 @@ export function ScheduleSection({ schedule, planId, collapsible = false, onView 
   const [width, setWidth] = useState(0);
   const [message, setMessage] = useState<Message | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [zoom, setZoom] = useState<ScheduleZoom>("gap");
   const frame = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,7 +134,7 @@ export function ScheduleSection({ schedule, planId, collapsible = false, onView 
   // On desktop the schedule shares the column with the room, so it stops growing at 42 percent of the screen.
   const height = collapsible ? `min(${natural}px, 42dvh)` : `${natural}px`;
   const movable = schedule.slots.some((slot) => slot.movable);
-  const hint: Message | null = movable ? { text: `Drag a handoff to another time while ${schedule.buyerFirstName} is on campus. Moving one changes no payment.`, tone: "hint" } : null;
+  const hint: Message | null = movable ? { text: `Drag a handoff to another time while ${schedule.buyerFirstName} is on campus, or use the arrow keys on one. Moving one changes no payment.`, tone: "hint" } : null;
   const shown = dragging ? null : (message ?? hint);
 
   const move = async (slot: ScheduleSlot, startsAt: Date): Promise<SlotMoveResult> => {
@@ -134,7 +165,13 @@ export function ScheduleSection({ schedule, planId, collapsible = false, onView 
   const body: ReactNode = (
     <div ref={frame} className="flex min-w-0 flex-col gap-3" data-schedule>
       <p className="text-sm text-flint">{schedule.summary}</p>
-      <Legend schedule={schedule} />
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
+        <Legend schedule={schedule} />
+        <ZoomSwitch zoom={zoom} onChange={setZoom} />
+      </div>
+      <p id="schedule-keys" className="sr-only">
+        Left and right arrows move the handoff by an hour, up and down by a day. Enter saves the new time and Escape puts it back.
+      </p>
       <ul aria-label="Handoff slots" className="sr-only">
         {schedule.slots.map((slot) => (
           <li key={slot.id}>
@@ -145,10 +182,11 @@ export function ScheduleSection({ schedule, planId, collapsible = false, onView 
       {(collapsible ? open : near) ? (
         <BryntumSchedule
           schedule={schedule}
+          zoom={zoom}
           compact={compact}
           height={height}
           onMove={move}
-          onRefused={(sentence) => setMessage({ text: sentence, tone: "refused" })}
+          onNotice={setMessage}
           onDragging={(now) => {
             setDragging(now);
             if (now) setMessage(null);
@@ -160,7 +198,7 @@ export function ScheduleSection({ schedule, planId, collapsible = false, onView 
       <p
         role="status"
         data-schedule-message={shown?.tone ?? "none"}
-        className={`flex min-h-5 items-center gap-2 text-sm ${shown?.tone === "refused" ? "font-medium text-brick" : shown?.tone === "done" ? "font-medium text-ink" : "text-flint"}`}
+        className={`flex min-h-5 items-center gap-2 text-sm ${shown?.tone === "refused" ? "font-medium text-brick" : shown?.tone === "done" ? "font-medium text-ink" : shown?.tone === "pending" ? "text-ink" : "text-flint"}`}
       >
         {shown?.tone === "busy" && <Spinner className="size-3.5" />}
         {shown?.text}
@@ -172,8 +210,8 @@ export function ScheduleSection({ schedule, planId, collapsible = false, onView 
     return (
       <details className="group min-w-0 shrink-0" onToggle={(event) => setOpen(event.currentTarget.open)}>
         <summary
-          onPointerEnter={() => void loadScheduler()}
-          onFocus={() => void loadScheduler()}
+          onPointerEnter={warmUp}
+          onFocus={warmUp}
           className="inline-flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-md text-sm font-medium [&::-webkit-details-marker]:hidden"
         >
           Schedule

@@ -4,10 +4,12 @@ import { cancelPendingOrder, currentOrder, insertPendingOrder, loadCheckoutListi
 import { buildCheckout, CheckoutRefused, intentFor, sameLines, type CheckoutPlan } from "@/lib/domain/checkout";
 import type { OrderStatus } from "@/lib/domain/enums";
 import type { PlanLayout } from "@/lib/domain/layout";
+import { approvedPath, isSharedPlanSession, previewPath } from "@/lib/domain/mcp";
 import { orderCreateKey } from "@/lib/paypal/idempotency";
 import { retryTransient } from "@/lib/paypal/retry";
 import type { PayPalSdk } from "@/lib/paypal/server-sdk/client";
-import { createOrder } from "@/lib/paypal/server-sdk/orders";
+import { approvalLink, createOrder, getOrder } from "@/lib/paypal/server-sdk/orders";
+import { absoluteUrl } from "@/lib/site";
 
 /**
  * PayPal keeps an unapproved order usable for 6 hours. Roomover prepares a
@@ -30,6 +32,8 @@ export interface CheckoutDeps {
 export interface PreparedCheckout {
   order: OrderWithLines;
   paypalOrderId: string;
+  /** PayPal's approval link from the order PayPal just created. Null for a reused order. */
+  approvalUrl: string | null;
   checkout: CheckoutPlan;
   /** False when the plan's existing order still fits and was handed back. */
   created: boolean;
@@ -38,7 +42,29 @@ export interface PreparedCheckout {
 export interface CheckoutPlanRef {
   id: string;
   buyerId: string;
+  /** An MCP session's plan sends the student back to its preview page after PayPal. */
+  sessionId: string | null;
   layout: PlanLayout;
+}
+
+/**
+ * Where PayPal sends a buyer who leaves the popup for a full page. A plan an
+ * outside assistant made is approved from its preview link, so PayPal
+ * returns there, and the return route authorizes or captures the order.
+ */
+export function checkoutReturnUrls(appUrl: string, plan: Pick<CheckoutPlanRef, "id" | "sessionId">): { returnUrl: string; cancelUrl: string } {
+  if (!isSharedPlanSession(plan.sessionId)) return { returnUrl: absoluteUrl(appUrl, "/furnish"), cancelUrl: absoluteUrl(appUrl, "/furnish") };
+  return { returnUrl: absoluteUrl(appUrl, approvedPath(plan.id)), cancelUrl: absoluteUrl(appUrl, `${previewPath(plan.id)}?paypal=canceled`) };
+}
+
+/**
+ * The link the student follows to approve the order in PayPal. A fresh
+ * order carries it, and a reused one is read back, since Roomover keeps no
+ * copy of PayPal's links.
+ */
+export async function approvalUrlFor(sdk: PayPalSdk, prepared: Pick<PreparedCheckout, "paypalOrderId" | "approvalUrl">): Promise<string | null> {
+  if (prepared.approvalUrl !== null) return prepared.approvalUrl;
+  return approvalLink(await retryTransient(() => getOrder(sdk, prepared.paypalOrderId))) ?? null;
 }
 
 const listingIdsOf = (layout: PlanLayout) => layout.items.flatMap((item) => (item.source === "listing" ? [item.listingId] : []));
@@ -67,13 +93,13 @@ export async function prepareCheckout(deps: CheckoutDeps, plan: CheckoutPlanRef)
     sameLines(current.lines, checkout.lines) &&
     now.getTime() - current.createdAt.getTime() < ORDER_REUSE_MS
   ) {
-    return { order: current, paypalOrderId: current.paypalOrderId, checkout, created: false };
+    return { order: current, paypalOrderId: current.paypalOrderId, approvalUrl: null, checkout, created: false };
   }
 
   const order = await insertPendingOrder(db, { planId: plan.id, buyerId: plan.buyerId, checkout });
   try {
     const key = orderCreateKey(order.id, order.attempt);
-    const returnUrl = `${deps.appUrl}/furnish`;
+    const { returnUrl, cancelUrl } = checkoutReturnUrls(deps.appUrl, plan);
     const created = await retryTransient(() =>
       createOrder(
         sdk,
@@ -82,14 +108,14 @@ export async function prepareCheckout(deps: CheckoutDeps, plan: CheckoutPlanRef)
           referenceId: order.id,
           items: checkout.lines.map((line) => ({ name: line.title, description: `From ${line.sellerName}`, unitAmountCents: line.amountCents, quantity: 1, sku: line.listingId })),
           returnUrl,
-          cancelUrl: returnUrl,
+          cancelUrl,
         },
         key,
       ),
     );
     const paypalOrderId = createdOrderSchema.parse(created).id;
     await setPayPalOrderId(db, order.id, paypalOrderId);
-    return { order: { ...order, paypalOrderId }, paypalOrderId, checkout, created: true };
+    return { order: { ...order, paypalOrderId }, paypalOrderId, approvalUrl: approvalLink(created) ?? null, checkout, created: true };
   } catch (error) {
     await cancelPendingOrder(db, order.id);
     throw error;

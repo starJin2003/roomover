@@ -5,7 +5,7 @@ import { loadPlanView } from "@/lib/agents/buyer/run";
 import { approveCheckout, CheckoutFailed } from "@/lib/checkout/approve";
 import { readConfig } from "@/lib/config";
 import { getDb } from "@/lib/db/client";
-import { latestRun, loadPresetsWithRules, loadSessionPlan } from "@/lib/db/plans";
+import { latestRun, loadPayablePlan, loadPresetsWithRules } from "@/lib/db/plans";
 import { jsonResponse, planIdSchema, readBody, sessionFrom } from "@/lib/http";
 import { paypalSdk } from "@/lib/paypal/server-sdk/client";
 
@@ -27,19 +27,19 @@ const STATUS: Readonly<Record<CheckoutFailed["code"], number>> = {
  */
 export async function POST(request: NextRequest, context: RouteContext<"/api/plans/[planId]/checkout/approve">): Promise<Response> {
   const { planId } = await context.params;
+  if (!planIdSchema.safeParse(planId).success) return jsonResponse(404, { error: "No such plan." });
   const session = sessionFrom(request);
-  if (session === null || !planIdSchema.safeParse(planId).success) return jsonResponse(404, { error: "No such plan." });
   const body = await readBody(request, bodySchema);
   if (!body.ok) return body.response;
   const db = getDb();
-  const plan = await loadSessionPlan(db, planId, session);
+  const plan = await loadPayablePlan(db, planId, session);
   if (plan === null) return jsonResponse(404, { error: "No such plan." });
 
   try {
     const result = await approveCheckout({ db, sdk: paypalSdk(), appUrl: readConfig(["APP_URL"]).APP_URL, now: new Date() }, { planId, paypalOrderId: body.data.orderId });
     for (const event of result.events) publish(planId, { type: "event", event });
     const preset = (await loadPresetsWithRules(db)).find((candidate) => candidate.id === plan.roomPresetId);
-    const latest = await loadSessionPlan(db, planId, session);
+    const latest = await loadPayablePlan(db, planId, session);
     if (preset === undefined || latest === null) return jsonResponse(500, { error: "The plan could not be read after payment." });
     const view = await loadPlanView(db, latest, preset, await latestRun(db, planId));
     publish(planId, { type: "plan", plan: view });

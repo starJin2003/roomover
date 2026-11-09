@@ -1,12 +1,13 @@
-import { and, asc, desc, eq, gt, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, like, lt, sql } from "drizzle-orm";
 import type { CatalogListing, EventDraft } from "@/lib/agents/buyer/context";
 import { decideLimit, RunConflictError, RunLimitError, startOfUtcDay, type LimitCounts, type WindowCount } from "@/lib/agents/limits";
 import { agentEventDetailSchema } from "@/lib/domain/agent-events";
-import type { AgentName, AgentRunKind, AgentRunStatus, ClaudeMode, PlanStatus, RoomType } from "@/lib/domain/enums";
+import type { AgentName, AgentRunKind, AgentRunStatus, ClaudeMode, HandoffMode, PlanStatus, RoomType } from "@/lib/domain/enums";
 import { hallConstraintsSchema, type HallConstraint } from "@/lib/domain/hall-rules";
 import { handoffWindow } from "@/lib/domain/handoff";
 import { planLayoutSchema, type PlanLayout } from "@/lib/domain/layout";
 import { listingColorsSchema, listingSpecsSchema } from "@/lib/domain/listing";
+import { MCP_SESSION_TAG } from "@/lib/domain/mcp";
 import { roomGeometrySchema, type RoomGeometry } from "@/lib/domain/room";
 import type { ActivityEventView, PlanListing, RunView } from "@/lib/plan-view";
 import type { Database } from "./client";
@@ -116,6 +117,13 @@ export async function loadCatalog(db: Database, campus: string): Promise<Catalog
   return rows.map(toCatalogListing);
 }
 
+/** How each listing is handed over and its first photo, which the MCP search shows next to the catalog's facts. */
+export async function loadListingExtras(db: Database, ids: readonly string[]): Promise<Map<string, { handoffMode: HandoffMode; photoSrc: string }>> {
+  if (ids.length === 0) return new Map();
+  const rows = await db.select({ id: listings.id, handoffMode: listings.handoffMode, photos: listings.photos }).from(listings).where(inArray(listings.id, [...ids]));
+  return new Map(rows.map((row) => [row.id, { handoffMode: row.handoffMode, photoSrc: row.photos[0]?.src ?? "" }]));
+}
+
 export async function countActiveListings(db: Database, campus: string): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -198,6 +206,30 @@ export async function loadSessionPlan(db: Database, planId: string, sessionId: s
     .innerJoin(users, eq(plans.buyerId, users.id))
     .where(and(eq(plans.id, planId), eq(plans.sessionId, sessionId)));
   return row === undefined ? null : toPlanRow(row);
+}
+
+/** A plan an MCP session made, which anyone holding its preview link may see and pay for. */
+export async function loadSharedPlan(db: Database, planId: string): Promise<PlanRow | null> {
+  const [row] = await db
+    .select(planColumns)
+    .from(plans)
+    .innerJoin(users, eq(plans.buyerId, users.id))
+    .where(and(eq(plans.id, planId), like(plans.sessionId, `${MCP_SESSION_TAG}%`)));
+  return row === undefined ? null : toPlanRow(row);
+}
+
+/** A plan the browser's session owns, or else one an MCP session shared through its preview link. */
+export async function loadPayablePlan(db: Database, planId: string, sessionId: string | null): Promise<PlanRow | null> {
+  return (sessionId === null ? null : await loadSessionPlan(db, planId, sessionId)) ?? (await loadSharedPlan(db, planId));
+}
+
+/** Plans a session created in the window, which caps how many rooms one MCP session plans an hour. */
+export async function countSessionPlans(db: Database, sessionId: string, since: Date): Promise<WindowCount> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int`, oldest: sql<string | Date | null>`min(${plans.createdAt})` })
+    .from(plans)
+    .where(and(eq(plans.sessionId, sessionId), gte(plans.createdAt, since)));
+  return { count: row?.count ?? 0, oldest: row?.oldest === null || row?.oldest === undefined ? null : new Date(row.oldest) };
 }
 
 export async function latestSessionPlan(db: Database, sessionId: string): Promise<PlanRow | null> {
@@ -407,7 +439,7 @@ const toEventView = ({ paypalApi, paypalId, ...row }: EventRow): ActivityEventVi
 /** Writes activity lines. Checkout steps pass the order they belong to, and their run ID is the order's ID. */
 export async function insertEvents(
   db: Database | Transaction,
-  input: { runId: string; planId: string; orderId?: string; agent: AgentName; drafts: readonly EventDraft[] },
+  input: { runId: string; planId: string | null; orderId?: string; agent: AgentName; drafts: readonly EventDraft[] },
 ): Promise<ActivityEventView[]> {
   if (input.drafts.length === 0) return [];
   const rows = await db

@@ -15,5 +15,7 @@ export default defineConfig([
     "test-results/**",
     "playwright-report/**",
     "blob-report/**",
+    // Bryntum's prebuilt scheduler, copied from node_modules before each build.
+    "public/bryntum/**",
   ]),
 ]);

@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { subscribe } from "@/lib/agents/bus";
 import { loadPlanView } from "@/lib/agents/buyer/run";
 import { getDb } from "@/lib/db/client";
-import { eventsAfter, latestRun, loadPresetsWithRules, loadSessionPlan } from "@/lib/db/plans";
+import { eventsAfter, latestRun, loadPayablePlan, loadPresetsWithRules } from "@/lib/db/plans";
 import { jsonResponse, planIdSchema, sessionFrom } from "@/lib/http";
 import type { PlanMessage, PlanView } from "@/lib/plan-view";
 import { formatSse, formatSseComment, lastEventId } from "@/lib/sse";
@@ -17,17 +17,18 @@ const RECONNECT_MS = 2_000;
  */
 export async function GET(request: NextRequest, context: RouteContext<"/api/plans/[planId]/events">): Promise<Response> {
   const { planId } = await context.params;
+  if (!planIdSchema.safeParse(planId).success) return jsonResponse(404, { error: "No such plan." });
   const session = sessionFrom(request);
-  if (session === null || !planIdSchema.safeParse(planId).success) return jsonResponse(404, { error: "No such plan." });
 
   const db = getDb();
-  const plan = await loadSessionPlan(db, planId, session);
+  // A preview link follows the plan an outside assistant made, read only.
+  const plan = await loadPayablePlan(db, planId, session);
   if (plan === null) return jsonResponse(404, { error: "No such plan." });
   const preset = (await loadPresetsWithRules(db)).find((candidate) => candidate.id === plan.roomPresetId);
   if (preset === undefined) return jsonResponse(500, { error: "The plan's room preset is missing." });
 
   const freshView = async (): Promise<PlanView> => {
-    const latest = await loadSessionPlan(db, planId, session);
+    const latest = await loadPayablePlan(db, planId, session);
     return loadPlanView(db, latest ?? plan, preset, await latestRun(db, planId));
   };
   let lastSeq = Math.max(lastEventId(request.headers), Number(request.nextUrl.searchParams.get("after")) || 0);

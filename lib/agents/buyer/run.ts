@@ -119,7 +119,7 @@ function checkoutPort(db: Database, plan: PlanRow): CheckoutPort {
   return {
     async prepare(layout) {
       try {
-        const prepared = await prepareCheckout({ db, sdk: paypalSdk(), appUrl: readConfig(["APP_URL"]).APP_URL, now: new Date() }, { id: plan.id, buyerId: plan.buyerId, layout });
+        const prepared = await prepareCheckout({ db, sdk: paypalSdk(), appUrl: readConfig(["APP_URL"]).APP_URL, now: new Date() }, { id: plan.id, buyerId: plan.buyerId, sessionId: plan.sessionId, layout });
         return {
           ok: true,
           created: prepared.created,
