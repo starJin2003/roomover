@@ -1,6 +1,8 @@
 import type { AgentName } from "@/lib/domain/enums";
 
 export interface ActivityEntry {
+  /** Unique within the log. Steps written in the same instant share a time and a tool. */
+  readonly id?: string;
   readonly agent: AgentName;
   /** Who acted, such as "Buyer agent" or "Jun's seller agent". */
   readonly actor: string;
@@ -10,6 +12,8 @@ export interface ActivityEntry {
   /** A hard constraint stopped this step. */
   readonly blocked?: boolean;
   readonly paypal?: { readonly api: string; readonly idLabel: string; readonly id: string };
+  /** Record IDs behind the step, shown with Under the hood on. */
+  readonly refs?: readonly { readonly label: string; readonly value: string }[];
 }
 
 /** Each agent has a shape, so lines stay distinct without relying on color. */
@@ -28,11 +32,11 @@ function AgentMark({ agent }: { agent: AgentName }) {
 }
 
 /** The full agent log behind Details: time, agent, tool, and every PayPal ID. */
-export function ActivityLog({ entries }: { entries: readonly ActivityEntry[] }) {
+export function ActivityLog({ entries, showRefs = false }: { entries: readonly ActivityEntry[]; showRefs?: boolean }) {
   return (
     <ol className="flex flex-col">
       {entries.map((entry) => (
-        <li key={`${entry.at.iso}-${entry.tool}`} className="flex flex-col gap-1 border-t border-hair py-3 first:border-t-0 first:pt-1">
+        <li key={entry.id ?? `${entry.at.iso}-${entry.tool}`} className="flex flex-col gap-1 border-t border-hair py-3 first:border-t-0 first:pt-1">
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-flint">
             <time dateTime={entry.at.iso} className="mono">
               {entry.at.label}
@@ -52,6 +56,12 @@ export function ActivityLog({ entries }: { entries: readonly ActivityEntry[] }) 
               {entry.paypal.idLabel} <span className="mono text-ink">{entry.paypal.id}</span>, sandbox
             </p>
           )}
+          {showRefs &&
+            entry.refs?.map((ref) => (
+              <p key={ref.label} className="text-xs break-all text-flint">
+                {ref.label} <span className="mono text-ink">{ref.value}</span>
+              </p>
+            ))}
         </li>
       ))}
     </ol>

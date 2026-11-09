@@ -27,6 +27,7 @@ async function roomData(preset: RoomPresetRow, layout: PlanLayout, prices?: Read
       priceCents: prices?.get(row.id) ?? row.priceCents,
       sellerName: row.sellerName,
       color: row.color,
+      colors: row.colors,
     };
   });
   return { preset, items };

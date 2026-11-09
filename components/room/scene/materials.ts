@@ -1,6 +1,7 @@
 import { Color, DataTexture, LinearFilter, MeshBasicMaterial, MeshPhysicalMaterial, MeshStandardMaterial, type Material } from "three";
+import { COLOR } from "@/lib/design/tokens";
 import type { Look } from "../model/parts";
-import { SKY, TONES } from "../model/tones";
+import { paintHex, SKY, TONES } from "../model/tones";
 
 /**
  * One material per tone and finish, shared by every mesh in the room. Toy
@@ -10,7 +11,7 @@ import { SKY, TONES } from "../model/tones";
 const materials = new Map<string, Material>();
 
 function create({ tone, finish }: Look): Material {
-  const color = new Color(TONES[tone]);
+  const color = new Color(paintHex(tone));
   switch (finish) {
     case "toy":
       return new MeshPhysicalMaterial({ color, roughness: 0.46, metalness: 0, clearcoat: 0.55, clearcoatRoughness: 0.3 });
@@ -35,6 +36,12 @@ export function materialFor(look: Look): Material {
 
 /** Flat Sky for the ring under the item the agent just placed. Unlit, so it reads as a mark. */
 export const ringMaterial = new MeshBasicMaterial({ color: new Color(SKY), transparent: true, depthWrite: false, toneMapped: false });
+
+/** The outline under an item the student has selected to move. */
+export const selectedRingMaterial = new MeshBasicMaterial({ color: new Color(COLOR.flint), transparent: true, depthWrite: false, toneMapped: false });
+
+/** The outline under an item held over a spot that fails the fit check. */
+export const invalidRingMaterial = new MeshBasicMaterial({ color: new Color(COLOR.brick), transparent: true, depthWrite: false, toneMapped: false });
 
 const SHADOW_SIZE = 64;
 

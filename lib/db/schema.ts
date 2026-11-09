@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
+  boolean,
   check,
   date,
   index,
@@ -13,8 +15,12 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { EvidenceBundle } from "../domain/dispute";
+import type { AgentEventDetail } from "../domain/agent-events";
 import {
   AGENT_NAMES,
+  AGENT_RUN_KINDS,
+  AGENT_RUN_STATUSES,
+  CLAUDE_MODES,
   DISPUTE_STATUSES,
   HANDOFF_DECISIONS,
   HANDOFF_MODES,
@@ -36,7 +42,7 @@ import {
 } from "../domain/enums";
 import type { HandoffPhoto, VerificationReport } from "../domain/handoff";
 import type { HallConstraint } from "../domain/hall-rules";
-import type { ConditionReport, ListingPhoto, ListingSpecs, RetailReference } from "../domain/listing";
+import type { ConditionReport, ListingColor, ListingPhoto, ListingSpecs, RetailReference } from "../domain/listing";
 import type { OffersLog } from "../domain/negotiation";
 import { EMPTY_LAYOUT, type PlanLayout } from "../domain/layout";
 import type { RoomGeometry } from "../domain/room";
@@ -62,6 +68,9 @@ export const payoutStatus = pgEnum("payout_status", PAYOUT_STATUSES);
 export const payoutItemStatus = pgEnum("payout_item_status", PAYOUT_ITEM_STATUSES);
 export const disputeStatus = pgEnum("dispute_status", DISPUTE_STATUSES);
 export const agentName = pgEnum("agent_name", AGENT_NAMES);
+export const agentRunKind = pgEnum("agent_run_kind", AGENT_RUN_KINDS);
+export const agentRunStatus = pgEnum("agent_run_status", AGENT_RUN_STATUSES);
+export const claudeMode = pgEnum("claude_mode", CLAUDE_MODES);
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = () =>
@@ -175,6 +184,8 @@ export const listings = pgTable(
     title: text("title").notNull(),
     description: text("description").notNull(),
     color: text("color").notNull(),
+    /** Swatches read from the photo, which the 3D room paints the item with. */
+    colors: jsonb("colors").$type<ListingColor[]>().notNull().default([]),
     material: text("material").notNull(),
     styleTags: text("style_tags").array().notNull().default(sql`'{}'::text[]`),
     widthMm: integer("width_mm").notNull(),
@@ -231,6 +242,8 @@ export const plans = pgTable(
       .notNull()
       .references(() => roomPresets.id),
     roomNumber: text("room_number"),
+    /** The signed demo session that created the plan. Each judge's browser sees only its own plans. */
+    sessionId: text("session_id"),
     budgetCents: integer("budget_cents").notNull(),
     stylePrompt: text("style_prompt").notNull(),
     layout: jsonb("layout").$type<PlanLayout>().notNull().default(EMPTY_LAYOUT),
@@ -242,6 +255,7 @@ export const plans = pgTable(
   },
   (t) => [
     index("plans_buyer_created_idx").on(t.buyerId, t.createdAt),
+    index("plans_session_created_idx").on(t.sessionId, t.createdAt),
     check("plans_budget_check", sql`${t.budgetCents} > 0`),
     check(
       "plans_move_in_check",
@@ -451,14 +465,66 @@ export const disputes = pgTable(
   ],
 );
 
+/**
+ * One buyer agent run over a plan. It carries the run's outcome, its Claude
+ * usage for the cost record, and the session and hashed address the rate
+ * limits count.
+ */
+export const agentRuns = pgTable(
+  "agent_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => plans.id, { onDelete: "cascade" }),
+    kind: agentRunKind("kind").notNull(),
+    status: agentRunStatus("status").notNull().default("running"),
+    /** The student's words for an edit run. */
+    request: text("request"),
+    sessionId: text("session_id").notNull(),
+    /** HMAC of the client address, so limits work without storing the address. */
+    clientHash: text("client_hash").notNull(),
+    claudeMode: claudeMode("claude_mode").notNull(),
+    claudeCalls: integer("claude_calls").notNull().default(0),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
+    cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
+    /** What the student sees when the run fails. */
+    error: text("error"),
+    startedAt: at("started_at").notNull().defaultNow(),
+    firstItemAt: at("first_item_at"),
+    finishedAt: at("finished_at"),
+  },
+  (t) => [
+    index("agent_runs_plan_started_idx").on(t.planId, t.startedAt),
+    index("agent_runs_session_started_idx").on(t.sessionId, t.startedAt),
+    index("agent_runs_client_started_idx").on(t.clientHash, t.startedAt),
+    index("agent_runs_started_idx").on(t.startedAt),
+    check("agent_runs_request_check", sql`${t.kind} <> 'edit' or ${t.request} is not null`),
+    check("agent_runs_finished_check", sql`(${t.status} = 'running') = (${t.finishedAt} is null)`),
+    check(
+      "agent_runs_usage_check",
+      sql`${t.claudeCalls} >= 0 and ${t.inputTokens} >= 0 and ${t.outputTokens} >= 0 and ${t.cacheWriteTokens} >= 0 and ${t.cacheReadTokens} >= 0`,
+    ),
+  ],
+);
+
 export const agentEvents = pgTable(
   "agent_events",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    /** Orders events within a plan and serves as the server sent event ID. */
+    seq: bigint("seq", { mode: "number" }).generatedAlwaysAsIdentity().notNull().unique(),
     runId: uuid("run_id").notNull(),
     agent: agentName("agent").notNull(),
     tool: text("tool").notNull(),
     summary: text("summary").notNull(),
+    /** The everyday sentence the activity panel shows, when the step deserves one. */
+    sentence: text("sentence"),
+    /** A hard constraint in code stopped this step. */
+    blocked: boolean("blocked").notNull().default(false),
+    detail: jsonb("detail").$type<AgentEventDetail>().notNull().default({}),
     paypalApi: text("paypal_api"),
     paypalId: text("paypal_id"),
     planId: uuid("plan_id").references(() => plans.id, { onDelete: "cascade" }),
@@ -468,6 +534,7 @@ export const agentEvents = pgTable(
   (t) => [
     index("agent_events_run_created_idx").on(t.runId, t.createdAt),
     index("agent_events_plan_created_idx").on(t.planId, t.createdAt),
+    index("agent_events_plan_seq_idx").on(t.planId, t.seq),
     index("agent_events_order_created_idx").on(t.orderId, t.createdAt),
     check("agent_events_paypal_check", sql`${t.paypalId} is null or ${t.paypalApi} is not null`),
   ],

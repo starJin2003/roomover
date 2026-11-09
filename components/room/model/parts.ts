@@ -1,4 +1,4 @@
-import type { Finish, Tone } from "./tones";
+import type { Finish, Paint } from "./tones";
 
 /**
  * A model is a list of parts in millimeters. Each part is a rounded box, a
@@ -11,7 +11,7 @@ import type { Finish, Tone } from "./tones";
 export type Vec3 = readonly [number, number, number];
 
 export interface Look {
-  tone: Tone;
+  tone: Paint;
   finish: Finish;
 }
 
@@ -29,7 +29,7 @@ export type Part =
   /** A turned profile. `profile` is [radius, height] pairs from the bottom center up. */
   | (PartBase & { shape: "lathe"; profile: readonly (readonly [number, number])[] });
 
-export const look = (tone: Tone, finish: Finish): Look => ({ tone, finish });
+export const look = (tone: Paint, finish: Finish): Look => ({ tone, finish });
 
 export function box(size: Vec3, at: Vec3, radius: number, appearance: Look, rotation?: Vec3): Part {
   const limit = Math.min(...size) / 2 - 0.5;

@@ -1,3 +1,4 @@
+import { bedEgress, EGRESS_PATH_MM } from "./egress";
 import { FURNITURE } from "./furniture";
 import { bounds, boxPolygon, contains, grow, overlaps, quarterDisc, rectangle, type Point, type Polygon } from "./geometry";
 import { footprint, topMm, type LayoutItem, type PlanLayout } from "./layout";
@@ -24,7 +25,7 @@ export const LEVEL_TOLERANCE_MM = 10;
 /** A wall item sits within this distance of its wall. */
 export const WALL_TOUCH_MM = 25;
 
-export const FIT_PROBLEM_CODES = ["out_of_bounds", "overlap", "door_swing", "window_blocked", "wall_clearance", "no_support"] as const;
+export const FIT_PROBLEM_CODES = ["out_of_bounds", "overlap", "door_swing", "window_blocked", "wall_clearance", "no_support", "egress_blocked"] as const;
 export type FitProblemCode = (typeof FIT_PROBLEM_CODES)[number];
 
 export interface FitProblem {
@@ -42,6 +43,8 @@ export interface FitResult {
 
 export interface FitRoom extends RoomSize {
   geometry: RoomGeometry;
+  /** Width of the clear path from each bed to the door, from the hall rules. */
+  egressPathMm?: number;
 }
 
 interface Solid {
@@ -60,7 +63,16 @@ const UNDER_BED_TYPES = new Set(["tote", "basket", "drawer_unit"]);
 /** Checks a candidate item against the room and every other item in the layout. */
 export function checkFit(room: FitRoom, layout: PlanLayout, candidate: LayoutItem): FitResult {
   const others = layout.items.filter((item) => item.key !== candidate.key);
-  return result(itemProblems(room, candidate, others, others));
+  const problems = itemProblems(room, candidate, others, others);
+  if (candidate.placement === "floor") {
+    const width = room.egressPathMm ?? EGRESS_PATH_MM;
+    const before = bedEgress(room, floorShapes(others), width);
+    const after = bedEgress(room, floorShapes([...others, candidate]), width);
+    after.forEach((bed, index) => {
+      if (before[index].reachable && !bed.reachable) problems.push(egressProblem(candidate.key, bed.bed, width));
+    });
+  }
+  return result(problems);
 }
 
 /** Checks every item of a layout and reports each colliding pair once. */
@@ -73,7 +85,29 @@ export function checkLayout(room: FitRoom, layout: PlanLayout): FitResult {
       layout.items.slice(0, index),
     ),
   );
-  return result(problems);
+  return result([...problems, ...layoutEgressProblems(room, layout.items)]);
+}
+
+const floorShapes = (items: readonly LayoutItem[]): Polygon[] => items.filter((item) => item.placement === "floor").map(footprint);
+
+function egressProblem(itemKey: string, bed: string, width: number): FitProblem {
+  return { code: "egress_blocked", itemKey, otherKey: bed, message: `${itemKey} blocks the ${width} mm path from the ${bed} to the door.` };
+}
+
+/**
+ * Each bed cut off from the door is charged to the latest floor item whose
+ * removal opens the path again, or to the room when no single item does.
+ */
+function layoutEgressProblems(room: FitRoom, items: readonly LayoutItem[]): FitProblem[] {
+  const width = room.egressPathMm ?? EGRESS_PATH_MM;
+  const floor = items.filter((item) => item.placement === "floor");
+  return bedEgress(room, floor.map(footprint), width).flatMap((bed, index) => {
+    if (bed.reachable) return [];
+    const culprit = [...floor].reverse().find((item) =>
+      bedEgress(room, floor.filter((other) => other.key !== item.key).map(footprint), width)[index].reachable,
+    );
+    return [egressProblem(culprit?.key ?? "room", bed.bed, width)];
+  });
 }
 
 function result(problems: FitProblem[]): FitResult {

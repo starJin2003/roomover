@@ -49,6 +49,18 @@ export const listingPhotoSchema = z.strictObject({
 
 export const listingPhotosSchema = z.array(listingPhotoSchema).min(1);
 
+/**
+ * The item's colors read from its photo, main color first. Multi part items
+ * list the accent next (a lamp's brass joints), and sets of pieces list one
+ * color per piece.
+ */
+export const listingColorSchema = z.strictObject({
+  name: z.string().min(1),
+  hex: z.string().regex(/^#[0-9A-F]{6}$/, "Expected an uppercase #RRGGBB color"),
+});
+
+export const listingColorsSchema = z.array(listingColorSchema).min(1).max(4);
+
 /** Attributes the hall rules check reads. Each field applies only to some categories. */
 export const listingSpecsSchema = z.strictObject({
   bulbType: z.enum(BULB_TYPES).optional(),
@@ -65,3 +77,4 @@ export type ConditionReport = z.infer<typeof conditionReportSchema>;
 export type RetailReference = z.infer<typeof retailReferenceSchema>;
 export type ListingPhoto = z.infer<typeof listingPhotoSchema>;
 export type ListingSpecs = z.infer<typeof listingSpecsSchema>;
+export type ListingColor = z.infer<typeof listingColorSchema>;

@@ -2,11 +2,13 @@ import type { listings } from "@/lib/db/schema";
 import type { HandoffMode, ListingCategory, ListingStatus, Placement } from "@/lib/domain/enums";
 import {
   conditionReportSchema,
+  listingColorsSchema,
   listingPhotosSchema,
   listingSpecsSchema,
   retailReferenceSchema,
   type ConditionGrade,
   type Defect,
+  type ListingColor,
   type ListingSpecs,
 } from "@/lib/domain/listing";
 import { CAMPUS, campusCalendar, campusWindow, PRESET_SLUGS, type CampusDay, type Window } from "./campus";
@@ -72,6 +74,8 @@ interface ListingSeed {
   title: string;
   description: string;
   color: string;
+  /** Sampled from the photo, main color first. */
+  colors: ListingColor[];
   material: string;
   styleTags: string[];
   /** Width, depth, and height in millimeters. */
@@ -99,6 +103,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Matte black metal dome shade on a counterweighted arm with brass joints. Reaches across a full desk and comes with a warm white LED bulb.",
     color: "black and brass",
+    colors: [{ name: "matte black", hex: "#1C1814" }, { name: "brass", hex: "#86713F" }],
     material: "metal",
     styleTags: ["industrial", "study", "warm light"],
     sizeMm: [420, 180, 480],
@@ -119,6 +124,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Low pile rug with a muted beige, taupe, and blue floral pattern on an ivory ground. Covers most of a double room floor and goes under both beds.",
     color: "ivory and taupe",
+    colors: [{ name: "ivory", hex: "#C4B9A7" }, { name: "taupe", hex: "#A59985" }],
     material: "low pile synthetic",
     styleTags: ["cozy", "traditional", "neutral"],
     sizeMm: [2440, 3050, 10],
@@ -138,6 +144,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Three open bookcases in a light beech finish that stand side by side or apart. Each has three adjustable shelves.",
     color: "light beech",
+    colors: [{ name: "light beech", hex: "#B07E38" }],
     material: "wood veneer",
     styleTags: ["minimal", "scandinavian", "study"],
     sizeMm: [400, 280, 1060],
@@ -157,6 +164,7 @@ const CATALOG: ListingSeed[] = [
     title: "Four drawer plastic storage tower",
     description: "Black frame with four frosted drawers that slide out fully. Fits beside a desk or in a wardrobe.",
     color: "black and frosted clear",
+    colors: [{ name: "black", hex: "#232027" }, { name: "frosted clear", hex: "#D2DAE2" }],
     material: "plastic",
     styleTags: ["practical", "compact"],
     sizeMm: [360, 300, 460],
@@ -182,6 +190,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Black mesh back, gray padded seat, fixed arms, and a five star base on casters. Height adjusts for a standard desk.",
     color: "black and gray",
+    colors: [{ name: "black mesh", hex: "#2C282A" }, { name: "gray seat", hex: "#4B494A" }],
     material: "mesh and vinyl",
     styleTags: ["study", "ergonomic"],
     sizeMm: [630, 600, 950],
@@ -205,6 +214,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Tall reading lamp with a tilting green dome shade and a white interior. Takes a 150 watt halogen bulb. Most residence halls prohibit halogen.",
     color: "green",
+    colors: [{ name: "green", hex: "#1B6E0B" }],
     material: "painted metal",
     styleTags: ["retro", "reading"],
     sizeMm: [300, 300, 1500],
@@ -229,6 +239,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Solid oak table with a dark green leather inset, two locking drawers, and clustered column legs. A family piece that does not fit the next apartment.",
     color: "honey oak and dark green",
+    colors: [{ name: "honey oak", hex: "#B47358" }, { name: "dark green leather", hex: "#4A4D45" }],
     material: "solid oak and leather",
     styleTags: ["vintage", "statement", "study"],
     sizeMm: [1220, 760, 760],
@@ -252,6 +263,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Bronze finish pole with a cream satin bell shade and a fabric rosette. Gives soft light for a reading corner.",
     color: "cream and bronze",
+    colors: [{ name: "cream shade", hex: "#B5A669" }, { name: "bronze", hex: "#462712" }],
     material: "metal and fabric",
     styleTags: ["cozy", "traditional", "warm light"],
     sizeMm: [400, 400, 1600],
@@ -276,6 +288,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Button tufted wingback in mustard yellow fabric on tapered light wood legs. The most comfortable seat in the apartment.",
     color: "mustard yellow",
+    colors: [{ name: "mustard yellow", hex: "#EC9902" }, { name: "oak legs", hex: "#D58632" }],
     material: "fabric and wood",
     styleTags: ["cozy", "mid century", "statement"],
     sizeMm: [760, 800, 920],
@@ -304,6 +317,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Full size comforter with a light blue side and a cream side printed in brown geometric blocks. Generous on a twin extra long bed.",
     color: "light blue and cream",
+    colors: [{ name: "light blue", hex: "#8190AA" }, { name: "cream print", hex: "#BEBBBD" }],
     material: "cotton",
     styleTags: ["cozy", "pattern"],
     sizeMm: [2030, 2290, 40],
@@ -322,6 +336,7 @@ const CATALOG: ListingSeed[] = [
     title: "Three standard bed pillows",
     description: "Medium firm pillows with zippered protectors under washable white cases.",
     color: "white",
+    colors: [{ name: "white", hex: "#C8C6C7" }],
     material: "polyester fill and cotton",
     styleTags: ["practical"],
     sizeMm: [510, 660, 150],
@@ -341,6 +356,7 @@ const CATALOG: ListingSeed[] = [
     title: "Five drawer desktop organizer, blue",
     description: "Bright blue frame with five clear drawers for chargers, stationery, and small things. Sits on a desk or shelf.",
     color: "blue and clear",
+    colors: [{ name: "blue", hex: "#3768AE" }, { name: "clear drawers", hex: "#929AAF" }],
     material: "plastic",
     styleTags: ["practical", "bright"],
     sizeMm: [280, 360, 450],
@@ -359,6 +375,7 @@ const CATALOG: ListingSeed[] = [
     title: "Black clamp lamp",
     description: "Small black metal reading lamp on a jointed arm. Clamps to a bed frame or desk edge and swivels toward the page.",
     color: "black",
+    colors: [{ name: "black", hex: "#444444" }],
     material: "metal",
     styleTags: ["study", "compact"],
     sizeMm: [150, 150, 450],
@@ -383,6 +400,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Handwoven baskets with leather wrapped handles, one in pink and teal stripes and one in green and orange. Hold laundry, blankets, or shoes.",
     color: "pink, teal, green, and orange",
+    colors: [{ name: "pink", hex: "#D85977" }, { name: "teal", hex: "#5B8897" }, { name: "green", hex: "#93AB81" }, { name: "orange", hex: "#DEAB70" }],
     material: "woven grass and leather",
     styleTags: ["colorful", "handmade", "cozy"],
     sizeMm: [420, 420, 330],
@@ -405,6 +423,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Matte white top with three shallow drawers on splayed solid oak legs. Wide enough for a laptop, a monitor, and notes.",
     color: "white and light oak",
+    colors: [{ name: "white", hex: "#C7C3C2" }, { name: "light oak legs", hex: "#B48A5E" }],
     material: "lacquered wood and oak",
     styleTags: ["minimal", "scandinavian", "study"],
     sizeMm: [1200, 500, 750],
@@ -423,6 +442,7 @@ const CATALOG: ListingSeed[] = [
     title: "Black wood chair with red velvet seat",
     description: "Curved black lacquered frame with a padded red velvet seat and brass nail trim. Works as a desk or guest chair.",
     color: "black and red",
+    colors: [{ name: "black", hex: "#181A1F" }, { name: "red velvet", hex: "#9C292B" }],
     material: "lacquered wood and velvet",
     styleTags: ["vintage", "statement"],
     sizeMm: [450, 500, 900],
@@ -449,6 +469,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Quiet single door fridge that fits under a desk or in a cabinet cubby. Holds drinks, snacks, and a week of leftovers.",
     color: "black",
+    colors: [{ name: "black", hex: "#2E2B1D" }],
     material: "steel and plastic",
     styleTags: ["practical", "compact"],
     sizeMm: [445, 470, 510],
@@ -468,6 +489,7 @@ const CATALOG: ListingSeed[] = [
     title: "Round jute and cotton rug, 4 feet",
     description: "Braided rug in undyed jute with a cream cotton ring and a short fringe. Warms up the floor between the bed and the desk.",
     color: "tan and cream",
+    colors: [{ name: "tan jute", hex: "#967553" }, { name: "cream stripe", hex: "#B9A999" }],
     material: "jute and cotton",
     styleTags: ["cozy", "earthy", "boho"],
     sizeMm: [1220, 1220, 10],
@@ -493,6 +515,7 @@ const CATALOG: ListingSeed[] = [
     description:
       "Faux leather bean bag with a sewn backrest, a loose cushion, and a small round pouf for your feet. Wipes clean.",
     color: "navy",
+    colors: [{ name: "navy", hex: "#1C283A" }],
     material: "faux leather",
     styleTags: ["cozy", "lounge"],
     sizeMm: [900, 900, 800],
@@ -511,6 +534,7 @@ const CATALOG: ListingSeed[] = [
     title: "Granny square crochet throw",
     description: "Handmade throw in navy, sky blue, sage, and butter yellow squares. Warm enough for late study nights.",
     color: "blue, green, and yellow",
+    colors: [{ name: "blue", hex: "#42678F" }, { name: "green", hex: "#425B42" }, { name: "yellow", hex: "#F1E2B3" }],
     material: "acrylic yarn",
     styleTags: ["cozy", "handmade", "colorful"],
     sizeMm: [1270, 1520, 15],
@@ -529,6 +553,7 @@ const CATALOG: ListingSeed[] = [
     title: "Brass table lamp with linen shade",
     description: "Antique brass urn base with a glass bead and a tapered linen shade. Soft bedside light from a warm LED bulb.",
     color: "brass and beige",
+    colors: [{ name: "brass", hex: "#8E6B45" }, { name: "beige linen", hex: "#EBE0CB" }],
     material: "metal, glass, and linen",
     styleTags: ["cozy", "traditional", "warm light"],
     sizeMm: [300, 300, 520],
@@ -548,6 +573,7 @@ const CATALOG: ListingSeed[] = [
     title: "Flat weave kilim rug, red and cream",
     description: "Thin flat weave rug with red, rose, and cream stripes and chevrons. Slides under a bed or runs beside it.",
     color: "red and cream",
+    colors: [{ name: "red", hex: "#682625" }, { name: "cream", hex: "#C3B393" }],
     material: "wool flat weave",
     styleTags: ["pattern", "vintage", "boho"],
     sizeMm: [1220, 2130, 5],
@@ -573,6 +599,7 @@ const CATALOG: ListingSeed[] = [
     title: "Three round felt poufs",
     description: "Charcoal, red, and orange felt poufs that work as extra seats for friends or as footrests.",
     color: "charcoal, red, and orange",
+    colors: [{ name: "charcoal", hex: "#585553" }, { name: "red", hex: "#A9514A" }, { name: "orange", hex: "#BA6D4A" }],
     material: "wool felt",
     styleTags: ["colorful", "lounge"],
     sizeMm: [500, 500, 420],
@@ -592,6 +619,7 @@ const CATALOG: ListingSeed[] = [
     title: "Orange storage tote with attached lid",
     description: "Stackable tote with interlocking lid flaps. Slides under a raised bed and doubles as a moving box at the end of the year.",
     color: "orange",
+    colors: [{ name: "orange", hex: "#C27116" }],
     material: "plastic",
     styleTags: ["practical"],
     sizeMm: [690, 450, 330],
@@ -618,6 +646,7 @@ function toRow(item: ListingSeed, handoff: HandoffPlan): SeedListing {
     title: item.title,
     description: item.description,
     color: item.color,
+    colors: listingColorsSchema.parse(item.colors),
     material: item.material,
     styleTags: item.styleTags,
     widthMm: item.sizeMm[0],

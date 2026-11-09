@@ -1,0 +1,20 @@
+import { z } from "zod";
+
+/**
+ * Structured facts behind an activity line, kept for the full log and the
+ * Under the hood view. Each field applies only to some tools.
+ */
+export const agentEventDetailSchema = z.strictObject({
+  listingId: z.uuid().optional(),
+  itemKey: z.string().min(1).optional(),
+  priceCents: z.number().int().nonnegative().optional(),
+  /** What the plan costs after this step. */
+  totalCents: z.number().int().nonnegative().optional(),
+  /** The agent's own words from the tool call, such as why it chose an item. */
+  note: z.string().max(400).optional(),
+  problems: z.array(z.string().min(1)).max(12).optional(),
+  /** How many results a search returned. */
+  count: z.number().int().nonnegative().optional(),
+});
+
+export type AgentEventDetail = z.infer<typeof agentEventDetailSchema>;

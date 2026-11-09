@@ -44,3 +44,16 @@ export function MinusIcon(props: IconProps) {
 export function PlusIcon(props: IconProps) {
   return <Icon {...props}><path d="M5 10h10M10 5v10" /></Icon>;
 }
+
+export function RotateIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M15.5 9.5a5.5 5.5 0 1 1-1.6-3.9" />
+      <path d="M15.5 3.5v3h-3" />
+    </Icon>
+  );
+}
+
+export function CloseIcon(props: IconProps) {
+  return <Icon {...props}><path d="M5.5 5.5l9 9M14.5 5.5l-9 9" /></Icon>;
+}

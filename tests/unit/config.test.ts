@@ -11,6 +11,8 @@ const validEnv = {
   SESSION_SECRET: "s".repeat(32),
   APP_URL: "http://localhost:3000",
   RENDER_GIT_COMMIT: "28c438e0a1b2c3d4e5f60718293a4b5c6d7e8f90",
+  ROOMOVER_CLAUDE_FIXTURE: "tests/fixtures/buyer-agent.json",
+  ROOMOVER_CLAUDE_RECORD: "recordings/buyer-agent.json",
 } satisfies Record<ConfigKey, string>;
 
 const allKeys = Object.keys(validEnv) as ConfigKey[];

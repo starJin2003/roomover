@@ -1,0 +1,530 @@
+{
+ "version": 1,
+ "runs": {
+  "plan": [
+   {
+    "type": "message",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_01LuXaaEx2rry4TcUc9n125q",
+      "name": "get_room_preset",
+      "input": {},
+      "caller": {
+       "type": "direct"
+      }
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_013RHsMYksnBu5Hfkok6F6jq",
+      "name": "get_hall_rules",
+      "input": {},
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgr3xDMSvuDW7YjTSPkKm",
+    "role": "assistant",
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 4,
+     "cache_creation_input_tokens": 3370,
+     "cache_read_input_tokens": 0,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 3370,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 4,
+       "output_tokens": 56,
+       "cache_read_input_tokens": 0,
+       "cache_creation_input_tokens": 3370,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 3370,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 56,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   },
+   {
+    "type": "message",
+    "content": [
+     {
+      "type": "text",
+      "text": "Desks, chairs provided. Need lamp, rug, bedding maybe."
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_01UXTEKt3m3FBrNzhVbtR4jH",
+      "name": "search_listings",
+      "input": {
+       "category": "lamp",
+       "query": "desk lamp LED warm"
+      },
+      "caller": {
+       "type": "direct"
+      }
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_01EjorNdiSRSuEdhKgH6WYJn",
+      "name": "search_listings",
+      "input": {
+       "category": "rug"
+      },
+      "caller": {
+       "type": "direct"
+      }
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_01NTeHGffk67VqAVdLYfBMyF",
+      "name": "search_listings",
+      "input": {
+       "category": "bed_accessory"
+      },
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgr3xL7EpxpYFX3waZ9Fi",
+    "role": "assistant",
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 2,
+     "cache_creation_input_tokens": 1807,
+     "cache_read_input_tokens": 3370,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 1807,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 2,
+       "output_tokens": 202,
+       "cache_read_input_tokens": 3370,
+       "cache_creation_input_tokens": 1807,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 1807,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 202,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   },
+   {
+    "type": "message",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "CAQS5wYKEAgTGAI4AUIIdGhpbmtpbmcSDD0Hguf1a5q44ZS8cRoM88A2nQtuLopz2bGVIjCXw75ce8VNmm4uVuvNJQzysMkmkMo2ESM723TO8a7jOOAIADMkDerhb9jFAXFAGLAqhAax67frQ8ctBzDrytlSB8jJOeeUSbkA0NymzngbqP6FWrGvsnmV5+hQ8eLtuSp0M1rIXVtYRdH4FYNU5Ls7prOG/8qCToQWK5akHjGqRRk6cxzx2IL2Z+tIo8uf9rPvpQRIs2yaEC5oJ3UTujFoVbq8aABedhH+EftTjO0LYEth/ypUrCfwZoWQQdkPus95KReOKLV4ntR3+9TC17BIog0s5YXSTW4qiyTTq3N0YnMPRSk5FSF8/Ri7ODWa6HuzC2Z5yYwLFQWCYFczbG+4gs/S9SkxDDl6PCqTRxxF/KOv/cY9ojHP+XTJs2D/uhs/ixVJOdu/+34glVhkvjt5nJKlmewwMFxoK+HITvAfd3X3aGAINhsK8fTnwSBGO19Lch0RsTNTg9T7KiLofpahdZV1fgqJJzL1D7D8EJ8KWukiQUI8gCjheZzbcyTxy8Fs4+rVjmmeMhBMqdDHUjgYYxh9Q9PRryi1s/NX3no64y9Y6PBrzx99nRNn9mrcFz5qVHp/Hfg9O8iSjjj+bo5SmfOV+pvzm00bqr2yrrnzZuF2eAPVXA8r8QroSWKTgCE+4mMoceg2C9N1wje0pp8FvQwOlhNixWoPRo4y9LxkvxeOK94XVU/Mj5zrk10QsyOu5i0Yun/bazYgP0xE+8ykxoi1hHglmruTIPsPDGjYPaPdCY04jjT0j668DBOwjen4+vE6ZBUNSDHGp1Wk0E9knyu0rpSkIHxVx0gYJ1G8ztiNl0xBUPoMwvY1ahqY/CAhFWRs0DYRl9gYmgnQ0SEOxvpxiZf0pMOrjyDmvPFlNSV/di5VoRKmL2R6F4xVePGnz9KJyawzgmZFnrA8TDxhx/KJAZQBWAwc6wrvUKZItJZ9DxFqtHp4fyJddxifuhykCM+AC0Qh+y7cTDq48NNm8kHVowGpwbCRp/S9yY0ZJPSw9JE/TBW6bgtRZq7FCZFKIYm8t/zh5gaXSsDeoIKnLkQbyqjjr4dYyPODJ6k40ehNtnydIxlBJ9jEePv7t0FxfKhDfKMCGAE="
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_01QB38PiAGGqmePnoZjNGXzt",
+      "name": "place_item",
+      "input": {
+       "listingId": "b631f41a-cc7e-513d-a16e-5f186abb3cf2",
+       "xMm": 534,
+       "yMm": 300,
+       "rotationDeg": 0,
+       "reason": "Warm-light arm lamp for late study at the desk."
+      },
+      "caller": {
+       "type": "direct"
+      }
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_01LnejLRo3mcVei4BYn98x4i",
+      "name": "place_item",
+      "input": {
+       "listingId": "413d79fd-019b-5f8f-9f05-b1d41e517882",
+       "xMm": 1800,
+       "yMm": 2600,
+       "rotationDeg": 0,
+       "reason": "Cozy rug in the open floor between the beds."
+      },
+      "caller": {
+       "type": "direct"
+      }
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_01Si59S1oWipHrpJ7ny8k4i7",
+      "name": "place_item",
+      "input": {
+       "listingId": "6d918a1a-2358-55af-b147-bd9db0052c1f",
+       "xMm": 457,
+       "yMm": 2800,
+       "rotationDeg": 0,
+       "reason": "Handmade throw for a cozy bed."
+      },
+      "caller": {
+       "type": "direct"
+      }
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_01XzbMdFPvEUfv3jwJ3bVshF",
+      "name": "place_item",
+      "input": {
+       "listingId": "11a43183-33cd-5be2-a626-0ce48d4d2dd9",
+       "xMm": 1300,
+       "yMm": 2000,
+       "rotationDeg": 0,
+       "reason": "Warm floor lamp for soft evening light."
+      },
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgr3xUyJ7kCmb658c5Ldf",
+    "role": "assistant",
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 2,
+     "cache_creation_input_tokens": 2078,
+     "cache_read_input_tokens": 5177,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 2078,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 2,
+       "output_tokens": 852,
+       "cache_read_input_tokens": 5177,
+       "cache_creation_input_tokens": 2078,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 2078,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 852,
+     "output_tokens_details": {
+      "thinking_tokens": 124
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   },
+   {
+    "type": "message",
+    "content": [
+     {
+      "type": "text",
+      "text": "{\"summary\": \"I chose four used items for $74 of your $150. They are a black arm desk lamp with warm light for late study, a cream floor lamp, a round jute rug, and a handmade granny-square throw for the bed. Everything follows the hall rules, and the bulbs are not halogen. I left the rest of the budget unspent.\"}"
+     }
+    ],
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgr3xxkt4vUw5hUgcoe3Y",
+    "role": "assistant",
+    "container": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 2,
+     "cache_creation_input_tokens": 1302,
+     "cache_read_input_tokens": 7255,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 1302,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 2,
+       "output_tokens": 111,
+       "cache_read_input_tokens": 7255,
+       "cache_creation_input_tokens": 1302,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 1302,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 111,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   }
+  ],
+  "edit": [
+   {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgr3ynHNNf3WXwRRRS8Qm",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_01KiYio774TvKv7mzKBotngC",
+      "name": "get_room_preset",
+      "input": {},
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 4,
+     "cache_creation_input_tokens": 367,
+     "cache_read_input_tokens": 3238,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 367,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 4,
+       "output_tokens": 29,
+       "cache_read_input_tokens": 3238,
+       "cache_creation_input_tokens": 367,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 367,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 29,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   },
+   {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgr3ytFo1M8qXALP2xCNQ",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "CAQSwAoKEAgTGAI4AUIIdGhpbmtpbmcSDHUDLq+XgtSJEDYpHBoMeMa5DVehBfJHY0WeIjCTp0zPNU09G7eSY5EytYUIbsAzuONuJV/osJmGBo3il9HiI97gwS04KaKU5pIg0Fkq3QkSfNS2FLbxlIXx+2ioBDPRfJXio7/dQJ7tQHRxLT2Ax6NdkG58eSi0aIm/PKKfUua6x1uYvZbqu4/JWGv/BZeVMh1H0PnjQi1tISn5d0B0xEWDeYJIkXQjB9dsbB8xeXrwG9cs0WQbrYVD3N7AuUPdQiH6AcST7tg4RcIlzi7hQ0+AvjqEBR9DgAsD8ys8Hj9dHk84Xy7g6mATYhbgdIs25E7/y8pfDspoG8xZrF9C4omDqKZEG91lPVKQGkwdmQRlD9KGXd8O/6a9AO1aErQhiPbioSoZ5nxvIQmzIE/8wga3gvyQ4s5ZqBXIdEpLl2m6G0f1IBxTSZnb5iiZLy0KE7MRC2KWw3cXgDFASwDJw3CDXBA8NCxTqZvD7gYoJQD9txrtdcH9VUWKByKuygxYrYQU5+lBvoeZvV7e3SqnHsZUJ9iXLkDERGPcggpq6paHVcD6eLduE64L9kqBvjuTXlfXc0JzCCmKCIbUcbGhIIhAHUJsKXgI6uLQknZktYuw8r/QGXvSUhYvf8WKIrCRcu7fP6bKXRoWPMIvquHX5QpHPTDv2DvWuX2fCz+kES5XQZJ2xGXaT+quaU5OflZwBblV9NuMmDVrLgDh68qhApzPoHuGAk1yT/8jIkZ1sANFwZb3Jgr1WO6TN4y0IsuKSANjTVyIZgUi75hybmugOD3lGxsEGaZZI5jaUeGl9yMaBR25/IiDbNG044jjNO89AZ39+YAg68j3VYj4C7/OShMwTYdTQDCS5ZRTyKhOhxWgicP1D7OTZjX8RwxZN5SMCej0P6CRU87aHqIhI59IZggwGKMySdXQsJBfomqzv0cD1FmkTAyBqmlb2b6IFOVYBqbKW2gTpBr5Gq0SVc2sQKgIm8bYGdY4h//lf/Uvtk0YiKcGh6IaggsjWwUEQuxS9n699hsIhAl071lDFMjYn7MLU+GWp/t1xSixVnTFdnphs7a8WPH7OslCz/1uuRHS8l78cPDjWRqEsTLyqjPZSNwYqG2GaaRmP9bpVwEAnBUgeExLXsFJTpkZKTVgcqhVmDmEGCaEpWZtVa8io+enU5/mx7joG39lULadUYyDRFHbjqm/K9gck4urvaLxN1MkchcZ85RGHepKkoi4MDFXABc5VrsPEdqQk4tBr+YDFnDGyd0f/czflYlv7dP1mg/DCV+BRTxGgpFj5VkoDJq5J+AmbGgfRhNvTVtJQkli3nRxEuQjCbbg27DOOTUESi6YnxeCrVLIE+leqqAA5twdtz7w61/f8nPwXlpZ/fujhU3SuXz0DS+tAG2ACgZf0lD+V3Dp+yvubuDLrUfuA0bRIK5uuvObBuxx87+sMF/FDKzp1pcOAo0V58YBB7J0+A/BJSxKVxL9L3h83s4Ia47VtDggNpWYGoPPcqI6/463WwXFtM0dXPR/U6K9PNKd9ONJLzAFedqjGkWZXpQe1TN3xKS8i2XJ+lhCWq3tKNYUb+Tv0u77g5rQMzA659O93GjzlbRfyc+cAzwGEnlz5siy5c24pBcvR2htcJa/Wv9/JvYfGyu8oXWqdGTFOyM+9IKP39y2E+kNLwg4IhhU5cNEyu29fgl0B7RfRoRpJEkenxKanIKQnNCii2mAcY4qlOlM0YitbCvUWm3ub1kTrtsPxg0KhUMYuY30magOqxYYAQ=="
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_014SiAX6Axfa9eZUD8BEdS3Q",
+      "name": "check_fit",
+      "input": {
+       "listingId": "11a43183-33cd-5be2-a626-0ce48d4d2dd9",
+       "xMm": 1200,
+       "yMm": 1000,
+       "rotationDeg": 0
+      },
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 2,
+     "cache_creation_input_tokens": 2041,
+     "cache_read_input_tokens": 3605,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 2041,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 2,
+       "output_tokens": 485,
+       "cache_read_input_tokens": 3605,
+       "cache_creation_input_tokens": 2041,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 2041,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 485,
+     "output_tokens_details": {
+      "thinking_tokens": 334
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   },
+   {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgr3zEUDjmtyt4Y7Qyz8A",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "CAQShwYKEAgTGAI4AUIIdGhpbmtpbmcSDMEwAMen1M6N2t8epxoM+K0s0hWpnOmcGsEbIjAg7BYu2mxBrwYxHnR7+j2A7GYAg5W8rNjfEvxVTodFbuA7SaL+U9y/iZ7sJuLE6CkqpAWz5rESSvExeGh5JOjPyok5MUdNIEX4r/l/qdjpYVD3/gXcpkcL+Yda6fPzHXcH6atDogX7Kyorrbq2NhxFAIjwfpltTqWuyZQyQ+76jDUeRj3y7ir50+6AG4WwIAipARQFqsHBFrGkpySa7AC5SQ6QFq0MAqXa7Hf7fJQu7L93yIq8JlPsSJGurlYZnuLQbYk+bngn1uqLYc+ExnlV2RdskbJHlMQmj9rqYbhG36m4Q8kJBeq9b5O2cV1DkdSTGnIRQb0tCy3HWE7XouZTKHjLQtI4O5YI1ggk/EaLCCUn50ZBAv/4+ITSjwa0SZ5IlDpQbkTzjOmD2mDx3RWlwTZB5BaRhaVb6EfNU2xVmfwaGTR1wg6x5pCgrkYj0R3jMcInDwI50S9Hl1wiw9r0GklpYYCuzPVHlh7evNnXDAt6TQ+C4b9/K7MpeMQET0D5tZnxZk/Skgvm4dcdFBtAqcmySpS5VpxUPyLpEFdp+vSiBdTIBKeCJCwFvbsLiA7vPpl6uHA6OUGjesoRc1pSmgGoSwKLRgUpaxIvOYQn7ubrurYeeGf4hOQKlrbPiwiq70HVw0v0DiSTULb2hYqbp57j+Y9UWT5POnD0ErEr4vURV4SNfL3OYs4vLC+bPM2R7sBWPpPh8aWsCoa/QHbGH+VuGqyDrSns45S+cs00rVx1Gh+CiBNJ0hssjw+daBB39Lda7MsZJNfHU2V2O09hPi9b4oV1VmjoFfnQ9o9PDnClpVplbX6llSlZRfx3dNGAO0+RZNthdl2g6dYJLpkYeD+mdCb3n6pljO7GKA/qJwTg/n+nJmXv5q3q8S96ilRrCUr7vS5cKsSTYpEOG9yKteyhdmVGC3o/+0fGdCHJSP1aScE6PdRdO++vqDucTlowseBfA8FiGAE="
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_01EUaVmXgiMqRePNWgHjp7AM",
+      "name": "place_item",
+      "input": {
+       "listingId": "11a43183-33cd-5be2-a626-0ce48d4d2dd9",
+       "xMm": 1200,
+       "yMm": 1000,
+       "rotationDeg": 0,
+       "reason": "Sits just south of the north windows, between the two west windows, without blocking the window floor or radiator."
+      },
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 2,
+     "cache_creation_input_tokens": 541,
+     "cache_read_input_tokens": 5646,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 541,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 2,
+       "output_tokens": 245,
+       "cache_read_input_tokens": 5646,
+       "cache_creation_input_tokens": 541,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 541,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 245,
+     "output_tokens_details": {
+      "thinking_tokens": 43
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   },
+   {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgr3zSrcPwDegyVRVeDNu",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "text",
+      "text": "{\"summary\": \"I moved the floor lamp to the north wall, just south of the windows and between the two west windows. The floor right in front of the windows has to stay clear of tall items, and the radiator needs space too, so the lamp can't sit directly against the glass. The move cost nothing.\"}"
+     }
+    ],
+    "container": null,
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 2,
+     "cache_creation_input_tokens": 335,
+     "cache_read_input_tokens": 6187,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 335,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 2,
+       "output_tokens": 93,
+       "cache_read_input_tokens": 6187,
+       "cache_creation_input_tokens": 335,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 335,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 93,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   }
+  ]
+ }
+}

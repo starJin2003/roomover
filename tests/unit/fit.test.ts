@@ -82,7 +82,8 @@ describe("checkFit overlap", () => {
 
 describe("checkFit door swing", () => {
   it("keeps the quarter disc clear and allows the corner outside the arc", () => {
-    expect(codes(item({ xMm: 2300, yMm: 3700 }))).toEqual(["door_swing"]);
+    // Standing in the swing also closes the floor a person needs to reach the door.
+    expect(codes(item({ xMm: 2300, yMm: 3700 }))).toEqual(["door_swing", "egress_blocked"]);
     expect(codes(item({ xMm: 1500, yMm: 3700 }))).toEqual([]);
     expect(codes(item({ widthMm: 200, depthMm: 200, xMm: 1950, yMm: 3250 }))).toEqual([]);
   });
@@ -109,8 +110,8 @@ describe("checkFit door swing", () => {
       geometry: { ...ROOM.geometry, doors: [{ ...ROOM.geometry.doors[0], swing: "out" }] },
     };
     const fit = (candidate: LayoutItem) => checkFit(room, { items: [] }, candidate).problems.map((problem) => problem.code);
-    expect(fit(item({ xMm: 2250, yMm: 3790 }))).toEqual(["door_swing"]);
-    expect(fit(item({ xMm: 2300, yMm: 3500 }))).toEqual([]);
+    expect(fit(item({ xMm: 2250, yMm: 3790 }))).toEqual(["door_swing", "egress_blocked"]);
+    expect(fit(item({ xMm: 2600, yMm: 3500 }))).toEqual([]);
   });
 });
 

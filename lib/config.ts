@@ -12,6 +12,10 @@ const configSchema = z.object({
   APP_URL: z.url({ protocol: /^https?$/ }),
   // Render sets this on every build and deploy. It stays unset locally.
   RENDER_GIT_COMMIT: z.string().regex(/^[0-9a-f]{7,40}$/, "Expected a git commit SHA"),
+  // Tests only. The buyer agent replays this recorded Claude conversation and never calls the API.
+  ROOMOVER_CLAUDE_FIXTURE: z.string().regex(/\.json$/, "Expected a path to a .json file"),
+  // Local development only. Live buyer agent runs write their Claude replies to this file.
+  ROOMOVER_CLAUDE_RECORD: z.string().regex(/\.json$/, "Expected a path to a .json file"),
 });
 
 export type Config = z.infer<typeof configSchema>;

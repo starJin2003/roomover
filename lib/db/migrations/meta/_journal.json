@@ -8,6 +8,13 @@
       "when": 1794144502214,
       "tag": "0000_initial_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794165659428,
+      "tag": "0001_agent_runs_and_listing_colors",
+      "breakpoints": true
     }
   ]
 }

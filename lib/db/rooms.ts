@@ -1,5 +1,5 @@
 import { asc, eq, inArray } from "drizzle-orm";
-import type { ConditionGrade } from "@/lib/domain/listing";
+import { listingColorsSchema, type ConditionGrade, type ListingColor } from "@/lib/domain/listing";
 import { roomGeometrySchema, type RoomGeometry } from "@/lib/domain/room";
 import type { Database } from "./client";
 import { halls, listings, roomPresets, users } from "./schema";
@@ -36,6 +36,7 @@ export interface RoomListingRow {
   id: string;
   title: string;
   color: string;
+  colors: ListingColor[];
   conditionGrade: ConditionGrade;
   priceCents: number;
   sellerName: string;
@@ -49,6 +50,7 @@ export async function loadRoomListings(db: Database, ids: readonly string[]): Pr
       id: listings.id,
       title: listings.title,
       color: listings.color,
+      colors: listings.colors,
       conditionReport: listings.conditionReport,
       priceCents: listings.priceCents,
       sellerName: users.displayName,
@@ -56,5 +58,9 @@ export async function loadRoomListings(db: Database, ids: readonly string[]): Pr
     .from(listings)
     .innerJoin(users, eq(listings.sellerId, users.id))
     .where(inArray(listings.id, [...ids]));
-  return rows.map(({ conditionReport, ...row }) => ({ ...row, conditionGrade: conditionReport.grade }));
+  return rows.map(({ conditionReport, colors, ...row }) => ({
+    ...row,
+    colors: colors.length === 0 ? [] : listingColorsSchema.parse(colors),
+    conditionGrade: conditionReport.grade,
+  }));
 }

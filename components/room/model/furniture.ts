@@ -1,6 +1,6 @@
 import { PIECE_GAP_MM, type FurnitureType } from "@/lib/domain/furniture";
 import { box, cylinder, lathe, look, rod, slab, sphere, type Part } from "./parts";
-import type { ItemTones, Tone } from "./tones";
+import type { ItemTones, Paint } from "./tones";
 
 /**
  * Marketplace furniture, built at the listing's true size. Every builder
@@ -23,9 +23,9 @@ export interface BedHost {
 
 type Builder = (size: Size, tones: ItemTones, piece: number) => Part[];
 
-const toy = (tone: Tone) => look(tone, "toy");
-const fabric = (tone: Tone) => look(tone, "fabric");
-const second = (tones: ItemTones, fallback: Tone): Tone => tones[1] ?? fallback;
+const toy = (tone: Paint) => look(tone, "toy");
+const fabric = (tone: Paint) => look(tone, "fabric");
+const second = (tones: ItemTones, fallback: Paint): Paint => tones[1] ?? fallback;
 
 const desk: Builder = ({ width: w, depth: d, height: h }, tones) => {
   const top = 32;
@@ -69,7 +69,7 @@ const deskChair: Builder = ({ width: w, depth: d, height: h }, tones) => {
   return parts;
 };
 
-function plainChair({ width: w, depth: d, height: h }: Size, frameTone: Tone, seatTone: Tone, seatFinish: "toy" | "fabric" | "muted", frameFinish: "toy" | "muted"): Part[] {
+function plainChair({ width: w, depth: d, height: h }: Size, frameTone: Paint, seatTone: Paint, seatFinish: "toy" | "fabric" | "muted", frameFinish: "toy" | "muted"): Part[] {
   const seat = Math.min(470, h * 0.52);
   const leg = 34;
   const frame = look(frameTone, frameFinish);
@@ -127,7 +127,7 @@ const pouf: Builder = ({ width: w, height: h }, tones, piece) => [
   cylinder(w / 2, h, [0, h / 2, 0], fabric(tones[piece % tones.length]), { radiusTop: (w / 2) * 0.95, bevel: Math.min(90, h * 0.3) }),
 ];
 
-const BOOK_TONES: readonly Tone[] = ["paper", "sand", "graphite", "stone", "linen"];
+const BOOK_TONES: readonly Paint[] = ["paper", "sand", "graphite", "stone", "linen"];
 
 const bookcase: Builder = ({ width: w, depth: d, height: h }, tones, piece) => {
   const wood = toy(tones[0]);

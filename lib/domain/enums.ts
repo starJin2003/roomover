@@ -166,3 +166,14 @@ export type DisputeStatus = (typeof DISPUTE_STATUSES)[number];
 /** The platform appears in the activity panel when it runs settlement and payouts. */
 export const AGENT_NAMES = ["buyer", "seller", "verifier", "platform"] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];
+
+/** A buyer agent run either furnishes a plan from scratch or edits it on request. */
+export const AGENT_RUN_KINDS = ["plan", "edit"] as const;
+export type AgentRunKind = (typeof AGENT_RUN_KINDS)[number];
+
+export const AGENT_RUN_STATUSES = ["running", "succeeded", "failed"] as const;
+export type AgentRunStatus = (typeof AGENT_RUN_STATUSES)[number];
+
+/** `fixture` runs replay a recorded Claude conversation and never reach the API. */
+export const CLAUDE_MODES = ["live", "fixture"] as const;
+export type ClaudeMode = (typeof CLAUDE_MODES)[number];
