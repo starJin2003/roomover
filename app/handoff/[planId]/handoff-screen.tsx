@@ -7,12 +7,13 @@ import { PRIMARY_LINK } from "@/components/furnish/paid-panel";
 import { CurrentItem } from "@/components/handoff/current-item";
 import { ItemActions } from "@/components/handoff/item-actions";
 import { ItemChecklist, type HandoffChecklistItem } from "@/components/handoff/item-checklist";
-import { preparePhoto } from "@/components/handoff/prepare-photo";
+import { preparePhoto } from "@/components/photos/prepare-photo";
 import { useHandoffStream } from "@/components/handoff/use-handoff-stream";
 import { SellersPaid, type SellerPayout } from "@/components/payouts/sellers-paid";
 import { PayPalCard, type PayPalReference } from "@/components/paypal/paypal-card";
 import { UnderTheHoodProvider, UnderTheHoodSwitch } from "@/components/paypal/under-the-hood";
 import { RoomStage } from "@/components/room/room-stage";
+import { SHELL_COLUMNS } from "@/components/site/screen-frame";
 import type { RoomItemData, RoomPresetData } from "@/components/room/types";
 import { ScheduleSection } from "@/components/schedule/schedule-section";
 import { Button } from "@/components/ui/button";
@@ -214,33 +215,86 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
   const mark = current !== null && current.itemKey !== null && view.phase === "checking" ? { key: current.itemKey, label: `Next, ${current.noun} from ${current.sellerFirstName}` } : null;
   const working = settling || view.phase === "settling" || (allDecided && view.phase === "checking");
 
+  const checkingItem = view.phase === "checking" && !allDecided ? current : null;
+  const errorLine =
+    error === null ? null : (
+      <p role="alert" className="text-sm font-medium text-brick">
+        {error}
+      </p>
+    );
+  const actions = (item: HandoffItemView) => (
+    <ItemActions
+      item={item}
+      busy={busyId !== null}
+      onPhoto={(file) => void onPhoto(item, file)}
+      onSample={(kind) => onSample(item, kind)}
+      onRetry={() => onRetry(item)}
+      onChoose={(choice) => onChoose(item, choice)}
+    />
+  );
+  const footer =
+    checkingItem !== null ? (
+      <div data-item-actions="desktop" className="flex flex-col gap-3">
+        {errorLine}
+        {actions(checkingItem)}
+      </div>
+    ) : working && view.phase !== "paid" ? (
+      order.settlementError !== null && !settling ? (
+        <>
+          <p role="alert" className="text-sm font-medium text-brick">
+            {error ?? order.settlementError}
+          </p>
+          <Button className="w-full" onClick={() => void settle()}>
+            Try again
+          </Button>
+        </>
+      ) : (
+        <p role="status" className="flex min-h-13 items-center gap-2 text-sm text-flint">
+          <Spinner className="size-3.5" />
+          PayPal is settling {items.length === 1 ? "1 item" : `${items.length} items`}
+        </p>
+      )
+    ) : view.phase === "paid" ? (
+      <Link href="/" className={`${PRIMARY_LINK} w-full`}>
+        Done
+      </Link>
+    ) : view.phase === "released" ? (
+      <Link href="/furnish" className={`${PRIMARY_LINK} w-full`}>
+        Plan a room again
+      </Link>
+    ) : undefined;
+  const scheduleWords = `When each seller moves out, when ${buyerFirstName} moves in, and the handoff slot the agents agreed on`;
+
   return (
-    <main className="mx-auto grid w-full max-w-[1360px] gap-6 px-4 pb-16 sm:px-10 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-start lg:gap-12">
-      <section aria-label={`${view.roomLabel}, the room`} className="flex min-w-0 flex-col gap-10 max-lg:hidden">
-        <RoomStage label={view.roomLabel} preset={preset} items={roomItems} showList={false} mark={mark} />
-        <ScheduleSection description={`When each seller moves out, when ${buyerFirstName} moves in, and the handoff slot the agents agreed on`} />
+    <main className={SHELL_COLUMNS}>
+      <section aria-label={`${view.roomLabel}, the room`} className="flex min-w-0 flex-col gap-4 max-lg:hidden lg:h-full lg:min-h-0">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <RoomStage label={view.roomLabel} preset={preset} items={roomItems} showList={false} mark={mark} fill />
+        </div>
+        <ScheduleSection description={scheduleWords} collapsible />
       </section>
 
       <UnderTheHoodProvider>
         <Panel
           id="handoff-panel"
           heading="h1"
+          shell
           title={view.phase === "paid" ? "Handoff done" : view.phase === "released" ? "Handoff closed" : "Handoff"}
           subtitle={subtitle}
           action={<UnderTheHoodSwitch />}
-          className="lg:sticky lg:top-6"
+          top={<StepStrip steps={BUYER_STEPS} current={step} label="Handoff progress" />}
+          footer={footer}
+          footerClassName={checkingItem !== null ? "max-lg:hidden" : ""}
         >
-          <StepStrip steps={BUYER_STEPS} current={step} label="Handoff progress" />
-
-          {view.phase === "checking" && !allDecided && current !== null && (
+          {checkingItem !== null && (
             <>
               <p className="text-sm text-flint">Take a photo of each item. Roomover compares it with the seller&apos;s photos.</p>
               <CurrentItem
-                item={current}
+                item={checkingItem}
                 index={currentIndex}
                 total={items.length}
-                preview={preview?.id === current.orderItemId ? preview.src : null}
-                onRetake={busyId === null && (current.state === "decide" || current.state === "failed") ? () => retakeInput.current?.click() : undefined}
+                preview={preview?.id === checkingItem.orderItemId ? preview.src : null}
+                onRetake={busyId === null && (checkingItem.state === "decide" || checkingItem.state === "failed") ? () => retakeInput.current?.click() : undefined}
               />
               <input
                 ref={retakeInput}
@@ -253,25 +307,14 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   event.target.value = "";
-                  if (file !== undefined) void onPhoto(current, file);
+                  if (file !== undefined) void onPhoto(checkingItem, file);
                 }}
               />
-              <div className="flex flex-col gap-3">
-                {error !== null && (
-                  <p role="alert" className="text-sm font-medium text-brick">
-                    {error}
-                  </p>
-                )}
-                <ItemActions
-                  item={current}
-                  busy={busyId !== null}
-                  onPhoto={(file) => void onPhoto(current, file)}
-                  onSample={(kind) => onSample(current, kind)}
-                  onRetry={() => onRetry(current)}
-                  onChoose={(choice) => onChoose(current, choice)}
-                />
+              <div data-item-actions="mobile" className="flex flex-col gap-3 lg:hidden">
+                {errorLine}
+                {actions(checkingItem)}
               </div>
-              <ItemChecklist items={checklist} currentId={current.orderItemId} onSelect={busyId === null ? setSelectedId : undefined} />
+              <ItemChecklist items={checklist} currentId={checkingItem.orderItemId} onSelect={busyId === null ? setSelectedId : undefined} />
               {order.paymentMode === "authorize_then_capture" ? (
                 <PayPalCard moment="held" title={`PayPal is holding ${total}`} detail="Until you finish checking every item" references={heldRefs} />
               ) : (
@@ -286,21 +329,6 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
               <ItemChecklist items={checklist} currentId={null} />
               <ActivityFeed events={view.events} />
               {anyCaptured && <PayPalCard moment="captured" title={capturedCard.title} detail={capturedCard.detail} references={settledRefs} />}
-              {order.settlementError !== null && !settling ? (
-                <div className="flex flex-col gap-3">
-                  <p role="alert" className="text-sm font-medium text-brick">
-                    {error ?? order.settlementError}
-                  </p>
-                  <Button className="w-full" onClick={() => void settle()}>
-                    Try again
-                  </Button>
-                </div>
-              ) : (
-                <p role="status" className="flex items-center gap-2 text-sm text-flint">
-                  <Spinner className="size-3.5" />
-                  PayPal is settling {items.length === 1 ? "1 item" : `${items.length} items`}
-                </p>
-              )}
             </>
           )}
 
@@ -335,9 +363,6 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
                   Waiting for PayPal to confirm each payout
                 </p>
               )}
-              <Link href="/" className={PRIMARY_LINK}>
-                Done
-              </Link>
               <ActivityFeed events={view.events} shown={0} />
             </>
           )}
@@ -346,9 +371,6 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
             <>
               <p className="text-base">{releaseLine ?? `PayPal released your ${total}, so nothing was charged.`}</p>
               <p className="text-sm text-flint">The items went back on sale for other students.</p>
-              <Link href="/furnish" className={PRIMARY_LINK}>
-                Plan a room again
-              </Link>
               <ActivityFeed events={view.events} shown={0} />
             </>
           )}
@@ -356,7 +378,7 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
       </UnderTheHoodProvider>
 
       <div className="lg:hidden">
-        <ScheduleSection description={`When each seller moves out, when ${buyerFirstName} moves in, and the handoff slot the agents agreed on`} />
+        <ScheduleSection description={scheduleWords} />
       </div>
     </main>
   );

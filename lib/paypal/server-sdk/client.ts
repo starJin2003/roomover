@@ -1,7 +1,9 @@
 import { ApiError, Client, Environment, type ApiResponse, type OAuthToken } from "@paypal/paypal-server-sdk";
+import { readOptionalConfig } from "@/lib/config";
 import { readPayPalCredentials, type PayPalCredentials } from "@/lib/paypal/config";
 import { payPalApiError } from "@/lib/paypal/errors";
 import { appTokens, type AppTokenSource } from "@/lib/paypal/rest/app-token";
+import { simulatedAdapter, simulatedSandboxFor } from "@/lib/paypal/simulated-sandbox";
 
 export interface PayPalSdk {
   readonly client: Client;
@@ -83,7 +85,9 @@ export async function callSdk<T>(
 
 let processSdk: PayPalSdk | undefined;
 
+/** The process's SDK client. Tests that set ROOMOVER_PAYPAL_FIXTURE get the simulated sandbox. */
 export function paypalSdk(): PayPalSdk {
-  processSdk ??= createPayPalSdk({ credentials: readPayPalCredentials(), tokens: appTokens() });
+  const simulated = simulatedSandboxFor(readOptionalConfig("ROOMOVER_PAYPAL_FIXTURE"));
+  processSdk ??= createPayPalSdk({ credentials: readPayPalCredentials(), tokens: appTokens(), ...(simulated === null ? {} : { transportOverrides: { adapter: simulatedAdapter(simulated) } }) });
   return processSdk;
 }

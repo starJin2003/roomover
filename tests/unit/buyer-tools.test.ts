@@ -13,7 +13,7 @@ const RUG = listingId("ava-floral-area-rug");
 const FRIDGE = listingId("jun-compact-fridge");
 const TABLE = listingId("marcus-oak-writing-table");
 
-/** Every tool but create_checkout answers at once, so these tests read them synchronously. */
+/** The placement and reading tools answer at once, so these tests read them synchronously. */
 function run(context: BuyerContext, name: string, input: unknown): ToolOutcome {
   const tool = toolByName(name);
   if (tool === undefined) throw new Error(`No tool ${name}.`);
@@ -23,11 +23,33 @@ function run(context: BuyerContext, name: string, input: unknown): ToolOutcome {
   return outcome;
 }
 
+/** remove_item may cancel a negotiation in Postgres first, so it answers asynchronously. */
+async function runAsync(context: BuyerContext, name: string, input: unknown): Promise<ToolOutcome> {
+  const tool = toolByName(name);
+  if (tool === undefined) throw new Error(`No tool ${name}.`);
+  const outcome = await tool.run(context, tool.input.parse(input));
+  if (outcome.layout !== undefined) context.layout = outcome.layout;
+  return outcome;
+}
+
 const result = <T>(outcome: ToolOutcome) => outcome.result as T;
 
 describe("buyer tools", () => {
-  it("exposes the seven tools with strict input schemas", () => {
-    expect(BUYER_TOOLS.map((tool) => tool.name)).toEqual(["get_room_preset", "get_hall_rules", "search_listings", "check_fit", "place_item", "remove_item", "create_checkout"]);
+  it("exposes the eleven tools with strict input schemas, and runs offers beside other calls", () => {
+    expect(BUYER_TOOLS.map((tool) => tool.name)).toEqual([
+      "get_room_preset",
+      "get_hall_rules",
+      "search_listings",
+      "check_fit",
+      "place_item",
+      "remove_item",
+      "make_offer",
+      "respond_to_offer",
+      "search_new_products",
+      "place_new_product",
+      "create_checkout",
+    ]);
+    expect(BUYER_TOOLS.filter((tool) => tool.concurrent === true).map((tool) => tool.name)).toEqual(["make_offer"]);
     expect(toolByName("place_item")?.input.safeParse({ listingId: DESK, xMm: 1800, yMm: 600, rotationDeg: 45, reason: "x" }).success).toBe(false);
     expect(toolByName("place_item")?.input.safeParse({ listingId: DESK, xMm: 1800, yMm: 600, rotationDeg: 0, reason: "x", extra: 1 }).success).toBe(false);
   });
@@ -86,9 +108,16 @@ describe("search_listings", () => {
 
   it("says what it looked at in a sentence built from the filters, never the model's words", () => {
     expect(run(harborContext(), "search_listings", { category: "lamp", maxPriceCents: 1600 }).events[0].sentence).toBe("Looking at 4 lamps up to $16.");
-    expect(run(harborContext(), "search_listings", { query: "warm brass", category: "lamp" }).events[0].sentence).toBe("Looking at 3 lamps.");
+    expect(run(harborContext(), "search_listings", { query: "warm brass", category: "lamp" }).events[0].sentence).toBe("Looking at 5 lamps.");
     expect(run(harborContext(), "search_listings", { category: "rug", limit: 1 }).events[0].sentence).toBe("Looking at 1 rug.");
     expect(run(harborContext(), "search_listings", { query: "zzzz" }).events[0].sentence).toBeUndefined();
+  });
+
+  it("keeps a category's listings when the words match none, best matches first", () => {
+    const chairs = result<{ results: { title: string }[] }>(run(harborContext(), "search_listings", { query: "soft seating", category: "chair" })).results;
+    expect(chairs.length).toBeGreaterThan(0);
+    const brass = result<{ results: { title: string }[] }>(run(harborContext(), "search_listings", { query: "warm brass", category: "lamp" })).results;
+    expect(brass[0].title).toBe("Brass table lamp with linen shade");
   });
 
   it("says how soon the student can collect each item, so storage holds stand out", () => {
@@ -249,24 +278,24 @@ describe("create_checkout", () => {
 });
 
 describe("remove_item", () => {
-  it("takes an item out and lowers the total", () => {
+  it("takes an item out and lowers the total", async () => {
     const context = harborContext();
     const placed = result<{ itemKey: string }>(run(context, "place_item", { listingId: BEAN_BAG, xMm: 1750, yMm: 2150, rotationDeg: 0, reason: "Lounge spot." }));
-    const outcome = run(context, "remove_item", { itemKey: placed.itemKey, reason: "Too big." });
+    const outcome = await runAsync(context, "remove_item", { itemKey: placed.itemKey, reason: "Too big." });
     expect(result<{ removed: boolean; spentCents: number }>(outcome)).toMatchObject({ removed: true, spentCents: 0 });
     expect(outcome.events[0].sentence).toBe("Took the bean bag from Lea out of the plan.");
   });
 
-  it("keeps a desk that still holds a lamp", () => {
+  it("keeps a desk that still holds a lamp", async () => {
     const context = harborContext();
     const desk = result<{ itemKey: string }>(run(context, "place_item", { listingId: DESK, xMm: 1800, yMm: 600, rotationDeg: 0, reason: "Desk." }));
     run(context, "place_item", { listingId: LAMP, xMm: 2150, yMm: 480, rotationDeg: 0, reason: "Lamp." });
-    const outcome = run(context, "remove_item", { itemKey: desk.itemKey, reason: "Swap." });
+    const outcome = await runAsync(context, "remove_item", { itemKey: desk.itemKey, reason: "Swap." });
     expect(result<{ removed: boolean; problems: string[] }>(outcome).problems[0]).toMatch(/stands on white-three-drawer-desk-with-oak-legs/);
     expect(context.layout.items).toHaveLength(2);
   });
 
-  it("answers an unknown key", () => {
-    expect(result<{ removed: boolean }>(run(harborContext(), "remove_item", { itemKey: "nope", reason: "x" })).removed).toBe(false);
+  it("answers an unknown key", async () => {
+    expect(result<{ removed: boolean }>(await runAsync(harborContext(), "remove_item", { itemKey: "nope", reason: "x" })).removed).toBe(false);
   });
 });

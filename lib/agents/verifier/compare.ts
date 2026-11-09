@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { verdictInputSchema, verdictSchema, type VerdictInput } from "@/lib/domain/verdict";
+import { strictSchema } from "@/lib/agents/strict-schema";
 import { comparisonMessage, VERIFIER_INSTRUCTIONS, type ListingFacts, type PhotoData } from "./prompt";
 
 type BetaMessage = Anthropic.Beta.Messages.BetaMessage;
@@ -19,15 +20,6 @@ const TOOL_NAME = "compare_photos";
 /** How Claude is reached. The live transport calls the API, and the fixture transport replays a recording. */
 export interface VerifierTransport {
   send(request: VerifierRequest, call: number): Promise<BetaMessage>;
-}
-
-/** Strict tool schemas accept no length or range keywords, so zod checks those after the call. */
-const UNSUPPORTED_KEYWORDS = new Set(["minLength", "maxLength", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "$schema"]);
-
-export function strictSchema(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(strictSchema);
-  if (value === null || typeof value !== "object") return value;
-  return Object.fromEntries(Object.entries(value).flatMap(([key, entry]) => (UNSUPPORTED_KEYWORDS.has(key) ? [] : [[key, strictSchema(entry)]])));
 }
 
 export const COMPARE_PHOTOS_TOOL: BetaTool = {

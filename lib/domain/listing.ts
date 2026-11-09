@@ -26,13 +26,14 @@ export const conditionReportSchema = z.strictObject({
 
 /**
  * The new product an item is compared against for pricing and savings.
- * `seed_estimate` marks demo prices for a generic product class, and
- * `channel3` marks a matched catalog product.
+ * `seed_estimate` marks demo prices for a generic product class, `channel3`
+ * marks a matched catalog product, and `seller_agent` marks the seller
+ * agent's estimate when Channel3 found no product that matches the photo.
  */
 export const retailReferenceSchema = z.strictObject({
   productName: z.string().min(1),
   newPriceCents: cents.positive(),
-  source: z.enum(["seed_estimate", "channel3", "seller"]),
+  source: z.enum(["seed_estimate", "channel3", "seller", "seller_agent"]),
   sourceNote: z.string().min(1),
   url: z.url({ protocol: /^https$/ }).optional(),
   channel3ProductId: z.string().min(1).optional(),

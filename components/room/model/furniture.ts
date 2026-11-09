@@ -284,6 +284,45 @@ const tote: Builder = ({ width: w, depth: d, height: h }, tones) => [
   slab([w * 0.7, 8, d * 0.55], 0, h - 8, 0, 4, toy(tones[0])),
 ];
 
+const rollingCart: Builder = ({ width: w, depth: d, height: h }, tones) => {
+  const frame = toy(tones[0]);
+  const post = Math.min(16, w * 0.04);
+  const caster = 22;
+  const deck = caster * 2 + 26;
+  const lip = Math.min(80, h * 0.1);
+  const wall = 12;
+  const inner: Size = { width: w - post * 2, depth: d - post * 2, height: lip };
+  const parts: Part[] = [];
+  for (let level = 0; level < 3; level++) {
+    const bottom = deck + ((h - deck - lip) * level) / 2;
+    parts.push(slab([inner.width, 14, inner.depth], 0, bottom, 0, 6, frame));
+    for (const side of [-1, 1]) {
+      parts.push(slab([inner.width, lip, wall], 0, bottom, side * (inner.depth / 2 - wall / 2), 5, frame));
+      parts.push(slab([wall, lip, inner.depth], side * (inner.width / 2 - wall / 2), bottom, 0, 5, frame));
+    }
+  }
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const x = sx * (w / 2 - post);
+      const z = sz * (d / 2 - post);
+      parts.push(cylinder(post, h - deck + 6, [x, deck - 6 + (h - deck + 6) / 2, z], toy(second(tones, tones[0])), { bevel: 3 }));
+      parts.push(cylinder(7, deck - caster * 2, [x, caster * 2 + (deck - caster * 2) / 2, z], toy("stone"), { bevel: 2 }));
+      parts.push(sphere(caster, [x, caster, z], toy("ink")));
+    }
+  }
+  return parts;
+};
+
+/** Stands in for any item none of the other types describes, at its true size, so the room never draws it as something else. */
+const generic: Builder = ({ width: w, depth: d, height: h }, tones) => {
+  const plinth = Math.min(40, h * 0.12);
+  const radius = Math.min(w, d, h) * 0.2;
+  return [
+    slab([w * 0.92, plinth, d * 0.92], 0, 0, 0, Math.min(10, plinth / 2), toy(second(tones, "stone"))),
+    slab([w, h - plinth, d], 0, plinth, 0, radius, toy(tones[0])),
+  ];
+};
+
 const BUILDERS: Readonly<Record<Exclude<FurnitureType, "comforter" | "pillows" | "throw">, Builder>> = {
   desk,
   desk_chair: deskChair,
@@ -302,6 +341,8 @@ const BUILDERS: Readonly<Record<Exclude<FurnitureType, "comforter" | "pillows" |
   drawer_unit: drawerUnit,
   basket,
   tote,
+  rolling_cart: rollingCart,
+  generic,
 };
 
 /**

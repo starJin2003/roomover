@@ -5,6 +5,7 @@ import { readConfig } from "@/lib/config";
 import { tlsFor } from "@/lib/db/client";
 import { SESSION_COOKIE, signSession } from "@/lib/session";
 import { removeSessionData } from "./remove-session";
+import { routeRecordedPayPal } from "./sandbox";
 
 /** Every plan, run, event, and order an e2e test creates belongs to a session whose ID starts with this tag. */
 export const E2E_TAG = "e2e-";
@@ -43,6 +44,7 @@ export const test = base.extend<{ session: string; holdsCatalog: boolean }>({
       if (baseURL === undefined) throw new Error("E2e sessions need a base URL.");
       const release = holdsCatalog ? await lockCatalog() : null;
       const id = taggedSessionId();
+      await routeRecordedPayPal(context, baseURL);
       const { SESSION_SECRET } = readConfig(["SESSION_SECRET"]);
       await context.addCookies([{ name: SESSION_COOKIE, value: signSession(id, SESSION_SECRET), url: baseURL, httpOnly: true, sameSite: "Lax" }]);
       // Playwright comes back here after the test, passed or failed.

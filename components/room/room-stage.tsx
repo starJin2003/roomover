@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { CloseIcon, RotateIcon } from "@/components/ui/icons";
+import { ChevronDownIcon, CloseIcon, RotateIcon } from "@/components/ui/icons";
 import { checkFit, type FitRoom } from "@/lib/domain/fit";
 import type { LayoutItem, PlanLayout } from "@/lib/domain/layout";
 import { moveItem, type Spot } from "@/lib/domain/placement";
@@ -52,6 +52,11 @@ interface RoomStageProps {
   editing?: RoomEditing | null;
   /** Rings one item and keeps its tag up, such as the next item to check at handoff. */
   mark?: { key: string; label: string } | null;
+  /**
+   * On desktop the room fills the height of its column, and the list folds
+   * under it behind one press, so the room stays as large as the screen allows.
+   */
+  fill?: boolean;
 }
 
 type GlSupport = "checking" | "yes" | "no";
@@ -107,7 +112,7 @@ interface Draft {
 const snap = (value: number) => Math.round(value / SNAP_MM) * SNAP_MM;
 const clamp = (value: number, max: number) => Math.min(Math.max(0, value), max);
 
-export function RoomStage({ label, preset, items, playable = false, ring = false, showList = true, editing = null, mark = null }: RoomStageProps) {
+export function RoomStage({ label, preset, items, playable = false, ring = false, showList = true, editing = null, mark = null, fill = false }: RoomStageProps) {
   const gl = useWebGlSupport();
   const reducedMotion = useReducedMotion();
   const [ready, setReady] = useState(false);
@@ -123,6 +128,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
   const [drag, setDrag] = useState<DragStart | null>(null);
   const [saving, setSaving] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const [listOpen, setListOpen] = useState(false);
   const timers = useRef<number[]>([]);
   const box = useRef<HTMLDivElement>(null);
   const tag = useRef<HTMLDivElement>(null);
@@ -405,7 +411,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
 
   return (
     <div
-      className="flex min-w-0 flex-col gap-4"
+      className={`flex min-w-0 flex-col gap-4 ${fill ? "lg:h-full lg:min-h-0" : ""}`}
       data-room={preset.slug}
       data-ready={ready}
       data-placed={shown.length}
@@ -413,7 +419,11 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
       data-selected={selected?.layout.key ?? ""}
       data-invalid={invalid}
     >
-      <div ref={box} data-room-box className={`relative w-full ${gl === "no" ? "" : "aspect-[6/5] sm:aspect-[8/7]"} ${hoverKey === null ? "" : editing === null ? "cursor-pointer" : "cursor-grab"}`}>
+      <div
+        ref={box}
+        data-room-box
+        className={`relative w-full ${gl === "no" ? "" : `aspect-[6/5] sm:aspect-[8/7] ${fill ? "lg:aspect-auto lg:min-h-0 lg:flex-1" : ""}`} ${hoverKey === null ? "" : editing === null ? "cursor-pointer" : "cursor-grab"}`}
+      >
         {gl === "yes" && (
           <div
             role="img"
@@ -453,7 +463,9 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
             <>
               <p className="text-sm font-semibold">{focused.title}</p>
               <p className="text-xs text-flint">
-                {formatUsdShort(focused.priceCents)}, {focused.condition.toLowerCase()}, from {focused.sellerName}
+                {focused.newFrom === undefined
+                  ? `${formatUsdShort(focused.priceCents)}, ${focused.condition.toLowerCase()}, from ${focused.sellerName}`
+                  : `${formatUsdShort(focused.priceCents)}, new from ${focused.newFrom.retailer}, bought there`}
               </p>
             </>
           )}
@@ -487,15 +499,31 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
         {announcement}
       </p>
       {showList && (
-        <RoomList
-          label={label}
-          items={shown}
-          total={items.length}
-          selectedKey={selectedKey}
-          onActivate={setListKey}
-          onToggle={toggle}
-          editing={editing === null ? undefined : { onKeyDown: onRowKeyDown, onBlur: onRowBlur, invalidKey: invalid ? (draft?.key ?? null) : null }}
-        />
+        <div className={`flex flex-col gap-2 ${fill ? "lg:shrink-0" : ""}`}>
+          {fill && (
+            <button
+              type="button"
+              aria-expanded={listOpen}
+              aria-controls={`${preset.slug}-list`}
+              onClick={() => setListOpen((open) => !open)}
+              className="inline-flex min-h-11 items-center gap-1 self-start rounded-md text-sm font-medium max-lg:hidden"
+            >
+              {listOpen ? "Hide the list" : `List view, ${shown.length === 1 ? "1 item" : `${shown.length} items`}`}
+              <ChevronDownIcon className={`size-4 transition-transform duration-(--duration-quick) ease-out ${listOpen ? "rotate-180" : ""}`} />
+            </button>
+          )}
+          <div id={`${preset.slug}-list`} className={fill ? `lg:max-h-[34vh] lg:overflow-y-auto ${listOpen ? "" : "lg:hidden"}` : ""}>
+            <RoomList
+              label={label}
+              items={shown}
+              total={items.length}
+              selectedKey={selectedKey}
+              onActivate={setListKey}
+              onToggle={toggle}
+              editing={editing === null ? undefined : { onKeyDown: onRowKeyDown, onBlur: onRowBlur, invalidKey: invalid ? (draft?.key ?? null) : null }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

@@ -12,6 +12,7 @@ export function seedCatalog(): CatalogListing[] {
   const names = new Map(seedUsers().map((user) => [user.id, user.displayName]));
   return seedListings("2026-11-08").map((listing) => ({
     id: listing.id,
+    sellerId: listing.sellerId,
     title: listing.title,
     description: listing.description,
     category: listing.category,
@@ -21,7 +22,11 @@ export function seedCatalog(): CatalogListing[] {
     heightMm: listing.heightMm,
     specs: listing.specs ?? {},
     priceCents: listing.priceCents,
+    floorPriceCents: listing.floorPriceCents,
     newPriceCents: listing.retailReference.newPriceCents,
+    retailProductName: listing.retailReference.productName,
+    matchedRetail: null,
+    sameRoom: listing.handoffMode === "same_room" && listing.roomPresetId && listing.roomNumber ? { roomPresetId: listing.roomPresetId, roomNumber: listing.roomNumber } : null,
     condition: listing.conditionReport.grade,
     color: listing.color,
     colors: listingColorsSchema.parse(listing.colors),
@@ -52,6 +57,12 @@ export function harborContext(overrides: Partial<BuyerContext> = {}): BuyerConte
     layout: { items: [] },
     announcedSkips: new Set(),
     now: new Date("2026-11-08T18:00:00Z"),
+    roomPresetId: preset.id,
+    roomNumber: "214",
+    buyerWindow: null,
+    negotiations: new Map(),
+    fitFailures: new Set(),
+    newProducts: new Map(),
     ...overrides,
   };
 }

@@ -41,11 +41,15 @@ export function startOfUtcDay(now: Date): Date {
 
 const slotOpens = (window: WindowCount, now: Date) => new Date((window.oldest ?? now).getTime() + HOUR_MS);
 
+/** A Sell run is one seller agent call and its one retry. */
+export const SELL_RUN_CALLS = 2;
+
 /**
- * Whether a new run may start. A run reserves its worst case of Claude calls
- * against the daily allowance, so a run that starts can always finish.
+ * Whether a new run may start. Buyer runs and Sell runs share these limits.
+ * A run reserves its worst case of Claude calls against the daily
+ * allowance, so a run that starts can always finish.
  */
-export function decideLimit(counts: LimitCounts, kind: AgentRunKind, now: Date, limits: RunLimits = RUN_LIMITS): LimitDecision {
+export function decideLimit(counts: LimitCounts, kind: AgentRunKind | "sell", now: Date, limits: RunLimits = RUN_LIMITS): LimitDecision {
   if (counts.session.count >= limits.sessionRunsPerHour) {
     return {
       allowed: false,
@@ -62,7 +66,7 @@ export function decideLimit(counts: LimitCounts, kind: AgentRunKind, now: Date, 
       retryAt: slotOpens(counts.client, now),
     };
   }
-  if (counts.claudeCallsToday + MAX_TURNS[kind] > limits.claudeCallsPerDay) {
+  if (counts.claudeCallsToday + (kind === "sell" ? SELL_RUN_CALLS : MAX_TURNS[kind]) > limits.claudeCallsPerDay) {
     return {
       allowed: false,
       reason: "daily",

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Suspense } from "react";
-import { SiteHeader } from "@/components/site/site-header";
+import { ScreenFrame, SHELL_COLUMNS } from "@/components/site/screen-frame";
 import { PanelState } from "@/components/ui/panel-state";
 import { loadPlanView } from "@/lib/agents/buyer/run";
 import { readConfig } from "@/lib/config";
@@ -19,9 +19,9 @@ export const metadata: Metadata = {
 
 function FurnishPending() {
   return (
-    <div aria-hidden="true" className="mx-auto grid w-full max-w-[1360px] gap-6 px-4 sm:px-10 lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-12">
-      <div className="aspect-[6/5] w-full sm:aspect-[8/7]" />
-      <div className="h-96 rounded-2xl bg-paper shadow-sheet max-lg:-mx-4 max-lg:rounded-b-none" />
+    <div aria-hidden="true" className={SHELL_COLUMNS}>
+      <div className="aspect-[6/5] w-full sm:aspect-[8/7] lg:aspect-auto" />
+      <div className="h-96 rounded-2xl bg-paper shadow-sheet max-lg:-mx-4 max-lg:rounded-b-none lg:h-full" />
     </div>
   );
 }
@@ -62,11 +62,10 @@ async function Furnish() {
 
 export default function FurnishPage() {
   return (
-    <>
-      <SiteHeader />
+    <ScreenFrame>
       <Suspense fallback={<FurnishPending />}>
         <Furnish />
       </Suspense>
-    </>
+    </ScreenFrame>
   );
 }

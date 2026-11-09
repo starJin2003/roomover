@@ -10,7 +10,7 @@ import { listingColorsSchema, listingSpecsSchema } from "@/lib/domain/listing";
 import { roomGeometrySchema, type RoomGeometry } from "@/lib/domain/room";
 import type { ActivityEventView, PlanListing, RunView } from "@/lib/plan-view";
 import type { Database } from "./client";
-import { agentEvents, agentRuns, hallRules, halls, listings, plans, roomPresets, users } from "./schema";
+import { agentEvents, agentRuns, hallRules, halls, listingDrafts, listings, plans, retailReferences, roomPresets, users } from "./schema";
 
 export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
@@ -58,6 +58,7 @@ export async function loadPresetsWithRules(db: Database): Promise<PresetWithRule
 
 const listingColumns = {
   id: listings.id,
+  sellerId: listings.sellerId,
   title: listings.title,
   description: listings.description,
   category: listings.category,
@@ -67,6 +68,7 @@ const listingColumns = {
   heightMm: listings.heightMm,
   specs: listings.specs,
   priceCents: listings.priceCents,
+  floorPriceCents: listings.floorPriceCents,
   retailReference: listings.retailReference,
   conditionReport: listings.conditionReport,
   color: listings.color,
@@ -78,18 +80,27 @@ const listingColumns = {
   moveOutEndsAt: listings.moveOutEndsAt,
   moveInStartsAt: listings.moveInStartsAt,
   moveInEndsAt: listings.moveInEndsAt,
+  roomPresetId: listings.roomPresetId,
+  roomNumber: listings.roomNumber,
 };
 
-type ListingRow = { [K in keyof typeof listingColumns]: (typeof listingColumns)[K]["_"]["data"] };
+type Column<K extends keyof typeof listingColumns> = (typeof listingColumns)[K]["_"];
+type ListingRow = { [K in keyof typeof listingColumns]: Column<K>["notNull"] extends true ? Column<K>["data"] : Column<K>["data"] | null };
 
 function toCatalogListing(row: ListingRow): CatalogListing {
-  const { retailReference, conditionReport, specs, colors, handoffMode, moveOutStartsAt, moveOutEndsAt, moveInStartsAt, moveInEndsAt, ...rest } = row;
+  const { retailReference, conditionReport, specs, colors, handoffMode, moveOutStartsAt, moveOutEndsAt, moveInStartsAt, moveInEndsAt, roomPresetId, roomNumber, ...rest } = row;
+  const matched = retailReference.source === "channel3";
   return {
     ...rest,
     pickup: handoffWindow(handoffMode, { moveOutStartsAt, moveOutEndsAt, moveInStartsAt, moveInEndsAt }),
+    sameRoom: handoffMode === "same_room" && roomPresetId !== null && roomNumber !== null ? { roomPresetId, roomNumber } : null,
     specs: listingSpecsSchema.parse(specs),
     colors: colors.length === 0 ? [] : listingColorsSchema.parse(colors),
     newPriceCents: retailReference.newPriceCents,
+    retailProductName: retailReference.productName,
+    matchedRetail: matched
+      ? { productName: retailReference.productName, newPriceCents: retailReference.newPriceCents, url: retailReference.url ?? null, retailer: / at ([a-z0-9.-]+)\.$/i.exec(retailReference.sourceNote)?.[1] ?? null }
+      : null,
     condition: conditionReport.grade,
   };
 }
@@ -113,13 +124,19 @@ export async function countActiveListings(db: Database, campus: string): Promise
   return row?.count ?? 0;
 }
 
-/** The listings a layout names, whatever their status, for the tags in the room. */
+/** The listings a layout names, whatever their status, for the tags in the room, with the new price Channel3 found for each. */
 export async function loadPlanListings(db: Database, ids: readonly string[]): Promise<Map<string, PlanListing>> {
   if (ids.length === 0) return new Map();
-  const rows = await db.select(listingColumns).from(listings).innerJoin(users, eq(listings.sellerId, users.id)).where(inArray(listings.id, [...ids]));
+  const rows = await db
+    .select({ ...listingColumns, channel3NewCents: retailReferences.newPriceCents })
+    .from(listings)
+    .innerJoin(users, eq(listings.sellerId, users.id))
+    .leftJoin(retailReferences, eq(retailReferences.listingId, listings.id))
+    .where(inArray(listings.id, [...ids]));
   return new Map(
     rows.map((row) => {
-      const listing = toCatalogListing(row);
+      const { channel3NewCents, ...columns } = row;
+      const listing = toCatalogListing(columns);
       return [
         listing.id,
         {
@@ -127,7 +144,7 @@ export async function loadPlanListings(db: Database, ids: readonly string[]): Pr
           title: listing.title,
           conditionGrade: listing.condition,
           priceCents: listing.priceCents,
-          newPriceCents: listing.newPriceCents,
+          channel3NewCents,
           sellerName: listing.sellerName,
           color: listing.color,
           colors: listing.colors,
@@ -243,15 +260,25 @@ export async function latestRun(db: Database, planId: string): Promise<RunRow | 
   return row ?? null;
 }
 
-async function windowCount(tx: Transaction, column: typeof agentRuns.sessionId | typeof agentRuns.clientHash, value: string, since: Date): Promise<WindowCount> {
-  const [row] = await tx
-    .select({ count: sql<number>`count(*)::int`, oldest: sql<Date | null>`min(${agentRuns.startedAt})` })
-    .from(agentRuns)
-    .where(and(eq(column, value), eq(agentRuns.claudeMode, "live"), gte(agentRuns.startedAt, since)));
+/**
+ * Live agent runs a browser or a network started in the window. Buyer runs
+ * and Sell runs of the seller agent share one count, so the demo's hourly
+ * limits cover both screens.
+ */
+export async function windowCount(tx: Database | Transaction, by: "session" | "client", value: string, since: Date): Promise<WindowCount> {
+  const runColumn = by === "session" ? agentRuns.sessionId : agentRuns.clientHash;
+  const draftColumn = by === "session" ? listingDrafts.sessionId : listingDrafts.clientHash;
+  const result = await tx.execute<{ count: number; oldest: string | Date | null }>(sql`
+    select count(*)::int as count, min(started) as oldest from (
+      select ${agentRuns.startedAt} as started from ${agentRuns} where ${runColumn} = ${value} and ${agentRuns.claudeMode} = 'live' and ${agentRuns.startedAt} >= ${since}
+      union all
+      select ${listingDrafts.createdAt} from ${listingDrafts} where ${draftColumn} = ${value} and ${listingDrafts.claudeMode} = 'live' and ${listingDrafts.createdAt} >= ${since}
+    ) as runs`);
+  const row = result.rows[0];
   return { count: row?.count ?? 0, oldest: row?.oldest === null || row?.oldest === undefined ? null : new Date(row.oldest) };
 }
 
-/** Live Claude calls since midnight UTC, from buyer agent runs and verifier comparisons together. */
+/** Live Claude calls since midnight UTC, from buyer agent runs, verifier comparisons, and seller agent drafts together. */
 export async function claudeCallsToday(db: Database | Transaction, now: Date): Promise<number> {
   const since = startOfUtcDay(now);
   const [runs] = await db
@@ -262,7 +289,11 @@ export async function claudeCallsToday(db: Database | Transaction, now: Date): P
     .select({ calls: sql<number>`coalesce(sum((${agentEvents.detail}->>'claudeCalls')::int), 0)::int` })
     .from(agentEvents)
     .where(and(eq(agentEvents.agent, "verifier"), gte(agentEvents.createdAt, since)));
-  return (runs?.calls ?? 0) + (comparisons?.calls ?? 0);
+  const [drafts] = await db
+    .select({ calls: sql<number>`coalesce(sum(${listingDrafts.claudeCalls}), 0)::int` })
+    .from(listingDrafts)
+    .where(and(eq(listingDrafts.claudeMode, "live"), gte(listingDrafts.createdAt, since)));
+  return (runs?.calls ?? 0) + (comparisons?.calls ?? 0) + (drafts?.calls ?? 0);
 }
 
 /**
@@ -271,6 +302,11 @@ export async function claudeCallsToday(db: Database | Transaction, now: Date): P
  * quick presses cannot both pass. A run left running by a stopped process
  * is closed as failed first.
  */
+/** One advisory lock for every limit check, so concurrent starts from different plans and Sell drafts count each other. */
+export async function lockRunLimits(tx: Transaction): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('roomover.agent_run_limits'))`);
+}
+
 export async function startRun(
   db: Database,
   input: { planId: string; kind: AgentRunKind; request: string | null; sessionId: string; clientHash: string; claudeMode: ClaudeMode; now: Date },
@@ -285,12 +321,11 @@ export async function startRun(
     if (running !== undefined) throw new RunConflictError();
 
     if (input.claudeMode === "live") {
-      // One advisory lock for all limit checks, so concurrent starts from different plans count each other.
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('roomover.agent_run_limits'))`);
+      await lockRunLimits(tx);
       const since = new Date(input.now.getTime() - HOUR_MS);
       const counts: LimitCounts = {
-        session: await windowCount(tx, agentRuns.sessionId, input.sessionId, since),
-        client: await windowCount(tx, agentRuns.clientHash, input.clientHash, since),
+        session: await windowCount(tx, "session", input.sessionId, since),
+        client: await windowCount(tx, "client", input.clientHash, since),
         claudeCallsToday: await claudeCallsToday(tx, input.now),
       };
       const decision = decideLimit(counts, input.kind, input.now);
@@ -314,15 +349,17 @@ export async function startRun(
   });
 }
 
+/** Adds Claude calls to a run: one buyer agent turn, or the calls one seller agent made answering an offer. */
 export async function addRunUsage(
   db: Database,
   runId: string,
   usage: { inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number },
+  calls = 1,
 ): Promise<void> {
   await db
     .update(agentRuns)
     .set({
-      claudeCalls: sql`${agentRuns.claudeCalls} + 1`,
+      claudeCalls: sql`${agentRuns.claudeCalls} + ${calls}`,
       inputTokens: sql`${agentRuns.inputTokens} + ${usage.inputTokens}`,
       outputTokens: sql`${agentRuns.outputTokens} + ${usage.outputTokens}`,
       cacheWriteTokens: sql`${agentRuns.cacheWriteTokens} + ${usage.cacheWriteTokens}`,
@@ -379,7 +416,7 @@ export async function insertEvents(
       input.drafts.map((draft) => ({
         runId: input.runId,
         planId: input.planId,
-        agent: input.agent,
+        agent: draft.agent ?? input.agent,
         tool: draft.tool,
         summary: draft.summary,
         sentence: draft.sentence ?? null,

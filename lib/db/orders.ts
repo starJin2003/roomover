@@ -5,7 +5,9 @@ import type { OrderItemStatus, OrderStatus, PaymentMode } from "@/lib/domain/enu
 import { ITEM_STATUS_AFTER, planApproval, type ApprovalStatus } from "@/lib/domain/order-state";
 import { formatUsdShort } from "@/lib/format";
 import type { ActivityEventView } from "@/lib/plan-view";
+import type { TimeWindow } from "@/lib/domain/handoff";
 import type { Database } from "./client";
+import { agreedTerms } from "./negotiations";
 import { insertEvents, type Transaction } from "./plans";
 import { listings, orderItems, orders, plans, users } from "./schema";
 
@@ -30,6 +32,8 @@ export interface OrderLine {
   sellerId: string;
   amountCents: number;
   status: OrderItemStatus;
+  /** The handoff slot the agents agreed on, or null for the listing's whole handoff window. */
+  slot: TimeWindow | null;
 }
 
 export type OrderWithLines = OrderRow & { lines: OrderLine[] };
@@ -50,12 +54,23 @@ const orderColumns = {
   createdAt: orders.createdAt,
 };
 
-const lineColumns = { listingId: orderItems.listingId, sellerId: orderItems.sellerId, amountCents: orderItems.amountCents, status: orderItems.status };
+const lineColumns = {
+  listingId: orderItems.listingId,
+  sellerId: orderItems.sellerId,
+  amountCents: orderItems.amountCents,
+  status: orderItems.status,
+  slotStartsAt: orderItems.slotStartsAt,
+  slotEndsAt: orderItems.slotEndsAt,
+};
+
+type LineRow = { listingId: string; sellerId: string; amountCents: number; status: OrderItemStatus; slotStartsAt: Date | null; slotEndsAt: Date | null };
+
+const toLine = ({ slotStartsAt, slotEndsAt, ...row }: LineRow): OrderLine => ({ ...row, slot: slotStartsAt === null || slotEndsAt === null ? null : { startsAt: slotStartsAt, endsAt: slotEndsAt } });
 
 type Executor = Database | Transaction;
 
-/** The listings a plan names, with the seller, price, status, and move windows that checkout reads. */
-export async function loadCheckoutListings(db: Executor, ids: readonly string[]): Promise<Map<string, CheckoutListing>> {
+/** The listings a plan names, with the seller, price, floor, status, move windows, and the plan's agreed terms that checkout reads. */
+export async function loadCheckoutListings(db: Executor, ids: readonly string[], planId: string): Promise<Map<string, CheckoutListing>> {
   if (ids.length === 0) return new Map();
   const rows = await db
     .select({
@@ -64,6 +79,7 @@ export async function loadCheckoutListings(db: Executor, ids: readonly string[])
       sellerId: listings.sellerId,
       sellerName: users.displayName,
       priceCents: listings.priceCents,
+      floorPriceCents: listings.floorPriceCents,
       handoffMode: listings.handoffMode,
       status: listings.status,
       moveOutStartsAt: listings.moveOutStartsAt,
@@ -74,11 +90,13 @@ export async function loadCheckoutListings(db: Executor, ids: readonly string[])
     .from(listings)
     .innerJoin(users, eq(listings.sellerId, users.id))
     .where(inArray(listings.id, [...ids]));
-  return new Map(rows.map((row) => [row.id, row]));
+  const agreements = await agreedTerms(db, planId, ids);
+  return new Map(rows.map((row) => [row.id, { ...row, agreement: agreements.get(row.id) ?? null }]));
 }
 
 async function linesOf(db: Executor, orderId: string): Promise<OrderLine[]> {
-  return db.select(lineColumns).from(orderItems).where(eq(orderItems.orderId, orderId)).orderBy(asc(orderItems.createdAt), asc(orderItems.listingId));
+  const rows = await db.select(lineColumns).from(orderItems).where(eq(orderItems.orderId, orderId)).orderBy(asc(orderItems.createdAt), asc(orderItems.listingId));
+  return rows.map(toLine);
 }
 
 /** The plan's current order with its lines. Canceled orders are history and never current. */
@@ -99,8 +117,9 @@ export async function orderByPayPalId(db: Executor, paypalOrderId: string): Prom
 
 /**
  * Writes a new order awaiting approval, with one line per listing at its
- * listed price. Any older order still awaiting approval on the plan is
- * canceled in the same transaction, so a plan has one order to approve.
+ * listed or agreed price and its agreed slot. Any older order still
+ * awaiting approval on the plan is canceled in the same transaction, so a
+ * plan has one order to approve.
  */
 export async function insertPendingOrder(db: Database, input: { planId: string; buyerId: string; checkout: CheckoutPlan }): Promise<OrderWithLines> {
   return db.transaction(async (tx) => {
@@ -114,9 +133,18 @@ export async function insertPendingOrder(db: Database, input: { planId: string; 
       .returning(orderColumns);
     const lines = await tx
       .insert(orderItems)
-      .values(input.checkout.lines.map((line) => ({ orderId: order.id, listingId: line.listingId, sellerId: line.sellerId, amountCents: line.amountCents })))
+      .values(
+        input.checkout.lines.map((line) => ({
+          orderId: order.id,
+          listingId: line.listingId,
+          sellerId: line.sellerId,
+          amountCents: line.amountCents,
+          slotStartsAt: line.slot?.startsAt ?? null,
+          slotEndsAt: line.slot?.endsAt ?? null,
+        })),
+      )
       .returning(lineColumns);
-    return { ...order, lines };
+    return { ...order, lines: lines.map(toLine) };
   });
 }
 

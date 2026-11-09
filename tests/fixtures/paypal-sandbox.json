@@ -1,0 +1,747 @@
+{
+ "version": 1,
+ "recordedAt": "2026-11-09T12:09:20.039Z",
+ "templates": {
+  "order": {
+   "id": "4BJ62082TS2591355",
+   "intent": "AUTHORIZE",
+   "status": "COMPLETED",
+   "payment_source": {
+    "paypal": {
+     "email_address": "roomover-judge-jin0608@personal.example.com",
+     "account_id": "ZF5VPUBXGV7FU",
+     "account_status": "VERIFIED",
+     "name": {
+      "given_name": "Jordan",
+      "surname": "Ellis"
+     }
+    }
+   },
+   "purchase_units": [
+    {
+     "reference_id": "ab60a524-bcc5-4a17-b189-cf1755e8e1a7",
+     "amount": {
+      "currency_code": "USD",
+      "value": "144.00",
+      "breakdown": {
+       "item_total": {
+        "currency_code": "USD",
+        "value": "144.00"
+       }
+      }
+     },
+     "payee": {
+      "email_address": "roomover-judge-jin0608@personal.example.com",
+      "merchant_id": "YBX4VLQ9G5BMW",
+      "display_data": {
+       "brand_name": "Roomover"
+      }
+     },
+     "custom_id": "ab60a524-bcc5-4a17-b189-cf1755e8e1a7",
+     "items": [
+      {
+       "name": "White three drawer desk with oak legs",
+       "unit_amount": {
+        "currency_code": "USD",
+        "value": "55.00"
+       },
+       "quantity": "1",
+       "description": "From Jun Park",
+       "sku": "551b6e6a-b44e-5b95-8b2b-7fbbe3aa70eb",
+       "category": "PHYSICAL_GOODS"
+      },
+      {
+       "name": "Mesh back rolling desk chair",
+       "unit_amount": {
+        "currency_code": "USD",
+        "value": "35.00"
+       },
+       "quantity": "1",
+       "description": "From Marcus Bell",
+       "sku": "31b666cb-bd18-577f-b931-e4483075db04",
+       "category": "PHYSICAL_GOODS"
+      },
+      {
+       "name": "Black balance arm desk lamp",
+       "unit_amount": {
+        "currency_code": "USD",
+        "value": "16.00"
+       },
+       "quantity": "1",
+       "description": "From Ava Lindqvist",
+       "sku": "b631f41a-cc7e-513d-a16e-5f186abb3cf2",
+       "category": "PHYSICAL_GOODS"
+      },
+      {
+       "name": "Black clamp lamp",
+       "unit_amount": {
+        "currency_code": "USD",
+        "value": "8.00"
+       },
+       "quantity": "1",
+       "description": "From Sofia Navarro",
+       "sku": "cfb29afb-c229-5b4b-94ca-ef8bf0ac895d",
+       "category": "PHYSICAL_GOODS"
+      },
+      {
+       "name": "Navy bean bag chair with matching pouf",
+       "unit_amount": {
+        "currency_code": "USD",
+        "value": "30.00"
+       },
+       "quantity": "1",
+       "description": "From Lea Moreau",
+       "sku": "f33f2643-4191-5545-81f9-9d8f1ad0e9a2",
+       "category": "PHYSICAL_GOODS"
+      }
+     ],
+     "payments": {
+      "authorizations": [
+       {
+        "status": "CAPTURED",
+        "id": "87S91919A36663839",
+        "amount": {
+         "currency_code": "USD",
+         "value": "144.00"
+        },
+        "custom_id": "ab60a524-bcc5-4a17-b189-cf1755e8e1a7",
+        "seller_protection": {
+         "status": "ELIGIBLE",
+         "dispute_categories": [
+          "ITEM_NOT_RECEIVED",
+          "UNAUTHORIZED_TRANSACTION"
+         ]
+        },
+        "expiration_time": "2026-12-08T11:45:02Z",
+        "links": [
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839",
+          "rel": "self",
+          "method": "GET"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839/capture",
+          "rel": "capture",
+          "method": "POST"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839/void",
+          "rel": "void",
+          "method": "POST"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839/reauthorize",
+          "rel": "reauthorize",
+          "method": "POST"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/checkout/orders/4BJ62082TS2591355",
+          "rel": "up",
+          "method": "GET"
+         }
+        ],
+        "create_time": "2026-11-09T11:45:02Z",
+        "update_time": "2026-11-09T11:45:52Z"
+       }
+      ],
+      "captures": [
+       {
+        "id": "152071878C608794V",
+        "status": "COMPLETED",
+        "amount": {
+         "currency_code": "USD",
+         "value": "30.00"
+        },
+        "final_capture": true,
+        "disbursement_mode": "INSTANT",
+        "seller_protection": {
+         "status": "ELIGIBLE",
+         "dispute_categories": [
+          "ITEM_NOT_RECEIVED",
+          "UNAUTHORIZED_TRANSACTION"
+         ]
+        },
+        "seller_receivable_breakdown": {
+         "gross_amount": {
+          "currency_code": "USD",
+          "value": "30.00"
+         },
+         "paypal_fee": {
+          "currency_code": "USD",
+          "value": "1.54"
+         },
+         "net_amount": {
+          "currency_code": "USD",
+          "value": "28.46"
+         }
+        },
+        "custom_id": "ab60a524-bcc5-4a17-b189-cf1755e8e1a7",
+        "links": [
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/captures/152071878C608794V",
+          "rel": "self",
+          "method": "GET"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/captures/152071878C608794V/refund",
+          "rel": "refund",
+          "method": "POST"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839",
+          "rel": "up",
+          "method": "GET"
+         }
+        ],
+        "create_time": "2026-11-09T11:45:46Z",
+        "update_time": "2026-11-09T11:45:46Z"
+       },
+       {
+        "id": "1CX59355XJ851142U",
+        "status": "COMPLETED",
+        "amount": {
+         "currency_code": "USD",
+         "value": "16.00"
+        },
+        "final_capture": true,
+        "disbursement_mode": "INSTANT",
+        "seller_protection": {
+         "status": "ELIGIBLE",
+         "dispute_categories": [
+          "ITEM_NOT_RECEIVED",
+          "UNAUTHORIZED_TRANSACTION"
+         ]
+        },
+        "seller_receivable_breakdown": {
+         "gross_amount": {
+          "currency_code": "USD",
+          "value": "16.00"
+         },
+         "paypal_fee": {
+          "currency_code": "USD",
+          "value": "1.05"
+         },
+         "net_amount": {
+          "currency_code": "USD",
+          "value": "14.95"
+         }
+        },
+        "custom_id": "ab60a524-bcc5-4a17-b189-cf1755e8e1a7",
+        "links": [
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/captures/1CX59355XJ851142U",
+          "rel": "self",
+          "method": "GET"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/captures/1CX59355XJ851142U/refund",
+          "rel": "refund",
+          "method": "POST"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839",
+          "rel": "up",
+          "method": "GET"
+         }
+        ],
+        "create_time": "2026-11-09T11:45:48Z",
+        "update_time": "2026-11-09T11:45:48Z"
+       },
+       {
+        "id": "9A298020A65436845",
+        "status": "COMPLETED",
+        "amount": {
+         "currency_code": "USD",
+         "value": "8.00"
+        },
+        "final_capture": true,
+        "disbursement_mode": "INSTANT",
+        "seller_protection": {
+         "status": "ELIGIBLE",
+         "dispute_categories": [
+          "ITEM_NOT_RECEIVED",
+          "UNAUTHORIZED_TRANSACTION"
+         ]
+        },
+        "seller_receivable_breakdown": {
+         "gross_amount": {
+          "currency_code": "USD",
+          "value": "8.00"
+         },
+         "paypal_fee": {
+          "currency_code": "USD",
+          "value": "0.77"
+         },
+         "net_amount": {
+          "currency_code": "USD",
+          "value": "7.23"
+         }
+        },
+        "custom_id": "ab60a524-bcc5-4a17-b189-cf1755e8e1a7",
+        "links": [
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/captures/9A298020A65436845",
+          "rel": "self",
+          "method": "GET"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/captures/9A298020A65436845/refund",
+          "rel": "refund",
+          "method": "POST"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839",
+          "rel": "up",
+          "method": "GET"
+         }
+        ],
+        "create_time": "2026-11-09T11:45:50Z",
+        "update_time": "2026-11-09T11:45:50Z"
+       },
+       {
+        "id": "8YE464155G502411H",
+        "status": "COMPLETED",
+        "amount": {
+         "currency_code": "USD",
+         "value": "30.00"
+        },
+        "final_capture": true,
+        "disbursement_mode": "INSTANT",
+        "seller_protection": {
+         "status": "ELIGIBLE",
+         "dispute_categories": [
+          "ITEM_NOT_RECEIVED",
+          "UNAUTHORIZED_TRANSACTION"
+         ]
+        },
+        "seller_receivable_breakdown": {
+         "gross_amount": {
+          "currency_code": "USD",
+          "value": "30.00"
+         },
+         "paypal_fee": {
+          "currency_code": "USD",
+          "value": "1.54"
+         },
+         "net_amount": {
+          "currency_code": "USD",
+          "value": "28.46"
+         }
+        },
+        "custom_id": "ab60a524-bcc5-4a17-b189-cf1755e8e1a7",
+        "links": [
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/captures/8YE464155G502411H",
+          "rel": "self",
+          "method": "GET"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/captures/8YE464155G502411H/refund",
+          "rel": "refund",
+          "method": "POST"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839",
+          "rel": "up",
+          "method": "GET"
+         }
+        ],
+        "create_time": "2026-11-09T11:45:52Z",
+        "update_time": "2026-11-09T11:45:52Z"
+       },
+       {
+        "id": "9AD8201806589300S",
+        "status": "COMPLETED",
+        "amount": {
+         "currency_code": "USD",
+         "value": "55.00"
+        },
+        "final_capture": true,
+        "disbursement_mode": "INSTANT",
+        "seller_protection": {
+         "status": "ELIGIBLE",
+         "dispute_categories": [
+          "ITEM_NOT_RECEIVED",
+          "UNAUTHORIZED_TRANSACTION"
+         ]
+        },
+        "seller_receivable_breakdown": {
+         "gross_amount": {
+          "currency_code": "USD",
+          "value": "55.00"
+         },
+         "paypal_fee": {
+          "currency_code": "USD",
+          "value": "2.41"
+         },
+         "net_amount": {
+          "currency_code": "USD",
+          "value": "52.59"
+         }
+        },
+        "custom_id": "ab60a524-bcc5-4a17-b189-cf1755e8e1a7",
+        "links": [
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/captures/9AD8201806589300S",
+          "rel": "self",
+          "method": "GET"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/captures/9AD8201806589300S/refund",
+          "rel": "refund",
+          "method": "POST"
+         },
+         {
+          "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839",
+          "rel": "up",
+          "method": "GET"
+         }
+        ],
+        "create_time": "2026-11-09T11:45:44Z",
+        "update_time": "2026-11-09T11:45:44Z"
+       }
+      ]
+     }
+    }
+   ],
+   "payer": {
+    "name": {
+     "given_name": "Jordan",
+     "surname": "Ellis"
+    },
+    "email_address": "roomover-judge-jin0608@personal.example.com",
+    "payer_id": "ZF5VPUBXGV7FU"
+   },
+   "create_time": "2026-11-09T11:45:02Z",
+   "update_time": "2026-11-09T11:45:52Z",
+   "links": [
+    {
+     "href": "https://api.sandbox.paypal.com/v2/checkout/orders/4BJ62082TS2591355",
+     "rel": "self",
+     "method": "GET"
+    }
+   ]
+  },
+  "capture": {
+   "id": "9AD8201806589300S",
+   "amount": {
+    "currency_code": "USD",
+    "value": "55.00"
+   },
+   "final_capture": true,
+   "seller_protection": {
+    "status": "ELIGIBLE",
+    "dispute_categories": [
+     "ITEM_NOT_RECEIVED",
+     "UNAUTHORIZED_TRANSACTION"
+    ]
+   },
+   "disbursement_mode": "INSTANT",
+   "seller_receivable_breakdown": {
+    "gross_amount": {
+     "currency_code": "USD",
+     "value": "55.00"
+    },
+    "paypal_fee": {
+     "currency_code": "USD",
+     "value": "2.41"
+    },
+    "net_amount": {
+     "currency_code": "USD",
+     "value": "52.59"
+    }
+   },
+   "custom_id": "ab60a524-bcc5-4a17-b189-cf1755e8e1a7",
+   "status": "COMPLETED",
+   "supplementary_data": {
+    "related_ids": {
+     "order_id": "4BJ62082TS2591355",
+     "authorization_id": "87S91919A36663839"
+    }
+   },
+   "payee": {
+    "email_address": "roomover-judge-jin0608@personal.example.com",
+    "merchant_id": "YBX4VLQ9G5BMW"
+   },
+   "create_time": "2026-11-09T11:45:44Z",
+   "update_time": "2026-11-09T11:45:44Z",
+   "links": [
+    {
+     "href": "https://api.sandbox.paypal.com/v2/payments/captures/9AD8201806589300S",
+     "rel": "self",
+     "method": "GET"
+    },
+    {
+     "href": "https://api.sandbox.paypal.com/v2/payments/captures/9AD8201806589300S/refund",
+     "rel": "refund",
+     "method": "POST"
+    },
+    {
+     "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839",
+     "rel": "up",
+     "method": "GET"
+    }
+   ]
+  },
+  "authorization": {
+   "id": "87S91919A36663839",
+   "status": "CAPTURED",
+   "amount": {
+    "currency_code": "USD",
+    "value": "144.00"
+   },
+   "custom_id": "ab60a524-bcc5-4a17-b189-cf1755e8e1a7",
+   "seller_protection": {
+    "status": "ELIGIBLE",
+    "dispute_categories": [
+     "ITEM_NOT_RECEIVED",
+     "UNAUTHORIZED_TRANSACTION"
+    ]
+   },
+   "supplementary_data": {
+    "related_ids": {
+     "order_id": "4BJ62082TS2591355"
+    }
+   },
+   "payee": {
+    "email_address": "roomover-judge-jin0608@personal.example.com",
+    "merchant_id": "YBX4VLQ9G5BMW"
+   },
+   "expiration_time": "2026-12-08T11:45:02Z",
+   "create_time": "2026-11-09T11:45:02Z",
+   "update_time": "2026-11-09T11:45:52Z",
+   "links": [
+    {
+     "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839",
+     "rel": "self",
+     "method": "GET"
+    },
+    {
+     "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839/capture",
+     "rel": "capture",
+     "method": "POST"
+    },
+    {
+     "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839/void",
+     "rel": "void",
+     "method": "POST"
+    },
+    {
+     "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/87S91919A36663839/reauthorize",
+     "rel": "reauthorize",
+     "method": "POST"
+    },
+    {
+     "href": "https://api.sandbox.paypal.com/v2/checkout/orders/4BJ62082TS2591355",
+     "rel": "up",
+     "method": "GET"
+    }
+   ]
+  },
+  "payoutBatch": {
+   "batch_header": {
+    "payout_batch_id": "D65SGN757KMKA",
+    "batch_status": "SUCCESS",
+    "time_created": "2026-11-09T11:45:54Z",
+    "time_completed": "2026-11-09T11:46:27Z",
+    "time_closed": "2026-11-09T11:46:27Z",
+    "sender_batch_header": {
+     "sender_batch_id": "rmv.payout.ab60a524-bcc5-4a17-b189-cf1755e8e1a7.1",
+     "email_subject": "You got paid for your Roomover sale",
+     "email_message": "The student who bought from you checked the item at handoff, and Roomover sent your share through PayPal."
+    },
+    "funding_source": "BALANCE",
+    "amount": {
+     "currency": "USD",
+     "value": "139.00"
+    },
+    "fees": {
+     "currency": "USD",
+     "value": "1.25"
+    }
+   },
+   "items": [
+    {
+     "payout_item_id": "XZHRXJLRLL6FJ",
+     "transaction_id": "5T189326DL254751H",
+     "activity_id": "49696875TN062664G",
+     "transaction_status": "SUCCESS",
+     "payout_item_fee": {
+      "currency": "USD",
+      "value": "0.25"
+     },
+     "payout_batch_id": "D65SGN757KMKA",
+     "payout_item": {
+      "recipient_type": "EMAIL",
+      "amount": {
+       "currency": "USD",
+       "value": "8.00"
+      },
+      "note": "Roomover payment for Black clamp lamp, handed off in Harbor Hall 214.",
+      "receiver": "roomover-seller3-jin0608@personal.example.com",
+      "sender_item_id": "471571a9-135f-447d-b3a4-05550f03c2db",
+      "recipient_wallet": "PAYPAL",
+      "purpose": "GOODS"
+     },
+     "time_processed": "2026-11-09T11:46:20Z",
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v1/payments/payouts-item/XZHRXJLRLL6FJ",
+       "rel": "item",
+       "method": "GET",
+       "encType": "application/json"
+      }
+     ]
+    },
+    {
+     "payout_item_id": "Y849U25B2QHKL",
+     "transaction_id": "82F334290S120115S",
+     "activity_id": "7AU59653U77441737",
+     "transaction_status": "SUCCESS",
+     "payout_item_fee": {
+      "currency": "USD",
+      "value": "0.25"
+     },
+     "payout_batch_id": "D65SGN757KMKA",
+     "payout_item": {
+      "recipient_type": "EMAIL",
+      "amount": {
+       "currency": "USD",
+       "value": "55.00"
+      },
+      "note": "Roomover payment for White three drawer desk with oak legs, handed off in Harbor Hall 214.",
+      "receiver": "roomover-seller4-jin0608@personal.example.com",
+      "sender_item_id": "525c23a9-9e2b-4583-8564-16603afea17f",
+      "recipient_wallet": "PAYPAL",
+      "purpose": "GOODS"
+     },
+     "time_processed": "2026-11-09T11:46:20Z",
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v1/payments/payouts-item/Y849U25B2QHKL",
+       "rel": "item",
+       "method": "GET",
+       "encType": "application/json"
+      }
+     ]
+    },
+    {
+     "payout_item_id": "9RJ7EP5FLKRSQ",
+     "transaction_id": "9B44106936090144F",
+     "activity_id": "2NU477070S329932D",
+     "transaction_status": "SUCCESS",
+     "payout_item_fee": {
+      "currency": "USD",
+      "value": "0.25"
+     },
+     "payout_batch_id": "D65SGN757KMKA",
+     "payout_item": {
+      "recipient_type": "EMAIL",
+      "amount": {
+       "currency": "USD",
+       "value": "30.00"
+      },
+      "note": "Roomover payment for Navy bean bag chair with matching pouf, handed off in Harbor Hall 214.",
+      "receiver": "roomover-seller5-jin0608@personal.example.com",
+      "sender_item_id": "7e737925-9993-4825-8d0b-8df78e8c8192",
+      "recipient_wallet": "PAYPAL",
+      "purpose": "GOODS"
+     },
+     "time_processed": "2026-11-09T11:46:20Z",
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v1/payments/payouts-item/9RJ7EP5FLKRSQ",
+       "rel": "item",
+       "method": "GET",
+       "encType": "application/json"
+      }
+     ]
+    },
+    {
+     "payout_item_id": "BGGHKJLXEJ9RE",
+     "transaction_id": "15L08610NC9573335",
+     "activity_id": "7RC30699WX344794G",
+     "transaction_status": "SUCCESS",
+     "payout_item_fee": {
+      "currency": "USD",
+      "value": "0.25"
+     },
+     "payout_batch_id": "D65SGN757KMKA",
+     "payout_item": {
+      "recipient_type": "EMAIL",
+      "amount": {
+       "currency": "USD",
+       "value": "16.00"
+      },
+      "note": "Roomover payment for Black balance arm desk lamp, handed off in Harbor Hall 214.",
+      "receiver": "roomover-seller1-jin0608@personal.example.com",
+      "sender_item_id": "c7d30350-9d8b-4a58-aa80-384b09e81e50",
+      "recipient_wallet": "PAYPAL",
+      "purpose": "GOODS"
+     },
+     "time_processed": "2026-11-09T11:46:19Z",
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v1/payments/payouts-item/BGGHKJLXEJ9RE",
+       "rel": "item",
+       "method": "GET",
+       "encType": "application/json"
+      }
+     ]
+    },
+    {
+     "payout_item_id": "8XHE6J38AYAY8",
+     "transaction_id": "5AX48016JT7986841",
+     "activity_id": "33W50713FY233802D",
+     "transaction_status": "SUCCESS",
+     "payout_item_fee": {
+      "currency": "USD",
+      "value": "0.25"
+     },
+     "payout_batch_id": "D65SGN757KMKA",
+     "payout_item": {
+      "recipient_type": "EMAIL",
+      "amount": {
+       "currency": "USD",
+       "value": "30.00"
+      },
+      "note": "Roomover payment for Mesh back rolling desk chair, handed off in Harbor Hall 214.",
+      "receiver": "roomover-seller2-jin0608@personal.example.com",
+      "sender_item_id": "cf6aa21d-e1c1-4942-88df-d8241c983e81",
+      "recipient_wallet": "PAYPAL",
+      "purpose": "GOODS"
+     },
+     "time_processed": "2026-11-09T11:46:19Z",
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v1/payments/payouts-item/8XHE6J38AYAY8",
+       "rel": "item",
+       "method": "GET",
+       "encType": "application/json"
+      }
+     ]
+    }
+   ],
+   "links": [
+    {
+     "href": "https://api.sandbox.paypal.com/v1/payments/payouts/D65SGN757KMKA?page_size=1000&page=1",
+     "rel": "self",
+     "method": "GET",
+     "encType": "application/json"
+    }
+   ]
+  },
+  "userinfo": {
+   "user_id": "https://www.paypal.com/webapps/auth/identity/user/e2eStubSellerIdentity0000000000000000000",
+   "sub": "https://www.paypal.com/webapps/auth/identity/user/e2eStubSellerIdentity0000000000000000000",
+   "name": "Ava Lindqvist",
+   "emails": [
+    {
+     "value": "roomover-seller1-jin0608@personal.example.com",
+     "primary": true,
+     "confirmed": true
+    }
+   ]
+  }
+ }
+}

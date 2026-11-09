@@ -6,6 +6,7 @@ import { applyPayoutBatchStatus, applyPayoutItemStatus, confirmItemCapture, fini
 import type { Transaction } from "@/lib/db/plans";
 import { orders } from "@/lib/db/schema";
 import { batchStatusFromPayPal, PAYOUT_ITEM_EVENT_STATUS } from "@/lib/domain/payout-state";
+import { notePayoutLanded } from "./payouts";
 import type { PayPalWebhookEvent } from "@/lib/paypal/webhooks/events";
 
 /**
@@ -41,7 +42,9 @@ export async function onPayoutItemEvent(event: PayPalWebhookEvent, db: Db): Prom
   }
   const change = await applyPayoutItemStatus(db, { paypalPayoutItemId: resource.data.payout_item_id, senderItemId: resource.data.payout_item?.sender_item_id }, next, new Date(event.create_time));
   console.info("paypal webhook payout item", { eventId: event.id, type: event.event_type, step: change?.step ?? "unknown_item" });
-  if (change?.step === "apply") publish(change.planId, { type: "handoff" });
+  if (change?.step !== "apply") return;
+  await notePayoutLanded(db, change.orderId);
+  publish(change.planId, { type: "handoff" });
 }
 
 export async function onPayoutBatchEvent(event: PayPalWebhookEvent, db: Db): Promise<void> {
@@ -54,7 +57,9 @@ export async function onPayoutBatchEvent(event: PayPalWebhookEvent, db: Db): Pro
   const next = event.event_type === "PAYMENT.PAYOUTSBATCH.DENIED" ? "denied" : batchStatusFromPayPal(header.batch_status ?? "SUCCESS");
   const change = await applyPayoutBatchStatus(db, { paypalBatchId: header.payout_batch_id, senderBatchId: header.sender_batch_header?.sender_batch_id }, next);
   console.info("paypal webhook payout batch", { eventId: event.id, type: event.event_type, step: change?.step ?? "unknown_batch" });
-  if (change?.step === "apply") publish(change.planId, { type: "handoff" });
+  if (change?.step !== "apply") return;
+  await notePayoutLanded(db, change.orderId);
+  publish(change.planId, { type: "handoff" });
 }
 
 /** An item capture PayPal first reported pending completes here. Checkout captures land through checkout's own handler. */

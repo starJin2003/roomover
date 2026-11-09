@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCheckout, CheckoutRefused, intentFor, sameLines, type CheckoutListing } from "@/lib/domain/checkout";
+import { slotFor } from "@/lib/domain/handoff-slots";
 
 const CHECKOUT_AT = new Date("2026-11-09T15:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
@@ -13,6 +14,8 @@ function listing(id: string, overrides: Partial<CheckoutListing> = {}, endsInDay
     sellerId: `seller-${id}`,
     sellerName: `Seller ${id}`,
     priceCents: 1_000,
+    floorPriceCents: 700,
+    agreement: null,
     handoffMode: "direct",
     status: "active",
     moveOutStartsAt: at(5),
@@ -72,11 +75,44 @@ describe("buildCheckout", () => {
   });
 });
 
+describe("agreed terms at checkout", () => {
+  const slot = slotFor({ day: "2026-11-16", startHour: 14 });
+
+  it("charges the agreed price and keeps the agreed slot", () => {
+    const plan = buildCheckout(["desk", "lamp"], catalog(listing("desk", { agreement: { priceCents: 800, slot } }), listing("lamp")), CHECKOUT_AT);
+    expect(plan.lines.map((line) => [line.amountCents, line.listPriceCents, line.slot])).toEqual([
+      [800, 1_000, slot],
+      [1_000, 1_000, null],
+    ]);
+    expect(plan.totalCents).toBe(1_800);
+  });
+
+  it("falls back to the listed price and window when an agreement no longer fits the listing", () => {
+    const belowFloor = listing("desk", { agreement: { priceCents: 600, slot } });
+    const outside = listing("lamp", { agreement: { priceCents: 800, slot: slotFor({ day: "2026-11-30", startHour: 14 }) } });
+    const odd = listing("rug", { agreement: { priceCents: 800, slot: { startsAt: slot.startsAt, endsAt: new Date(slot.endsAt.getTime() + 60_000) } } });
+    const plan = buildCheckout(["desk", "lamp", "rug"], catalog(belowFloor, outside, odd), CHECKOUT_AT);
+    expect(plan.lines.map((line) => [line.amountCents, line.slot])).toEqual([
+      [1_000, null],
+      [1_000, null],
+      [1_000, null],
+    ]);
+  });
+
+  it("decides the payment mode from the agreed slot, which can bring a long window inside the authorization", () => {
+    const long = listing("desk", { agreement: { priceCents: 900, slot } }, 40);
+    expect(buildCheckout(["desk"], catalog(long), CHECKOUT_AT).paymentMode).toBe("authorize_then_capture");
+    expect(buildCheckout(["desk"], catalog({ ...long, agreement: null }), CHECKOUT_AT).paymentMode).toBe("capture_at_checkout");
+  });
+});
+
 describe("sameLines", () => {
-  it("matches the same listings at the same prices in any order", () => {
-    const a = [{ listingId: "x", amountCents: 100 }, { listingId: "y", amountCents: 200 }];
+  it("matches the same listings at the same prices and slots in any order", () => {
+    const a = [{ listingId: "x", amountCents: 100, slot: null }, { listingId: "y", amountCents: 200, slot: null }];
     expect(sameLines(a, [...a].reverse())).toBe(true);
-    expect(sameLines(a, [{ listingId: "x", amountCents: 100 }])).toBe(false);
-    expect(sameLines(a, [{ listingId: "x", amountCents: 100 }, { listingId: "y", amountCents: 250 }])).toBe(false);
+    expect(sameLines(a, [{ listingId: "x", amountCents: 100, slot: null }])).toBe(false);
+    expect(sameLines(a, [{ listingId: "x", amountCents: 100, slot: null }, { listingId: "y", amountCents: 250, slot: null }])).toBe(false);
+    const slot = slotFor({ day: "2026-11-16", startHour: 14 });
+    expect(sameLines(a, [{ listingId: "x", amountCents: 100, slot: null }, { listingId: "y", amountCents: 200, slot }])).toBe(false);
   });
 });

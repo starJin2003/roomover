@@ -45,8 +45,9 @@ const listingIdsOf = (layout: PlanLayout) => layout.items.flatMap((item) => (ite
 
 /**
  * Prepares the one PayPal order a student approves for a plan. Code reads
- * every amount from the listings, so the order holds exactly the plan's
- * items at their listed prices. An order still awaiting approval with the
+ * every amount from the listings and the plan's agreed terms, so the order
+ * holds exactly the plan's used items at their listed or agreed prices and
+ * never a new item bought elsewhere. An order still awaiting approval with the
  * same lines is reused. Anything else gets a new order, with an idempotency
  * key derived from the new order's ID.
  */
@@ -58,7 +59,7 @@ export async function prepareCheckout(deps: CheckoutDeps, plan: CheckoutPlanRef)
   if (current !== null && !REPAYABLE_STATUSES.has(current.status)) {
     throw new CheckoutRefused("paid", "This room is already paid for.");
   }
-  const checkout = buildCheckout(ids, await loadCheckoutListings(db, ids), now);
+  const checkout = buildCheckout(ids, await loadCheckoutListings(db, ids, plan.id), now);
   if (
     current?.status === "pending_approval" &&
     current.paypalOrderId !== null &&

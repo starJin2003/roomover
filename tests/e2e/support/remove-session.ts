@@ -1,6 +1,6 @@
 import { and, eq, inArray, like, notExists, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { listings, orderItems, orders, payouts, plans } from "@/lib/db/schema";
+import { listingDrafts, listingPhotos, listings, orderItems, orders, payouts, plans } from "@/lib/db/schema";
 import { holdsMoney, MONEY_HELD_STATUSES } from "@/lib/domain/order-state";
 import { refundKey, voidKey } from "@/lib/paypal/idempotency";
 import { paypalSdk } from "@/lib/paypal/server-sdk/client";
@@ -11,6 +11,8 @@ export interface Removed {
   orders: number;
   released: string[];
   listingsRestored: number;
+  /** Listings the session made on Sell, with their drafts and photos. */
+  sellListings: number;
 }
 
 /**
@@ -24,9 +26,10 @@ export interface Removed {
  */
 export async function removeSessionData(session: { id: string } | { prefix: string }): Promise<Removed> {
   const db = getDb();
+  const sellListings = await removeSellData(session);
   const match = "id" in session ? eq(plans.sessionId, session.id) : like(plans.sessionId, `${session.prefix}%`);
   const planIds = (await db.select({ id: plans.id }).from(plans).where(match)).map((row) => row.id);
-  if (planIds.length === 0) return { plans: 0, orders: 0, released: [], listingsRestored: 0 };
+  if (planIds.length === 0) return { plans: 0, orders: 0, released: [], listingsRestored: 0, sellListings };
 
   const held = await db.select().from(orders).where(inArray(orders.planId, planIds));
   const released: string[] = [];
@@ -67,6 +70,18 @@ export async function removeSessionData(session: { id: string } | { prefix: stri
       }
     }
     await tx.delete(plans).where(inArray(plans.id, planIds));
-    return { plans: planIds.length, orders: orderIds.length, released, listingsRestored };
+    return { plans: planIds.length, orders: orderIds.length, released, listingsRestored, sellListings };
+  });
+}
+
+/** Deletes what the session made on Sell. Drafts go first, since they name the listings and the photos. */
+async function removeSellData(session: { id: string } | { prefix: string }): Promise<number> {
+  const bySession = <T extends typeof listingDrafts.sessionId | typeof listings.sessionId | typeof listingPhotos.sessionId>(column: T) =>
+    "id" in session ? eq(column, session.id) : like(column, `${session.prefix}%`);
+  return getDb().transaction(async (tx) => {
+    await tx.delete(listingDrafts).where(bySession(listingDrafts.sessionId));
+    const removed = await tx.delete(listings).where(bySession(listings.sessionId)).returning({ id: listings.id });
+    await tx.delete(listingPhotos).where(bySession(listingPhotos.sessionId));
+    return removed.length;
   });
 }

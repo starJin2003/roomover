@@ -1,8 +1,9 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
-import { buildVerifierRequest, COMPARE_PHOTOS_TOOL, comparePhotos, strictSchema, VERIFIER_FAILED, VERIFIER_REFUSED, type VerifierRequest, type VerifierTransport } from "@/lib/agents/verifier/compare";
+import { strictSchema } from "@/lib/agents/strict-schema";
+import { buildVerifierRequest, COMPARE_PHOTOS_TOOL, comparePhotos, VERIFIER_FAILED, VERIFIER_REFUSED, type VerifierRequest, type VerifierTransport } from "@/lib/agents/verifier/compare";
 import { comparisonMessage } from "@/lib/agents/verifier/prompt";
-import { readVerifierRecording } from "@/lib/agents/verifier/transport";
+import { readReplyRecording } from "@/lib/agents/recording";
 import { damageWords, verdictSchema } from "@/lib/domain/verdict";
 
 type BetaMessage = Anthropic.Beta.Messages.BetaMessage;
@@ -111,7 +112,7 @@ describe("the verdict", () => {
 
 describe("the recorded comparisons", () => {
   it("hold a valid verdict for every sample photo, with new damage only on the torn chair", async () => {
-    const recording = await readVerifierRecording("tests/fixtures/verifier-agent.json");
+    const recording = await readReplyRecording("tests/fixtures/verifier-agent.json");
     const verdicts = Object.values(recording.photos).map((replies) => {
       const last = replies.at(-1) as unknown as BetaMessage;
       const used = last.content.find((block) => block.type === "tool_use");

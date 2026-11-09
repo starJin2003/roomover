@@ -22,8 +22,11 @@ const state = vi.hoisted(() => ({
   calls: [] as Call[],
   events: [] as { tool: string; sentence?: string }[],
   failCaptureOf: null as string | null,
-  batchItems: [] as { senderItemId: string; amountCents: number; receiver: string; note?: string }[],
+  batchItems: [] as { senderItemId: string; amountCents: number; recipientType: string; receiver: string; note?: string }[],
   batches: 0,
+  /** The seller who logged in with PayPal, so Roomover holds their payer ID. */
+  payerIdSeller: null as string | null,
+  relisted: 0,
   finished: false,
   error: null as string | null,
 }));
@@ -53,6 +56,7 @@ function item(id: string, sellerId: string, sellerName: string, amountCents: num
     status: "authorized",
     paypalCaptureId: null,
     paypalRefundId: null,
+    slot: null,
     attempt: 1,
     handoff: {
       id: `handoff-${id}`,
@@ -131,12 +135,18 @@ vi.mock("@/lib/db/handoffs", () => ({
     return [];
   },
   hasOrderEvent: async (_db: unknown, _id: string, tool: string) => state.events.some((event) => event.tool === tool),
+  lockOrderPayout: async () => undefined,
+  relistSeededListings: async () => {
+    state.relisted += 1;
+    return ["listing-desk"];
+  },
   finishSettlement: async () => {
     state.order.status = "settled";
     state.finished = true;
   },
-  sellerReceivers: async (_db: unknown, ids: string[]) => new Map(ids.map((id) => [id, { id, paypalEmail: `${id}@personal.example.com`, payoutWallet: "paypal", venmoHandle: null }])),
-  insertPayout: async (_db: unknown, input: { senderBatchId: string; lines: { sellerId: string; amountCents: number; wallet: "paypal"; receiver: string }[] }) => {
+  sellerAccounts: async (_db: unknown, ids: string[]) =>
+    new Map(ids.map((id) => [id, { paypalAccountId: id === state.payerIdSeller ? "PAYERID000001" : null, paypalEmail: `${id}@personal.example.com`, payoutWallet: "paypal", venmoHandle: null }])),
+  insertPayout: async (_db: unknown, input: { senderBatchId: string; lines: { sellerId: string; amountCents: number; wallet: "paypal"; recipientType: "PAYPAL_ID" | "EMAIL"; receiver: string }[] }) => {
     if (state.order.payout !== null) return;
     const payout: PayoutRecord = {
       id: "payout-1",
@@ -146,7 +156,7 @@ vi.mock("@/lib/db/handoffs", () => ({
       totalCents: input.lines.reduce((sum, line) => sum + line.amountCents, 0),
       attempt: 1,
       createdAt: new Date(),
-      items: input.lines.map((line) => ({ id: `pi-${line.sellerId}`, sellerId: line.sellerId, sellerName: line.sellerId, amountCents: line.amountCents, wallet: line.wallet, receiver: line.receiver, senderItemId: `pi-${line.sellerId}`, paypalPayoutItemId: null, status: "pending", statusChangedAt: null })),
+      items: input.lines.map((line) => ({ id: `pi-${line.sellerId}`, sellerId: line.sellerId, sellerName: line.sellerId, amountCents: line.amountCents, wallet: line.wallet, recipientType: line.recipientType, receiver: line.receiver, senderItemId: `pi-${line.sellerId}`, paypalPayoutItemId: null, status: "pending", statusChangedAt: null })),
     };
     state.order.payout = payout;
   },
@@ -188,7 +198,7 @@ vi.mock("@/lib/paypal/server-sdk/payments", () => ({
   },
 }));
 vi.mock("@/lib/paypal/rest/payouts", () => ({
-  createPayoutBatch: async (_rest: unknown, input: { items: { senderItemId: string; amountCents: number; receiver: string; note?: string }[] }, key: string) => {
+  createPayoutBatch: async (_rest: unknown, input: { items: { senderItemId: string; amountCents: number; recipientType: string; receiver: string; note?: string }[] }, key: string) => {
     state.batches += 1;
     state.batchItems = input.items;
     state.calls.push({ op: "payout", id: "", key });
@@ -202,7 +212,8 @@ vi.mock("@/lib/paypal/rest/payouts", () => ({
 
 const { settleHandoff, SettlementStopped } = await import("@/lib/handoff/settle");
 
-const deps = { db: {} as never, sdk: {} as never, rest: {} as never, now: () => new Date() };
+const db = { transaction: async (run: (tx: unknown) => Promise<unknown>) => run(db) };
+const deps = { db: db as never, sdk: {} as never, rest: {} as never, now: () => new Date() };
 const layout = (ids: string[]) => new Map<string, LayoutRef>(ids.map((id, index) => [`listing-${id}`, { key: id, furnitureType: id === "chair" ? "desk_chair" : "desk", index }]));
 const CART_IDS = ["desk", "chair", "lamp", "clamp", "bag"];
 const cart = () => [item("desk", "jun", "Jun Park", 5_500, 5_500), item("chair", "marcus", "Marcus Bell", 3_500, 3_000), item("lamp", "ava", "Ava Lindqvist", 1_600, 1_600), item("clamp", "sofia", "Sofia Navarro", 800, 800), item("bag", "lea", "Lea Moreau", 3_000, 3_000)];
@@ -215,12 +226,15 @@ beforeEach(() => {
   state.batches = 0;
   state.finished = false;
   state.error = null;
+  state.payerIdSeller = null;
+  state.relisted = 0;
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
 describe("settleHandoff in authorize mode", () => {
   it("captures each kept item with its own key, marks the last one final, and pays every seller in one batch", async () => {
     state.order = freshOrder("authorize_then_capture", cart());
+    state.payerIdSeller = "ava";
     await settleHandoff(deps, "plan-1", "Harbor Hall 214", layout(CART_IDS));
     const captures = state.calls.filter((call) => call.op === "capture");
     expect(captures.map((call) => [call.key, call.amountCents, call.finalCapture])).toEqual([
@@ -233,16 +247,19 @@ describe("settleHandoff in authorize mode", () => {
     expect(captures.every((call) => call.id === "0VF52814937998046")).toBe(true);
     expect(state.calls.some((call) => call.op === "void" || call.op === "refund")).toBe(false);
     expect(state.calls.filter((call) => call.op === "payout").map((call) => call.key)).toEqual(["rmv.payout.6f9b2c1e-0d3a-4b5c-9e8f-1a2b3c4d5e6f.1"]);
-    expect(state.batchItems.map((entry) => [entry.receiver, entry.amountCents])).toEqual([
-      ["jun@personal.example.com", 5_500],
-      ["marcus@personal.example.com", 3_000],
-      ["ava@personal.example.com", 1_600],
-      ["sofia@personal.example.com", 800],
-      ["lea@personal.example.com", 3_000],
+    // Ava logged in with PayPal, so her share goes to her payer ID. The others never did and get their sandbox email.
+    expect(state.batchItems.map((entry) => [entry.recipientType, entry.receiver, entry.amountCents])).toEqual([
+      ["EMAIL", "jun@personal.example.com", 5_500],
+      ["EMAIL", "marcus@personal.example.com", 3_000],
+      ["PAYPAL_ID", "PAYERID000001", 1_600],
+      ["EMAIL", "sofia@personal.example.com", 800],
+      ["EMAIL", "lea@personal.example.com", 3_000],
     ]);
     expect(state.batchItems[1].note).toBe("Roomover payment for Item chair, handed off in Harbor Hall 214.");
     expect(state.finished).toBe(true);
     expect(state.events.map((event) => event.sentence).filter(Boolean)).toEqual(["PayPal captured $139 for 5 items.", "You got $5 back for the chair's new tear.", "PayPal is paying 5 sellers $139 in one payout.", "Every seller got their share. $139 reached 5 PayPal accounts."]);
+    // The moment every seller is paid, the seeded listings go back on sale for the next judge.
+    expect(state.relisted).toBe(1);
   });
 
   it("voids the hold and pays nobody when every item is turned down", async () => {

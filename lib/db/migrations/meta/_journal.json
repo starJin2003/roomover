@@ -22,6 +22,20 @@
       "when": 1794215405867,
       "tag": "0002_handoff_settlement",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794225495168,
+      "tag": "0003_sell",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794232410270,
+      "tag": "0004_negotiation",
+      "breakpoints": true
     }
   ]
 }

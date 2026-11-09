@@ -31,9 +31,13 @@ const NOUN: Readonly<Record<FurnitureType, readonly [one: string, set: string]>>
   drawer_unit: ["drawer unit", "drawer unit"],
   basket: ["basket", "set of baskets"],
   tote: ["storage tote", "storage tote"],
+  rolling_cart: ["rolling cart", "set of rolling carts"],
+  generic: ["item", "set of items"],
 };
 
-export function itemNoun(item: Pick<LayoutItem, "furnitureType" | "pieces">): string {
+/** The item's own word when it has one (a generic shape names itself after its listing), else its type's word. */
+export function itemNoun(item: Pick<LayoutItem, "furnitureType" | "pieces"> & { noun?: string }): string {
+  if (item.noun !== undefined) return item.noun;
   const [one, set] = NOUN[item.furnitureType];
   return item.pieces > 1 ? set : one;
 }

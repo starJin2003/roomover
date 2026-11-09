@@ -1,6 +1,8 @@
 import { publish } from "@/lib/agents/bus";
 import type { Database } from "@/lib/db/client";
-import { applyPayoutBatchStatus, applyPayoutItemStatus, insertHandoffEvents, insertPayout, loadHandoffOrderById, recordPayoutBatch, sellerReceivers, type HandoffOrder, type PayoutChange } from "@/lib/db/handoffs";
+import { applyPayoutBatchStatus, applyPayoutItemStatus, hasOrderEvent, insertHandoffEvents, insertPayout, loadHandoffOrderById, lockOrderPayout, recordPayoutBatch, relistSeededListings, sellerAccounts, type HandoffOrder, type PayoutChange } from "@/lib/db/handoffs";
+import type { Transaction } from "@/lib/db/plans";
+import { payoutRecipient } from "@/lib/domain/payout-recipient";
 import { batchStatusFromPayPal, itemStatusFromPayPal } from "@/lib/domain/payout-state";
 import { payoutLines } from "@/lib/domain/settlement";
 import { formatUsdShort } from "@/lib/format";
@@ -29,16 +31,15 @@ export async function sendPayout(deps: PayoutDeps, order: HandoffOrder, roomLabe
   if (lines.length === 0) return;
 
   if (order.payout === null) {
-    const receivers = await sellerReceivers(deps.db, lines.map((line) => line.sellerId));
+    const accounts = await sellerAccounts(deps.db, lines.map((line) => line.sellerId));
     await insertPayout(deps.db, {
       orderId: order.id,
       senderBatchId: payoutKey(order.id, order.attempt),
       lines: lines.map((line) => {
-        const receiver = receivers.get(line.sellerId);
-        if (receiver === undefined) throw new Error(`Seller ${line.sellerId} has no payout receiver.`);
-        if (receiver.payoutWallet === "venmo" && receiver.venmoHandle !== null) return { ...line, wallet: "venmo" as const, receiver: receiver.venmoHandle };
-        if (receiver.paypalEmail === null) throw new Error(`Seller ${line.sellerId} has no PayPal email for payouts.`);
-        return { ...line, wallet: "paypal" as const, receiver: receiver.paypalEmail };
+        const account = accounts.get(line.sellerId);
+        const recipient = account === undefined ? null : payoutRecipient(account);
+        if (recipient === null) throw new Error(`Seller ${line.sellerId} has no payer ID, PayPal email, or Venmo handle for payouts.`);
+        return { ...line, ...recipient };
       }),
     });
   }
@@ -57,7 +58,7 @@ export async function sendPayout(deps: PayoutDeps, order: HandoffOrder, roomLabe
         items: payout.items.map((item) => ({
           senderItemId: item.senderItemId,
           amountCents: item.amountCents,
-          recipientType: item.wallet === "venmo" ? "USER_HANDLE" : "EMAIL",
+          recipientType: item.recipientType,
           receiver: item.receiver,
           wallet: item.wallet === "venmo" ? "VENMO" : "PAYPAL",
           note: `Roomover payment for ${(titles.get(item.sellerId) ?? ["your item"]).join(", ")}, handed off in ${roomLabel}.`,
@@ -81,24 +82,30 @@ export async function sendPayout(deps: PayoutDeps, order: HandoffOrder, roomLabe
   ]);
 }
 
-/** Notes the moment every seller is paid, once, whichever path delivered the last status. */
-export async function notePayoutChanges(db: Database, orderId: string, changes: readonly PayoutChange[]): Promise<void> {
-  if (!changes.some((change) => change?.step === "apply")) return;
-  const order = await loadHandoffOrderById(db, orderId);
-  const payout = order?.payout;
-  if (order === null || payout === null || payout === undefined || payout.paypalBatchId === null) return;
-  if (!payout.items.every((item) => item.status === "succeeded")) return;
-  const [first] = changes.filter((change) => change?.step === "apply");
-  if (first === null || first === undefined) return;
-  await insertHandoffEvents(db, order, "platform", [
-    {
-      tool: "payouts_landed",
-      sentence: `Every seller got their share. ${formatUsdShort(payout.totalCents)} reached ${payout.items.length === 1 ? "1 PayPal account" : `${payout.items.length} PayPal accounts`}.`,
-      summary: `All ${payout.items.length} payout items of batch ${payout.paypalBatchId} reached SUCCESS.`,
-      detail: { totalCents: payout.totalCents, paypalIdKind: "payout_batch" },
-      paypal: { api: "Payouts", id: payout.paypalBatchId },
-    },
-  ]);
+/**
+ * Notes the moment every seller is paid, once, whichever path delivered the
+ * last status, a webhook or a batch read. The payout row lock makes two
+ * paths landing together take turns. The same moment puts the order's
+ * seeded listings back on sale, so the demo catalog never drains.
+ */
+export async function notePayoutLanded(db: Database | Transaction, orderId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await lockOrderPayout(tx, orderId);
+    const order = await loadHandoffOrderById(tx, orderId);
+    const payout = order?.payout;
+    if (order === null || payout === null || payout === undefined || payout.paypalBatchId === null) return;
+    if (!payout.items.every((item) => item.status === "succeeded") || (await hasOrderEvent(tx, orderId, "payouts_landed"))) return;
+    const relisted = await relistSeededListings(tx, orderId);
+    await insertHandoffEvents(tx, order, "platform", [
+      {
+        tool: "payouts_landed",
+        sentence: `Every seller got their share. ${formatUsdShort(payout.totalCents)} reached ${payout.items.length === 1 ? "1 PayPal account" : `${payout.items.length} PayPal accounts`}.`,
+        summary: `All ${payout.items.length} payout items of batch ${payout.paypalBatchId} reached SUCCESS.${relisted.length === 0 ? "" : ` Put ${relisted.length} demo listings back on sale for the next student.`}`,
+        detail: { totalCents: payout.totalCents, paypalIdKind: "payout_batch" },
+        paypal: { api: "Payouts", id: payout.paypalBatchId },
+      },
+    ]);
+  });
 }
 
 const REFRESH_MS = 2_000;
@@ -126,6 +133,7 @@ export async function refreshPayout(deps: PayoutDeps, orderId: string): Promise<
     const senderItemId = item.payout_item.sender_item_id;
     changes.push(await applyPayoutItemStatus(deps.db, { paypalPayoutItemId: item.payout_item_id, senderItemId }, itemStatusFromPayPal(item.transaction_status), at));
   }
-  await notePayoutChanges(deps.db, orderId, changes);
-  if (changes.some((change) => change?.step === "apply")) publish(order.planId, { type: "handoff" });
+  if (!changes.some((change) => change?.step === "apply")) return;
+  await notePayoutLanded(deps.db, orderId);
+  publish(order.planId, { type: "handoff" });
 }

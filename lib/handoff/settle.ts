@@ -49,7 +49,7 @@ const STOPPED = "PayPal did not finish settling your handoff. Nothing was charge
 
 function wordsOf(item: HandoffOrder["items"][number], layout: ReadonlyMap<string, LayoutRef>): ItemWords {
   const ref = layout.get(item.listingId);
-  return { sellerFirstName: firstNameOf(item.sellerName), noun: ref === undefined ? item.title.toLowerCase() : shortNoun(ref.furnitureType), priceCents: item.amountCents };
+  return { sellerFirstName: firstNameOf(item.sellerName), noun: ref === undefined ? item.title.toLowerCase() : shortNoun(ref), priceCents: item.amountCents };
 }
 
 /** Runs one PayPal step and records what it returned before the next one starts. */

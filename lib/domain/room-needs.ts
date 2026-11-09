@@ -19,6 +19,9 @@ const NEED_BY_CATEGORY: Readonly<Partial<Record<ListingCategory, RoomNeed>>> = {
 
 export const needFor = (category: ListingCategory): RoomNeed | undefined => NEED_BY_CATEGORY[category];
 
+/** The listing categories that cover a need. */
+export const categoriesFor = (need: RoomNeed): ListingCategory[] => (Object.entries(NEED_BY_CATEGORY) as [ListingCategory, RoomNeed][]).flatMap(([category, covers]) => (covers === need ? [category] : []));
+
 export interface NeedCoverage {
   covered: RoomNeed[];
   open: RoomNeed[];

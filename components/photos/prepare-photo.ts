@@ -3,7 +3,7 @@ const MAX_EDGE = 1568;
 const QUALITY = 0.86;
 
 /**
- * Shrinks a camera photo to the size the verifier reads, turned upright and
+ * Shrinks a camera photo to the size Claude reads, turned upright and
  * saved as JPEG, which also keeps uploads well under the 5 MB limit. A photo
  * the browser cannot decode goes up as it is, and the server checks it.
  */

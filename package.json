@@ -16,6 +16,8 @@
     "test:e2e": "playwright test",
     "room:benchmark": "tsx scripts/room/benchmark.ts",
     "furnish:run": "tsx --env-file-if-exists=.env.local scripts/furnish/real-run.ts",
+    "furnish:negotiate": "tsx --env-file-if-exists=.env.local scripts/furnish/negotiate-run.ts",
+    "furnish:record-channel3": "tsx --env-file-if-exists=.env.local scripts/furnish/record-channel3.ts",
     "handoff:samples": "tsx scripts/handoff/make-samples.ts",
     "handoff:record-verifier": "tsx --env-file-if-exists=.env.local scripts/handoff/record-verifier.ts",
     "handoff:run": "tsx --env-file-if-exists=.env.local scripts/handoff/real-run.ts",
@@ -29,10 +31,14 @@
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/db/seed.ts",
     "db:reset": "tsx --env-file-if-exists=.env.local scripts/db/reset.ts",
     "db:counts": "tsx --env-file-if-exists=.env.local scripts/db/counts.ts",
-    "orders:release": "tsx --env-file-if-exists=.env.local scripts/orders/release.ts"
+    "orders:release": "tsx --env-file-if-exists=.env.local scripts/orders/release.ts",
+    "paypal:record-fixtures": "tsx --env-file-if-exists=.env.local scripts/paypal/record-fixtures.ts",
+    "sell:record-fixtures": "tsx --env-file-if-exists=.env.local scripts/sell/record-fixtures.ts",
+    "sell:run": "tsx --env-file-if-exists=.env.local scripts/sell/real-run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.6.0",
+    "@channel3/sdk": "4.8.0",
     "@paypal/agent-toolkit": "1.11.0",
     "@paypal/paypal-server-sdk": "2.5.0",
     "@react-three/drei": "10.7.9",

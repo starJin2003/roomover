@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { issuePaths, payPalApiError, PayPalResponseError, readDebugId } from "@/lib/paypal/errors";
+import { readOptionalConfig } from "@/lib/config";
 import { PAYPAL_SANDBOX, readPayPalCredentials, type PayPalCredentials } from "@/lib/paypal/config";
+import { simulatedFetch, simulatedSandboxFor } from "@/lib/paypal/simulated-sandbox";
 
 export interface AppToken {
   readonly accessToken: string;
@@ -111,6 +113,7 @@ function safeJson(text: string): unknown {
 let processTokens: AppTokenSource | undefined;
 
 export function appTokens(): AppTokenSource {
-  processTokens ??= createAppTokenSource({ credentials: readPayPalCredentials() });
+  const simulated = simulatedSandboxFor(readOptionalConfig("ROOMOVER_PAYPAL_FIXTURE"));
+  processTokens ??= createAppTokenSource({ credentials: readPayPalCredentials(), ...(simulated === null ? {} : { fetch: simulatedFetch(simulated) }) });
   return processTokens;
 }

@@ -15,6 +15,11 @@ const validEnv = {
   ROOMOVER_CLAUDE_RECORD: "recordings/buyer-agent.json",
   ROOMOVER_VERIFIER_FIXTURE: "tests/fixtures/verifier-agent.json",
   PAYPAL_SANDBOX_BUYER_PASSWORD: "sandbox-buyer-password",
+  PAYPAL_SANDBOX_SELLER_PASSWORD: "sandbox-seller-password",
+  ROOMOVER_PAYPAL_FIXTURE: "tests/fixtures/paypal-sandbox.json",
+  ROOMOVER_SELLER_FIXTURE: "tests/fixtures/seller-agent.json",
+  ROOMOVER_CHANNEL3_FIXTURE: "tests/fixtures/channel3.json",
+  ROOMOVER_E2E_LIVE: "1",
 } satisfies Record<ConfigKey, string>;
 
 const allKeys = Object.keys(validEnv) as ConfigKey[];

@@ -20,6 +20,14 @@ export type LeavingReason = (typeof LEAVING_REASONS)[number];
 export const PAYOUT_WALLETS = ["paypal", "venmo"] as const;
 export type PayoutWallet = (typeof PAYOUT_WALLETS)[number];
 
+/**
+ * How a payout item names its receiver. PAYPAL_ID is the payer ID from Log
+ * in with PayPal, EMAIL is the sandbox email of a seeded seller, and
+ * USER_HANDLE is a Venmo handle.
+ */
+export const PAYOUT_RECIPIENT_TYPES = ["PAYPAL_ID", "EMAIL", "USER_HANDLE"] as const;
+export type PayoutRecipientType = (typeof PAYOUT_RECIPIENT_TYPES)[number];
+
 export const ROOM_TYPES = ["single", "double", "apartment_bedroom"] as const;
 export type RoomType = (typeof ROOM_TYPES)[number];
 
@@ -171,6 +179,14 @@ export type DisputeStatus = (typeof DISPUTE_STATUSES)[number];
 /** The platform appears in the activity panel when it runs settlement and payouts. */
 export const AGENT_NAMES = ["buyer", "seller", "verifier", "platform"] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];
+
+/**
+ * A Sell draft from the photo to the listing. Channel3 matches the photo,
+ * the seller agent describes and prices it, and the seller lists it.
+ * `failed` holds the reason the seller agent gave no usable answer.
+ */
+export const LISTING_DRAFT_STATUSES = ["matched", "ready", "failed", "listed"] as const;
+export type ListingDraftStatus = (typeof LISTING_DRAFT_STATUSES)[number];
 
 /** A buyer agent run either furnishes a plan from scratch or edits it on request. */
 export const AGENT_RUN_KINDS = ["plan", "edit"] as const;

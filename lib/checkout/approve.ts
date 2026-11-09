@@ -96,7 +96,7 @@ export async function approveCheckout(deps: CheckoutDeps, input: { planId: strin
   if (holdsMoney(order.status)) return { order, step: "duplicate", events: [] };
   if (order.status === "canceled") throw failure("expired");
 
-  const listings = await loadCheckoutListings(db, order.lines.map((line) => line.listingId));
+  const listings = await loadCheckoutListings(db, order.lines.map((line) => line.listingId), order.planId);
   if (order.lines.some((line) => listings.get(line.listingId)?.status !== "active")) {
     await cancelPendingOrder(db, order.id);
     throw failure("taken");

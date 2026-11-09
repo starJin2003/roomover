@@ -145,9 +145,10 @@ describe("Log in with PayPal", () => {
       flowEntry: "static",
       client_id: "test-client-id",
       response_type: "code",
-      scope: "openid email https://uri.paypal.com/services/paypalattributes",
+      scope: "openid profile email https://uri.paypal.com/services/paypalattributes",
       redirect_uri: "http://127.0.0.1:3000/api/auth/paypal/callback",
       state: "csrf-state",
+      fullPage: "true",
     });
   });
 

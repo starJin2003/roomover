@@ -19,10 +19,17 @@ import { createDemoPlan } from "./demo-plan";
  * PayPal ID, the platform balance before and after, the timings, the
  * verifier's Claude usage, and the webhook events Postgres stored.
  *
- *   pnpm handoff:run --base http://127.0.0.1:3000 --out <folder>
+ * With --webhooks the browser leaves the page as soon as settlement ends,
+ * which closes the stream and its batch reads, so only PayPal's payout
+ * webhooks to the deployed app can fill the seller rows. The run then opens
+ * the page again to show them.
+ *
+ *   pnpm handoff:run --base http://127.0.0.1:3000 --out <folder> [--webhooks]
  */
 
-const args = new Map(process.argv.slice(2).flatMap((value, index, all) => (value.startsWith("--") ? [[value.slice(2), all[index + 1]]] : [])));
+const argv = process.argv.slice(2);
+const args = new Map(argv.flatMap((value, index, all) => (value.startsWith("--") && all[index + 1] !== undefined && !all[index + 1].startsWith("--") ? [[value.slice(2), all[index + 1]]] : [])));
+const WEBHOOKS_ONLY = argv.includes("--webhooks");
 const BASE = args.get("base") ?? "http://127.0.0.1:3000";
 const OUT = args.get("out") ?? "test-results/handoff-run";
 const JUDGE_BUYER = "roomover-judge-jin0608@personal.example.com";
@@ -121,6 +128,21 @@ async function main() {
   const confirmedLast = Date.now();
   await page.getByRole("heading", { level: 1, name: "Handoff done" }).waitFor({ timeout: 120_000 });
   timings.settleSeconds = seconds(Date.now() - confirmedLast);
+  let webhookLanding: { status: string; statusChangedAt: string | null }[] = [];
+  if (WEBHOOKS_ONLY) {
+    await page.goto("about:blank");
+    const left = Date.now();
+    const [paidOrder] = await db.select({ id: orders.id }).from(orders).where(eq(orders.planId, planId));
+    const [batch] = await db.select({ id: payouts.id }).from(payouts).where(eq(payouts.orderId, paidOrder.id));
+    for (; Date.now() - left < WEBHOOK_WAIT_MS; await new Promise((resolve) => setTimeout(resolve, 3000))) {
+      const rows = await db.select({ status: payoutItems.status, statusChangedAt: payoutItems.statusChangedAt }).from(payoutItems).where(eq(payoutItems.payoutId, batch.id));
+      webhookLanding = rows.map((row) => ({ status: row.status, statusChangedAt: row.statusChangedAt?.toISOString() ?? null }));
+      if (rows.length > 0 && rows.every((row) => row.status === "succeeded")) break;
+    }
+    timings.lastConfirmToAllPaidByWebhookSeconds = seconds(Date.now() - confirmedLast);
+    await page.goto(`${BASE}/handoff/${planId}`);
+    await page.getByRole("heading", { level: 1, name: "Handoff done" }).waitFor({ timeout: 60_000 });
+  }
   await page.locator('li[data-paid="true"]').nth(4).waitFor({ timeout: 300_000 });
   timings.lastConfirmToAllPaidSeconds = seconds(Date.now() - confirmedLast);
   await page.waitForTimeout(2500);
@@ -163,7 +185,8 @@ async function main() {
         claude: usage[0],
         timings,
         platformBalance: { before, after },
-        webhooks: { stored: stored.map((event) => [event.eventType, event.paypalEventId, event.resourceId]), duplicates },
+        webhooks: { stored: stored.map((event) => [event.eventType, event.paypalEventId, event.resourceId, event.receivedAt.toISOString(), event.processedAt?.toISOString() ?? null]), duplicates },
+        webhookLanding,
         consoleErrors: errors,
       },
       null,

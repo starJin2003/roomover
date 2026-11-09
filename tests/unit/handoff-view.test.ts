@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { HandoffItem, HandoffOrder } from "@/lib/db/handoffs";
 import { sampleFor, samplesFor } from "@/lib/handoff/samples";
-import { sniffImage } from "@/lib/handoff/upload";
+import { sniffImage } from "@/lib/images";
 import { buildHandoffView, type LayoutRef } from "@/lib/handoff/view";
 import { decisionSentence, findingSentence, moneyBackSentence, rowNote } from "@/lib/handoff/words";
 import { seedListings } from "@/scripts/seed/listings";
@@ -11,7 +11,7 @@ const chair = { sellerFirstName: "Marcus", noun: "chair", priceCents: 3_500 };
 const tear = { kind: "tear" as const, location: "seat cover", sizeCm: 3, severity: "minor" as const };
 
 describe("handoff sentences", () => {
-  it("tells the torn chair story in the planning chat's words", () => {
+  it("tells the torn chair story in the agreed sentences", () => {
     expect(findingSentence(chair, "new_damage", tear)).toBe("Marcus's chair has a new 3 cm tear. You pay $30 of $35.");
     expect(moneyBackSentence(chair, 500, tear, true)).toBe("You got $5 back for the chair's new tear.");
   });
@@ -78,6 +78,7 @@ function item(id: string, sellerId: string, sellerName: string, amountCents: num
     status: "authorized",
     paypalCaptureId: null,
     paypalRefundId: null,
+    slot: null,
     attempt: 1,
     handoff:
       handoff === null

@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { PaidPanel } from "@/components/furnish/paid-panel";
+import { HandoffLink, PaidPanel } from "@/components/furnish/paid-panel";
 import { UnderTheHoodProvider } from "@/components/paypal/under-the-hood";
 import type { CheckoutView } from "@/lib/plan-view";
 
@@ -19,7 +19,8 @@ const PLAN_ID = "4b890249-7438-45b7-aaff-03a2e3f5efad";
 const render = (checkout: CheckoutView, underTheHood = false) =>
   renderToStaticMarkup(
     <UnderTheHoodProvider defaultOn={underTheHood}>
-      <PaidPanel planId={PLAN_ID} checkout={checkout} />
+      <PaidPanel checkout={checkout} />
+      <HandoffLink planId={PLAN_ID} checkout={checkout} />
     </UnderTheHoodProvider>,
   );
 
@@ -58,5 +59,6 @@ describe("PaidPanel", () => {
     const html = render({ ...authorized, status: "capture_pending", paymentMode: "capture_at_checkout", authorizationId: null });
     expect(html).toContain("PayPal is still processing your $141 payment.");
     expect(html).not.toContain("data-paypal-moment");
+    expect(html).not.toContain("/handoff/");
   });
 });

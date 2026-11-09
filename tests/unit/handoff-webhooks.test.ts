@@ -8,22 +8,24 @@ const state = vi.hoisted(() => ({
   released: [] as string[],
   orderStatus: "authorized" as string,
   step: "apply" as "apply" | "duplicate" | "stale",
+  noted: [] as string[],
 }));
 
 vi.mock("@/lib/db/handoffs", () => ({
   applyPayoutItemStatus: async (_db: unknown, match: unknown, next: unknown) => {
     state.items.push([match, next]);
-    return { step: state.step, planId: "plan-1" };
+    return { step: state.step, planId: "plan-1", orderId: "order-1" };
   },
   applyPayoutBatchStatus: async (_db: unknown, match: unknown, next: unknown) => {
     state.batches.push([match, next]);
-    return { step: state.step, planId: "plan-1" };
+    return { step: state.step, planId: "plan-1", orderId: "order-1" };
   },
   confirmItemCapture: async () => "plan-1",
   orderByAuthorization: async () => ({ id: "order-1", planId: "plan-1", status: state.orderStatus }),
   finishRelease: async (_db: unknown, orderId: string) => void state.released.push(orderId),
 }));
 vi.mock("@/lib/agents/bus", () => ({ publish: (...args: unknown[]) => state.published.push(args) }));
+vi.mock("@/lib/handoff/payouts", () => ({ notePayoutLanded: async (_db: unknown, orderId: string) => void state.noted.push(orderId) }));
 
 const { onAuthorizationVoided, onPayoutBatchEvent, onPayoutItemEvent } = await import("@/lib/handoff/webhooks");
 
@@ -37,6 +39,7 @@ beforeEach(() => {
   state.released = [];
   state.orderStatus = "authorized";
   state.step = "apply";
+  state.noted = [];
   vi.spyOn(console, "info").mockImplementation(() => undefined);
   vi.spyOn(console, "warn").mockImplementation(() => undefined);
 });
@@ -57,6 +60,8 @@ describe("payout webhooks", () => {
       ["plan-1", { type: "handoff" }],
       ["plan-1", { type: "handoff" }],
     ]);
+    // Webhooks reach the deployed app alone, so each applied status checks whether every seller is now paid.
+    expect(state.noted).toEqual(["order-1", "order-1", "order-1"]);
   });
 
   it("stays quiet on the screen for a repeated or stale event", async () => {
@@ -64,6 +69,7 @@ describe("payout webhooks", () => {
     await onPayoutItemEvent(event("PAYMENT.PAYOUTS-ITEM.HELD", { payout_item_id: "SBPQ2VLDDTMSC" }), db);
     expect(state.items).toHaveLength(1);
     expect(state.published).toEqual([]);
+    expect(state.noted).toEqual([]);
   });
 
   it("acknowledges an item event without an ID", async () => {

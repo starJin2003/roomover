@@ -1,14 +1,20 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
+import { getDb } from "@/lib/db/client";
+import { countActiveListings } from "@/lib/db/plans";
+import { CAMPUS } from "@/scripts/seed/campus";
+import { captureFullHeight, expectFitsDesktops, openRoomList } from "./support/layout";
+import { LIVE } from "./support/sandbox";
 import { expect, test } from "./support/session";
 
 /**
  * The Furnish flow end to end against a recorded Claude conversation, which
  * the test server replays (see playwright.config.ts). Every hard check runs
  * for real on the server, so the recorded placements still pass through the
- * budget, hall rule, and fit checks, and create_checkout prepares a real
- * sandbox order. Each test runs in a tagged session whose plans, runs,
- * events, and orders are deleted when it ends.
+ * budget, hall rule, and fit checks, and create_checkout prepares an order
+ * in the recorded sandbox (the real one with ROOMOVER_E2E_LIVE=1). Each test
+ * runs in a tagged session whose plans, runs, events, and orders are deleted
+ * when it ends.
  */
 
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR ?? "test-results/screenshots";
@@ -34,47 +40,35 @@ async function expectNoOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 }
 
-/**
- * Full page captures in CSS pixels. Phones are captured at their full height,
- * so the sticky PayPal bar sits where the sheet ends and covers nothing.
- */
 async function capture(page: Page, name: string, width: number) {
-  const viewport = page.viewportSize();
-  if (viewport !== null && width < 600) {
-    await page.setViewportSize({ width: viewport.width, height: await page.evaluate(() => document.documentElement.scrollHeight) });
-    await page.waitForTimeout(400);
-  }
-  await page.screenshot({ path: `${SCREENSHOT_DIR}/${name}-${width}.png`, fullPage: true, scale: "css" });
-  if (viewport !== null && width < 600) await page.setViewportSize(viewport);
+  await captureFullHeight(page, `${SCREENSHOT_DIR}/${name}-${width}.png`);
 }
 
 const widthOf = (project: string) => Number(project.split("-").at(-1));
 const sentences = (page: Page) => page.locator("#furnish-panel-title").locator("xpath=ancestor::section[1]").locator("ul[aria-live] [data-sentence]");
 
-test("Home offers the two choices over the furnished room", async ({ page }, testInfo) => {
-  const problems = watchConsole(page);
-  await page.goto("/");
-  await expect(page).toHaveTitle("Roomover");
-  await expect(page.getByRole("heading", { level: 1, name: "Furnish your dorm room from students moving out" })).toBeVisible();
-  await expect(page.getByText(/^24 items from students leaving Lakeshore University this term$/)).toBeVisible();
-  await expect(page.getByRole("link", { name: /Furnish a room/ })).toHaveAttribute("href", "/furnish");
-  await expect(page.getByRole("link", { name: /Sell items/ })).toHaveAttribute("href", "/sell");
-  await expect(page.locator('[data-room="harbor-hall-double"]')).toHaveAttribute("data-ready", "true", { timeout: 30_000 });
-  await expect(page.locator('[data-room="harbor-hall-double"]')).toHaveAttribute("data-placed", "5");
-  await expectNoOverflow(page);
-  await expectAccessible(page);
-  await capture(page, "home", widthOf(testInfo.project.name));
-  expect(problems).toEqual([]);
-});
+// The count on Home is the live catalog, which a Sell test's listing or a paid order changes, so this takes its turn with them.
+test.describe("Home", () => {
+  test.use({ holdsCatalog: true });
 
-test("Sell shows the steps to come and leads back to Furnish", async ({ page }) => {
-  const problems = watchConsole(page);
-  await page.goto("/sell");
-  await expect(page.getByRole("heading", { level: 1, name: "Selling opens next" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Furnish a room" })).toHaveAttribute("href", "/furnish");
-  await expectNoOverflow(page);
-  await expectAccessible(page);
-  expect(problems).toEqual([]);
+  test("Home offers the two choices over the furnished room", async ({ page }, testInfo) => {
+    const problems = watchConsole(page);
+    await page.goto("/");
+    await expect(page).toHaveTitle("Roomover");
+    await expect(page.getByRole("heading", { level: 1, name: "Furnish your dorm room from students moving out" })).toBeVisible();
+    // The count is the live catalog, the 24 seeded listings plus any a Sell run listed in the last day.
+    const active = await countActiveListings(getDb(), CAMPUS);
+    expect(active).toBeGreaterThanOrEqual(24);
+    await expect(page.getByText(`${active} items from students leaving Lakeshore University this term`, { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Furnish a room/ })).toHaveAttribute("href", "/furnish");
+    await expect(page.getByRole("link", { name: /Sell items/ })).toHaveAttribute("href", "/sell");
+    await expect(page.locator('[data-room="harbor-hall-double"]')).toHaveAttribute("data-ready", "true", { timeout: 30_000 });
+    await expect(page.locator('[data-room="harbor-hall-double"]')).toHaveAttribute("data-placed", "5");
+    await expectNoOverflow(page);
+    await expectAccessible(page);
+    await capture(page, "home", widthOf(testInfo.project.name));
+    expect(problems).toEqual([]);
+  });
 });
 
 test.describe("the buyer agent", () => {
@@ -114,11 +108,12 @@ test.describe("the buyer agent", () => {
     const keys = await room.locator("ol [data-item]").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-item")));
     expect(keys).toEqual(RECORDED_ITEMS);
     await expect(page.locator("[data-total]")).toHaveText("$100");
-    await expect(page.getByText("$261 less than buying these new")).toBeVisible();
+    await expect(page.getByText("$206.98 less than the cheapest comparable new items on Channel3")).toBeVisible();
     await expect(page.getByText("Prepared one PayPal checkout for $100 from 4 students. It waits for your approval.")).toBeVisible();
     await expect(page.locator('[data-paypal-checkout="ready"]')).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("paypal-button")).toBeVisible();
-    await expect(page.getByText(/Pay in 4 interest-free payments of \$25\.00/)).toBeVisible({ timeout: 30_000 });
+    // The Pay Later message comes from PayPal's own servers, so only a live run shows its words.
+    if (LIVE) await expect(page.getByText(/Pay in 4 interest-free payments of \$25\.00/)).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("listitem").filter({ hasText: /^Pay$/ })).toHaveAttribute("aria-current", "step");
     await expectNoOverflow(page);
     await expectAccessible(page);
@@ -135,8 +130,11 @@ test.describe("the buyer agent", () => {
     await expect(page.getByText(/^Order [A-Z0-9]{17}, sandbox$/)).toBeVisible();
     await expectNoOverflow(page);
     await expectAccessible(page);
+    // The longest Furnish state, every step open with Under the hood on, still fits the desktop window.
+    if (width >= 1024) await expectFitsDesktops(page, SCREENSHOT_DIR, "furnish");
     await capture(page, "under-the-hood", width);
     await page.locator("summary", { hasText: /^Details, \d+ steps$/ }).click();
+    await openRoomList(page);
 
     // The keyboard walks the bean bag west until it fails, which shows the Brick outline, and Escape puts it back.
     const seatRow = page.locator(`[data-item="${BEAN_BAG}"]`);

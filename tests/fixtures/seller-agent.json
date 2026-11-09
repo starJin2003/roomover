@@ -1,0 +1,219 @@
+{
+ "version": 1,
+ "photos": {
+  "e7a081b694f2e66862f3d90019c752c2e9f37c4037fcb50cdaea0c043195cfbb": [
+   {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011CgsMDXAuJnxg84pU6kqjt",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_01X1Eo4eUGCu8er5v2fmCZwC",
+      "name": "describe_listing",
+      "input": {
+       "category": "storage",
+       "title": "Black 3-tier rolling utility cart",
+       "description": "A black metal three-tier rolling cart with a solid top tray and two mesh-bottom lower trays, on four caster wheels. It looks clean with no clear damage visible in the photo.",
+       "condition": "like_new",
+       "defects": [],
+       "colorName": "Black",
+       "colorHex": "#25262A",
+       "material": "Metal",
+       "styleTags": [
+        "minimal",
+        "practical"
+       ],
+       "matchedCandidate": 1,
+       "newPriceDollars": 39,
+       "priceDollars": 21,
+       "floorDollars": 16
+      },
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 11759,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 0,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 11759,
+       "output_tokens": 421,
+       "cache_read_input_tokens": 0,
+       "cache_creation_input_tokens": 0,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 421,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   }
+  ],
+  "1604638878b6b57c1bc09e98babcb5dfbf65c9e9c79fc272ac02e2227abd6c12": [
+   {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011CgsMDyxy661cx3eSBcBeb",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_011kKJLUf8a2z2TvqQyrwdbw",
+      "name": "describe_listing",
+      "input": {
+       "category": "chair",
+       "title": "White tufted molded side chair with wood legs",
+       "description": "White faux leather side chair with a molded, button-tufted seat and natural wood dowel legs with a black metal wire brace. It looks clean with no visible wear in the photo.",
+       "condition": "like_new",
+       "defects": [],
+       "colorName": "White",
+       "colorHex": "#F2EFE8",
+       "material": "Faux leather, wood, metal",
+       "styleTags": [
+        "minimal",
+        "modern",
+        "scandinavian"
+       ],
+       "matchedCandidate": null,
+       "newPriceDollars": 90,
+       "priceDollars": 48,
+       "floorDollars": 36
+      },
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 16435,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 0,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 16435,
+       "output_tokens": 433,
+       "cache_read_input_tokens": 0,
+       "cache_creation_input_tokens": 0,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 433,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   }
+  ],
+  "0082a8a53eaef2216a0c0e4614465cdc7443c4430e08252c0662ee8cdf0bd3b0": [
+   {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011CgsMESgKBaniWoxxAkV1T",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_015JacTsekHkQsysXs4rPQDK",
+      "name": "describe_listing",
+      "input": {
+       "category": "storage",
+       "title": "Turquoise plastic laundry basket",
+       "description": "An oval turquoise plastic laundry basket with vented sides and floor and built-in handle grips at each end. It looks clean with no cracks, though the plastic has a slightly dull finish.",
+       "condition": "good",
+       "defects": [],
+       "colorName": "Turquoise",
+       "colorHex": "#27B5D3",
+       "material": "plastic",
+       "styleTags": [
+        "simple",
+        "bright"
+       ],
+       "matchedCandidate": null,
+       "newPriceDollars": 8,
+       "priceDollars": 3,
+       "floorDollars": 2
+      },
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 10898,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 0,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 10898,
+       "output_tokens": 423,
+       "cache_read_input_tokens": 0,
+       "cache_creation_input_tokens": 0,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 423,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   }
+  ]
+ }
+}

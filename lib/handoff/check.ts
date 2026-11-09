@@ -12,6 +12,7 @@ import { planLayoutSchema } from "@/lib/domain/layout";
 import { ChoiceRefused, settleChoice, type Finding, type HandoffChoice } from "@/lib/domain/money-policy";
 import { canCheck } from "@/lib/domain/order-state";
 import type { PhotoData } from "@/lib/agents/verifier/prompt";
+import { listingPhotoBytes } from "@/lib/sell/photos";
 import { sampleFor, type SampleKind } from "./samples";
 import { decisionSentence, findingSentence, firstNameOf, shortNoun, type ItemWords } from "./words";
 
@@ -45,7 +46,7 @@ type OpenItem = HandoffItem & { handoff: NonNullable<HandoffItem["handoff"]> };
 async function wordsFor(db: Database, planId: string, item: HandoffItem): Promise<ItemWords> {
   const [row] = await db.select({ layout: plans.layout }).from(plans).where(eq(plans.id, planId));
   const placed = row === undefined ? undefined : planLayoutSchema.parse(row.layout).items.find((entry) => entry.source === "listing" && entry.listingId === item.listingId);
-  return { sellerFirstName: firstNameOf(item.sellerName), noun: placed === undefined ? item.title.toLowerCase() : shortNoun(placed.furnitureType), priceCents: item.amountCents };
+  return { sellerFirstName: firstNameOf(item.sellerName), noun: placed === undefined ? item.title.toLowerCase() : shortNoun(placed), priceCents: item.amountCents };
 }
 
 async function openItem(db: Database, planId: string, orderItemId: string): Promise<{ order: HandoffOrder; item: OpenItem; words: ItemWords }> {
@@ -111,7 +112,7 @@ export async function checkPhoto(deps: CheckDeps, planId: string, orderItemId: s
   }
   publish(planId, { type: "handoff" });
 
-  const listingPhotos = await Promise.all(item.photos.map(async (photo) => photoData(await readPublicPhoto(photo.src), "image/jpeg")));
+  const listingPhotos = await Promise.all(item.photos.map(async (photo) => (await listingPhotoBytes(db, photo.src)).data));
   let result: Awaited<ReturnType<typeof comparePhotos>>;
   try {
     result = await comparePhotos(transport, listingFacts(item), listingPhotos, handoffPhoto.data);

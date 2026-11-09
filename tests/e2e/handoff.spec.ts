@@ -6,14 +6,16 @@ import { getDb } from "@/lib/db/client";
 import { listings, orderItems, orders, payoutItems, payouts } from "@/lib/db/schema";
 import { SESSION_COOKIE, signSession } from "@/lib/session";
 import { createDemoPlan } from "@/scripts/handoff/demo-plan";
+import { expectFitsDesktops } from "./support/layout";
 import { approveInPopup, BUYER_PASSWORD } from "./support/paypal-popup";
+import { LIVE, routeRecordedPayPal } from "./support/sandbox";
 import { expect, test } from "./support/session";
 
 test.use({ holdsCatalog: true });
 
 /**
- * Handoff end to end on the five seller demo cart. A real sandbox checkout
- * holds $144, the student checks each item with its sample photo while the
+ * Handoff end to end on the five seller demo cart. A checkout holds $144
+ * (the recorded sandbox by default, the real one with ROOMOVER_E2E_LIVE=1), the student checks each item with its sample photo while the
  * verifier replays its recorded comparisons, the torn chair is confirmed at
  * $30, PayPal captures each kept item from the authorization, and one
  * Payouts batch pays the five sellers while their rows fill. Teardown voids
@@ -49,6 +51,7 @@ function watchConsole(page: Page): string[] {
 /** Approves the fixture plan's checkout in a desktop window, since the PayPal popup is the desktop flow. */
 async function payAtDesktop(browser: Browser, baseURL: string, session: string): Promise<void> {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await routeRecordedPayPal(context, baseURL);
   await context.addCookies([{ name: SESSION_COOKIE, value: signSession(session, readConfig(["SESSION_SECRET"]).SESSION_SECRET), url: baseURL, httpOnly: true, sameSite: "Lax" }]);
   const page = await context.newPage();
   await pay(page);
@@ -59,9 +62,9 @@ async function pay(page: Page): Promise<void> {
   await page.goto("/furnish");
   await expect(page.locator("[data-total]")).toHaveText("$144");
   await expect(page.locator('[data-paypal-checkout="ready"]')).toBeVisible({ timeout: 30_000 });
-  const popup = page.waitForEvent("popup");
+  const popup = LIVE ? page.waitForEvent("popup") : null;
   await page.locator("paypal-button").click();
-  await approveInPopup(await popup);
+  if (popup !== null) await approveInPopup(await popup);
   await expect(page.getByText("PayPal holds your $144 until handoff")).toBeVisible({ timeout: 60_000 });
 }
 
@@ -72,7 +75,7 @@ async function checkWithSample(page: Page, sample: "Use a sample photo" | "Sampl
 }
 
 test("the student checks every item, the torn chair costs $30, and PayPal pays five sellers in one batch", async ({ page, session, browser, baseURL }, testInfo) => {
-  test.skip(BUYER_PASSWORD === undefined, "Needs PAYPAL_SANDBOX_BUYER_PASSWORD in .env.local.");
+  test.skip(LIVE && BUYER_PASSWORD === undefined, "A live run needs PAYPAL_SANDBOX_BUYER_PASSWORD in .env.local.");
   test.setTimeout(480_000);
   const desktop = testInfo.project.name === "desktop-1440";
   const width = desktop ? 1440 : 390;
@@ -179,13 +182,15 @@ test("the student checks every item, the torn chair costs $30, and PayPal pays f
     [3_000, "succeeded"],
     [5_500, "succeeded"],
   ]);
-  const sold = await db.select({ status: listings.status }).from(listings).where(inArray(listings.id, lines.map((line) => line.listingId)));
-  expect(sold.every((listing) => listing.status === "sold")).toBe(true);
+  // Once every seller is paid, the seeded listings go back on sale, so the demo catalog never drains.
+  await expect.poll(async () => (await db.select({ status: listings.status }).from(listings).where(inArray(listings.id, lines.map((line) => line.listingId)))).map((listing) => listing.status), { timeout: 30_000 }).toEqual(["active", "active", "active", "active", "active"]);
   const paidCard = page.locator('[data-paypal-moment="paid"]');
   await expect(paidCard.getByText(payout.paypalBatchId ?? "")).toBeVisible();
   for (const item of paid) await expect(paidCard.getByText(item.paypalPayoutItemId ?? "")).toBeVisible();
   for (const line of lines) await expect(page.locator('[data-paypal-moment="captured"]').getByText(line.paypalCaptureId ?? "")).toBeVisible();
   await expectAccessible(page);
+  // The longest Handoff state, five paid sellers and every ID under the hood, still fits the desktop window.
+  if (desktop) await expectFitsDesktops(page, SCREENSHOT_DIR, "handoff");
   await page.screenshot({ path: `${SCREENSHOT_DIR}/sellers-paid-done-${width}.png`, fullPage: true, scale: "css" });
 
   console.log(JSON.stringify({ project: testInfo.project.name, order: order.paypalOrderId, authorization: order.paypalAuthorizationId, captures: lines.map((line) => line.paypalCaptureId), batch: payout.paypalBatchId, items: paid.map((item) => item.paypalPayoutItemId) }));

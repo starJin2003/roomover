@@ -4,11 +4,13 @@ import { useCallback, useMemo, useState } from "react";
 import { ActivityFeed } from "@/components/furnish/activity-feed";
 import { ChangeRequest } from "@/components/furnish/change-request";
 import { PlanForm } from "@/components/furnish/plan-form";
+import { UnderTheHoodLog } from "@/components/furnish/under-the-hood-log";
 import { usePlanStream } from "@/components/furnish/use-plan-stream";
-import { PaidPanel } from "@/components/furnish/paid-panel";
+import { HandoffLink, PaidPanel } from "@/components/furnish/paid-panel";
 import { PayPalCheckout } from "@/components/paypal/paypal-checkout";
 import { UnderTheHoodProvider, UnderTheHoodSwitch } from "@/components/paypal/under-the-hood";
 import { RoomStage, type MoveResult, type RoomEditing } from "@/components/room/room-stage";
+import { SHELL_COLUMNS } from "@/components/site/screen-frame";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
 import { PanelState } from "@/components/ui/panel-state";
@@ -107,7 +109,10 @@ export function FurnishScreen({ paypalClientId, presets, listingCount, initialPl
         stylePrompt: text,
         items: [],
         totalCents: 0,
-        newCents: 0,
+        usedCents: 0,
+        newItemsCents: 0,
+        savings: { paidCents: 0, newCents: 0, savedCents: 0, compared: 0, total: 0 },
+        negotiations: [],
         run: { id: body.runId, kind: "plan", status: "running", request: null, error: null, startedAt, finishedAt: null },
         checkout: null,
       });
@@ -190,7 +195,8 @@ export function FurnishScreen({ paypalClientId, presets, listingCount, initialPl
   const example = items.find((item) => item.layout.placement === "floor") ?? items[0];
   const exampleRequest = example === undefined ? "Move the desk lamp closer to the bed" : `Move the ${itemNoun(example.layout)} to the window`;
   const budget = plan?.budgetCents ?? 0;
-  const saved = plan === null ? 0 : plan.newCents - plan.totalCents;
+  const saved = plan?.savings.savedCents ?? 0;
+  const newItems = plan === null ? [] : plan.items.filter((item) => item.newFrom !== undefined);
   const run = plan?.run ?? null;
   const failed = run?.status === "failed";
   const checkout = plan?.checkout ?? null;
@@ -221,10 +227,24 @@ export function FurnishScreen({ paypalClientId, presets, listingCount, initialPl
     setComposing(true);
   };
 
+  const pending = phase === "ready" && !paid;
+  const footer =
+    phase === "ready" && paid && checkout !== null ? (
+      <HandoffLink planId={plan?.id ?? ""} checkout={checkout} />
+    ) : pending && plan !== null ? (
+      <PayPalCheckout
+        clientId={paypalClientId}
+        planId={plan.id}
+        amountCents={plan.usedCents}
+        disabledReason={running ? "The buttons wait until the buyer agent finishes your change." : null}
+        onPaid={setPlan}
+      />
+    ) : undefined;
+
   return (
-    <main className="mx-auto grid w-full max-w-[1360px] gap-6 px-4 pb-0 sm:px-10 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-start lg:gap-12 lg:pb-16">
-      <section aria-label={`${label}, the room`} className="min-w-0">
-        <RoomStage key={preset.slug} label={label} preset={preset} items={items} ring editing={editing} showList={phase !== "plan"} />
+    <main className={SHELL_COLUMNS}>
+      <section aria-label={`${label}, the room`} className="min-w-0 lg:h-full lg:min-h-0">
+        <RoomStage key={preset.slug} label={label} preset={preset} items={items} ring editing={editing} showList={phase !== "plan"} fill />
       </section>
 
       <UnderTheHoodProvider>
@@ -232,13 +252,14 @@ export function FurnishScreen({ paypalClientId, presets, listingCount, initialPl
           id="furnish-panel"
           heading="h1"
           sheet
+          shell
           title={label}
           subtitle={phase === "plan" ? preset.description : `Jordan's room, ${budget > 0 ? `${formatUsdShort(budget)} budget` : "planning"}`}
           action={phase === "plan" ? undefined : <UnderTheHoodSwitch />}
-          className="lg:sticky lg:top-6"
+          top={<StepStrip steps={BUYER_STEPS} current={step} label="Furnish progress" />}
+          footer={footer}
+          footerClassName={pending ? "max-lg:sticky max-lg:bottom-0 max-lg:z-10 max-lg:border-t max-lg:border-hair max-lg:bg-paper max-lg:pb-[max(1rem,env(safe-area-inset-bottom))]" : ""}
         >
-          <StepStrip steps={BUYER_STEPS} current={step} label="Furnish progress" />
-
           {phase === "plan" && (
             <>
               {failed && plan !== null && (
@@ -275,38 +296,53 @@ export function FurnishScreen({ paypalClientId, presets, listingCount, initialPl
               )}
               <div className="flex flex-col gap-1">
                 <p className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="text-2xl font-semibold tabular-nums" data-total={plan.totalCents}>
-                    {formatUsdShort(plan.totalCents)}
+                  <span className="text-2xl font-semibold tabular-nums" data-total={plan.usedCents}>
+                    {formatUsdShort(plan.usedCents)}
                   </span>
-                  <span className="text-base text-flint">of your {formatUsdShort(budget)}</span>
+                  <span className="text-base text-flint">{newItems.length === 0 ? `of your ${formatUsdShort(budget)}` : "through PayPal for the used items"}</span>
                 </p>
+                {newItems.map((item) => (
+                  <p key={item.layout.key} data-new-item-line className="text-sm">
+                    Plus {formatUsdShort(item.priceCents)} for a new {item.title.toLowerCase()}, bought at{" "}
+                    <a
+                      href={item.newFrom?.buyUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium underline decoration-stone underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                    >
+                      {item.newFrom?.retailer}
+                      <span className="sr-only">, opens in a new tab</span>
+                    </a>
+                  </p>
+                ))}
+                {newItems.length > 0 && (
+                  <p className="text-sm text-flint tabular-nums">
+                    {formatUsdShort(plan.totalCents)} of your {formatUsdShort(budget)} in all
+                  </p>
+                )}
                 {phase === "filling" ? (
                   <p role="status" className="flex items-center gap-2 text-sm text-flint">
                     <Spinner className="size-3.5" />
                     {plan.items.length === 0 ? "The buyer agent is reading the room" : `Placing items, ${plan.items.length} so far`}
                   </p>
                 ) : (
-                  saved > 0 && <p className="text-sm text-flint">{formatUsdShort(saved)} less than buying these new</p>
+                  saved > 0 && (
+                    <p data-savings className="text-sm text-flint">
+                      {formatUsdShort(saved)} less than the cheapest comparable new items on Channel3
+                    </p>
+                  )
                 )}
               </div>
+              <UnderTheHoodLog negotiations={plan.negotiations} events={events} />
 
-              {phase === "ready" && paid && checkout !== null && <PaidPanel planId={plan.id} checkout={checkout} />}
-              {phase === "ready" && !paid && (
+              {phase === "ready" && paid && checkout !== null && <PaidPanel checkout={checkout} />}
+              {pending && (
                 <>
                   {released && <p className="text-sm text-flint">PayPal released your last payment for this room, so nothing was charged. Press PayPal to pay again.</p>}
                   {failed && plan.items.length > 0 && run?.kind === "edit" && (
                     <p className="text-sm font-medium text-brick">The change did not finish. {run.error}</p>
                   )}
                   <ChangeRequest example={exampleRequest} busy={asking} disabledReason={running ? AGENT_BUSY : null} error={askError} onSend={ask} />
-                  <div className="sticky bottom-0 -mx-5 flex flex-col gap-3 border-t border-hair bg-paper px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] lg:static lg:m-0 lg:border-0 lg:p-0">
-                    <PayPalCheckout
-                      clientId={paypalClientId}
-                      planId={plan.id}
-                      amountCents={plan.totalCents}
-                      disabledReason={running ? "The buttons wait until the buyer agent finishes your change." : null}
-                      onPaid={setPlan}
-                    />
-                  </div>
                 </>
               )}
               {phase === "ready" && (

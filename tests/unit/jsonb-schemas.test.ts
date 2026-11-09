@@ -141,7 +141,7 @@ describe("plan layout", () => {
     const layout = {
       items: [
         { ...item, source: "listing", listingId: LISTING_ID },
-        { ...item, key: "rug-1", furnitureType: "rug", placement: "underlay", elevationMm: 0, source: "new_product", channel3ProductId: "c3-1", productName: "Rug", priceCents: 4_500 },
+        { ...item, key: "rug-1", furnitureType: "rug", placement: "underlay", elevationMm: 0, source: "new_product", channel3ProductId: "c3-1", productName: "Rug", priceCents: 4_500, category: "rug", retailer: "target.com", buyUrl: "https://buy.trychannel3.com/c3-1" },
       ],
     };
     expect(planLayoutSchema.parse(layout).items).toHaveLength(2);

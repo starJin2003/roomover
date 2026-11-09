@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { readOptionalConfig } from "@/lib/config";
 import { PAYPAL_SANDBOX, readPayPalCredentials, type PayPalCredentials } from "@/lib/paypal/config";
 import { issuePaths, payPalApiError, PayPalResponseError, readDebugId } from "@/lib/paypal/errors";
 import {
@@ -8,6 +9,7 @@ import {
   type AppTokenSource,
   type FetchLike,
 } from "@/lib/paypal/rest/app-token";
+import { simulatedFetch, simulatedSandboxFor } from "@/lib/paypal/simulated-sandbox";
 
 export type RestBody =
   | { readonly kind: "json"; readonly value: unknown }
@@ -132,7 +134,9 @@ function parseJson(text: string): unknown {
 
 let processClient: PayPalRestClient | undefined;
 
+/** The process's REST client. Tests that set ROOMOVER_PAYPAL_FIXTURE get the simulated sandbox. */
 export function paypalRest(): PayPalRestClient {
-  processClient ??= createPayPalRestClient({ credentials: readPayPalCredentials(), tokens: appTokens() });
+  const simulated = simulatedSandboxFor(readOptionalConfig("ROOMOVER_PAYPAL_FIXTURE"));
+  processClient ??= createPayPalRestClient({ credentials: readPayPalCredentials(), tokens: appTokens(), ...(simulated === null ? {} : { fetch: simulatedFetch(simulated) }) });
   return processClient;
 }

@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import type { EventDraft } from "@/lib/agents/buyer/context";
-import type { HandoffDecision, HandoffMode, HandoffStatus, ListingStatus, OrderItemStatus, OrderStatus, PaymentMode, PayoutItemStatus, PayoutStatus, PayoutWallet } from "@/lib/domain/enums";
+import type { HandoffDecision, HandoffMode, HandoffStatus, ListingStatus, OrderItemStatus, OrderStatus, PaymentMode, PayoutItemStatus, PayoutRecipientType, PayoutStatus, PayoutWallet } from "@/lib/domain/enums";
 import { handoffPhotosSchema, handoffWindow, type HandoffPhoto } from "@/lib/domain/handoff";
 import { conditionReportSchema, listingPhotosSchema, type ConditionReport, type ListingPhoto } from "@/lib/domain/listing";
 import { releasedStatus } from "@/lib/domain/order-state";
+import type { PayoutRecipient, SellerAccount } from "@/lib/domain/payout-recipient";
 import { payoutBatchStep, payoutItemStep } from "@/lib/domain/payout-state";
 import type { SellerPayoutLine } from "@/lib/domain/settlement";
 import { verificationReportSchema, type VerificationReport } from "@/lib/domain/verdict";
@@ -54,6 +55,8 @@ export interface HandoffItem {
   status: OrderItemStatus;
   paypalCaptureId: string | null;
   paypalRefundId: string | null;
+  /** The handoff slot the agents agreed on, or null for the listing's whole handoff window. */
+  slot: { startsAt: Date; endsAt: Date } | null;
   attempt: number;
   handoff: HandoffRecord | null;
 }
@@ -64,6 +67,7 @@ export interface PayoutItemRecord {
   sellerName: string;
   amountCents: number;
   wallet: PayoutWallet;
+  recipientType: PayoutRecipientType;
   receiver: string;
   senderItemId: string;
   paypalPayoutItemId: string | null;
@@ -153,6 +157,8 @@ async function itemsOf(db: Executor, orderId: string): Promise<HandoffItem[]> {
       status: orderItems.status,
       paypalCaptureId: orderItems.paypalCaptureId,
       paypalRefundId: orderItems.paypalRefundId,
+      itemSlotStartsAt: orderItems.slotStartsAt,
+      itemSlotEndsAt: orderItems.slotEndsAt,
       attempt: orderItems.attempt,
       handoffId: handoffs.id,
       handoffMode2: handoffs.mode,
@@ -197,6 +203,7 @@ async function itemsOf(db: Executor, orderId: string): Promise<HandoffItem[]> {
     status: row.status,
     paypalCaptureId: row.paypalCaptureId,
     paypalRefundId: row.paypalRefundId,
+    slot: row.itemSlotStartsAt === null || row.itemSlotEndsAt === null ? null : { startsAt: row.itemSlotStartsAt, endsAt: row.itemSlotEndsAt },
     attempt: row.attempt,
     handoff:
       row.handoffId === null
@@ -241,6 +248,7 @@ async function payoutOf(db: Executor, orderId: string): Promise<PayoutRecord | n
       sellerName: users.displayName,
       amountCents: payoutItems.amountCents,
       wallet: payoutItems.wallet,
+      recipientType: payoutItems.recipientType,
       receiver: payoutItems.receiver,
       senderItemId: payoutItems.senderItemId,
       paypalPayoutItemId: payoutItems.paypalPayoutItemId,
@@ -288,9 +296,10 @@ export async function latestHandoffPlanId(db: Executor, sessionId: string): Prom
 }
 
 /**
- * Gives every item of the order its handoff row, once. The slot is the
- * item's handoff window from the listing, and a direct or same room handoff
- * happens in the buyer's room.
+ * Gives every item of the order its handoff row, once. The slot is the one
+ * the buyer and seller agents agreed on, or else the item's handoff window
+ * from the listing, and a direct or same room handoff happens in the
+ * buyer's room.
  */
 export async function ensureHandoffs(db: Executor, order: HandoffOrder, roomLabel: string): Promise<boolean> {
   const missing = order.items.filter((item) => item.handoff === null);
@@ -299,7 +308,7 @@ export async function ensureHandoffs(db: Executor, order: HandoffOrder, roomLabe
     .insert(handoffs)
     .values(
       missing.map((item) => {
-        const window = handoffWindow(item.handoffMode, item) ?? { startsAt: item.moveInStartsAt, endsAt: item.moveInEndsAt };
+        const window = item.slot ?? handoffWindow(item.handoffMode, item) ?? { startsAt: item.moveInStartsAt, endsAt: item.moveInEndsAt };
         return {
           orderItemId: item.orderItemId,
           mode: item.handoffMode,
@@ -420,7 +429,7 @@ export async function recordVoided(db: Executor, orderId: string, at: Date): Pro
  * item's ID is also its sender_item_id, so webhooks find it before Roomover
  * knows PayPal's item ID.
  */
-export async function insertPayout(db: Database, input: { orderId: string; senderBatchId: string; lines: readonly (SellerPayoutLine & { wallet: PayoutWallet; receiver: string })[] }): Promise<void> {
+export async function insertPayout(db: Database, input: { orderId: string; senderBatchId: string; lines: readonly (SellerPayoutLine & PayoutRecipient)[] }): Promise<void> {
   await db.transaction(async (tx) => {
     const [payout] = await tx
       .insert(payouts)
@@ -430,7 +439,7 @@ export async function insertPayout(db: Database, input: { orderId: string; sende
     if (payout === undefined) return;
     for (const line of input.lines) {
       const id = randomUUID();
-      await tx.insert(payoutItems).values({ id, payoutId: payout.id, sellerId: line.sellerId, amountCents: line.amountCents, wallet: line.wallet, receiver: line.receiver, senderItemId: id });
+      await tx.insert(payoutItems).values({ id, payoutId: payout.id, sellerId: line.sellerId, amountCents: line.amountCents, wallet: line.wallet, recipientType: line.recipientType, receiver: line.receiver, senderItemId: id });
       await tx.update(orderItems).set({ payoutItemId: id }).where(inArray(orderItems.id, line.orderItemIds));
     }
   });
@@ -440,13 +449,36 @@ export async function recordPayoutBatch(db: Executor, payoutId: string, paypalBa
   await db.update(payouts).set({ paypalBatchId }).where(and(eq(payouts.id, payoutId), isNull(payouts.paypalBatchId)));
 }
 
-/** The plan a payout belongs to, so a change can reach the screens following it. */
-async function planOfPayout(db: Executor, payoutId: string): Promise<string | null> {
-  const [row] = await db.select({ planId: orders.planId }).from(payouts).innerJoin(orders, eq(payouts.orderId, orders.id)).where(eq(payouts.id, payoutId));
-  return row?.planId ?? null;
+/** The order and plan a payout belongs to, so a change can reach the screens following it. */
+async function ownerOfPayout(db: Executor, payoutId: string): Promise<{ planId: string; orderId: string } | null> {
+  const [row] = await db.select({ planId: orders.planId, orderId: orders.id }).from(payouts).innerJoin(orders, eq(payouts.orderId, orders.id)).where(eq(payouts.id, payoutId));
+  return row ?? null;
 }
 
-export type PayoutChange = { step: "apply" | "duplicate" | "stale"; planId: string } | null;
+async function lockPayout(db: Executor, payoutId: string): Promise<void> {
+  await db.select({ id: payouts.id }).from(payouts).where(eq(payouts.id, payoutId)).for("update");
+}
+
+/** Locks the order's newest payout, so the moment every seller is paid is noted once. */
+export async function lockOrderPayout(db: Executor, orderId: string): Promise<void> {
+  await db.select({ id: payouts.id }).from(payouts).where(eq(payouts.orderId, orderId)).for("update");
+}
+
+/**
+ * Puts the seeded listings an order sold back on sale, so the demo catalog
+ * never drains while judges test. Listings made on Sell stay sold.
+ */
+export async function relistSeededListings(db: Executor, orderId: string): Promise<string[]> {
+  const sold = db.select({ id: orderItems.listingId }).from(orderItems).where(eq(orderItems.orderId, orderId));
+  const rows = await db
+    .update(listings)
+    .set({ status: "active" })
+    .where(and(inArray(listings.id, sold), eq(listings.status, "sold"), isNull(listings.sessionId)))
+    .returning({ id: listings.id });
+  return rows.map((row) => row.id);
+}
+
+export type PayoutChange = { step: "apply" | "duplicate" | "stale"; planId: string; orderId: string } | null;
 
 /** Lands a batch status from PayPal, through the transitions that ignore repeats and stale reports. */
 export async function applyPayoutBatchStatus(db: Executor, match: { paypalBatchId?: string; senderBatchId?: string }, next: PayoutStatus): Promise<PayoutChange> {
@@ -457,27 +489,32 @@ export async function applyPayoutBatchStatus(db: Executor, match: { paypalBatchI
     if (row === undefined) return null;
     const step = payoutBatchStep(row.status, next);
     if (step === "apply") await tx.update(payouts).set({ status: next, ...(match.paypalBatchId === undefined ? {} : { paypalBatchId: sql`coalesce(${payouts.paypalBatchId}, ${match.paypalBatchId})` }) }).where(eq(payouts.id, row.id));
-    const planId = await planOfPayout(tx, row.id);
-    return planId === null ? null : { step, planId };
+    const owner = await ownerOfPayout(tx, row.id);
+    return owner === null ? null : { step, ...owner };
   });
 }
 
 /**
  * Lands an item status from PayPal. The item is found by PayPal's ID or by
- * Roomover's sender_item_id, and PayPal's ID is kept the first time it is seen.
+ * Roomover's sender_item_id, and PayPal's ID is kept the first time it is
+ * seen. The batch row is locked before the item, so two items landing at
+ * once take turns and the later one sees the earlier one's status.
  */
 export async function applyPayoutItemStatus(db: Executor, match: { paypalPayoutItemId?: string; senderItemId?: string }, next: PayoutItemStatus, at: Date): Promise<PayoutChange> {
   return db.transaction(async (tx) => {
     const conditions = [match.paypalPayoutItemId === undefined ? undefined : eq(payoutItems.paypalPayoutItemId, match.paypalPayoutItemId), match.senderItemId === undefined ? undefined : eq(payoutItems.senderItemId, match.senderItemId)].filter((condition) => condition !== undefined);
     if (conditions.length === 0) return null;
+    const [found] = await tx.select({ payoutId: payoutItems.payoutId }).from(payoutItems).where(or(...conditions));
+    if (found === undefined) return null;
+    await lockPayout(tx, found.payoutId);
     const [row] = await tx.select({ id: payoutItems.id, payoutId: payoutItems.payoutId, status: payoutItems.status, paypalPayoutItemId: payoutItems.paypalPayoutItemId }).from(payoutItems).where(or(...conditions)).for("update");
     if (row === undefined) return null;
     const step = payoutItemStep(row.status, next);
     const learnedId = row.paypalPayoutItemId === null && match.paypalPayoutItemId !== undefined ? { paypalPayoutItemId: match.paypalPayoutItemId } : {};
     if (step === "apply") await tx.update(payoutItems).set({ status: next, statusChangedAt: at, ...learnedId }).where(eq(payoutItems.id, row.id));
     else if ("paypalPayoutItemId" in learnedId) await tx.update(payoutItems).set(learnedId).where(eq(payoutItems.id, row.id));
-    const planId = await planOfPayout(tx, row.payoutId);
-    return planId === null ? null : { step, planId };
+    const owner = await ownerOfPayout(tx, row.payoutId);
+    return owner === null ? null : { step, ...owner };
   });
 }
 
@@ -554,18 +591,14 @@ export async function finishRelease(db: Executor, orderId: string, input: { at: 
   });
 }
 
-export interface SellerReceiver {
-  id: string;
-  paypalEmail: string | null;
-  payoutWallet: PayoutWallet;
-  venmoHandle: string | null;
-}
-
-/** Where each seller receives payouts, read at send time and kept on the payout item. */
-export async function sellerReceivers(db: Executor, sellerIds: readonly string[]): Promise<Map<string, SellerReceiver>> {
+/** Each seller's payout accounts, read at send time. The receiver chosen from them is kept on the payout item. */
+export async function sellerAccounts(db: Executor, sellerIds: readonly string[]): Promise<Map<string, SellerAccount>> {
   if (sellerIds.length === 0) return new Map();
-  const rows = await db.select({ id: users.id, paypalEmail: users.paypalEmail, payoutWallet: users.payoutWallet, venmoHandle: users.venmoHandle }).from(users).where(inArray(users.id, [...sellerIds]));
-  return new Map(rows.map((row) => [row.id, row]));
+  const rows = await db
+    .select({ id: users.id, paypalAccountId: users.paypalAccountId, paypalEmail: users.paypalEmail, payoutWallet: users.payoutWallet, venmoHandle: users.venmoHandle })
+    .from(users)
+    .where(inArray(users.id, [...sellerIds]));
+  return new Map(rows.map(({ id, ...account }) => [id, account]));
 }
 
 /** An order holding money under an authorization, found by the authorization or its reauthorization. */
@@ -599,18 +632,35 @@ export async function cancelUnapprovedBefore(db: Executor, createdBefore: Date):
   return rows.map((row) => row.id);
 }
 
-/** Orders the demo release may give back: holding money, approved before the cutoff, and with no handoff photo yet. */
-export async function releaseCandidates(db: Executor, approvedBefore: Date): Promise<{ id: string; status: OrderStatus; approvedAt: Date | null; photoCount: number }[]> {
-  return db
+/**
+ * Orders the demo release may give back: holding money, approved before the
+ * cutoff, with their handoff photo count and the latest change to any of
+ * their handoffs. A release a stopped run left partway comes along too.
+ */
+export async function releaseCandidates(db: Executor, approvedBefore: Date): Promise<{ id: string; status: OrderStatus; approvedAt: Date | null; photoCount: number; lastActivityAt: Date | null }[]> {
+  const held = (
+    await db
+      .select({ id: orders.id, status: orders.status, approvedAt: orders.approvedAt })
+      .from(orders)
+      .where(inArray(orders.status, ["authorized", "captured", "releasing"]))
+  ).filter((row) => row.status === "releasing" || (row.approvedAt !== null && row.approvedAt <= approvedBefore));
+  if (held.length === 0) return [];
+  // A join, so Drizzle names each column with its table. Inside a one table select it would not.
+  const activity = await db
     .select({
-      id: orders.id,
-      status: orders.status,
-      approvedAt: orders.approvedAt,
-      photoCount: sql<number>`(select coalesce(sum(jsonb_array_length(${handoffs.photos})), 0)::int from ${handoffs} join ${orderItems} on ${handoffs.orderItemId} = ${orderItems.id} where ${orderItems.orderId} = ${orders.id})`,
+      orderId: orderItems.orderId,
+      photoCount: sql<number>`coalesce(sum(jsonb_array_length(${handoffs.photos})), 0)::int`,
+      lastActivityAt: sql<string | Date | null>`max(${handoffs.updatedAt})`,
     })
-    .from(orders)
-    .where(or(inArray(orders.status, ["authorized", "captured"]), eq(orders.status, "releasing")))
-    .then((rows) => rows.filter((row) => row.status === "releasing" || (row.approvedAt !== null && row.approvedAt <= approvedBefore)));
+    .from(handoffs)
+    .innerJoin(orderItems, eq(handoffs.orderItemId, orderItems.id))
+    .where(inArray(orderItems.orderId, held.map((row) => row.id)))
+    .groupBy(orderItems.orderId);
+  const byOrder = new Map(activity.map((row) => [row.orderId, row]));
+  return held.map((row) => {
+    const seen = byOrder.get(row.id);
+    return { ...row, photoCount: seen?.photoCount ?? 0, lastActivityAt: seen?.lastActivityAt === null || seen?.lastActivityAt === undefined ? null : new Date(seen.lastActivityAt) };
+  });
 }
 
 /** Writes handoff activity lines. Their run ID is the order's ID, like checkout's. */

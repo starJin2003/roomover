@@ -40,6 +40,9 @@ export const ringMaterial = new MeshBasicMaterial({ color: new Color(SKY), trans
 /** The outline under an item the student has selected to move. */
 export const selectedRingMaterial = new MeshBasicMaterial({ color: new Color(COLOR.flint), transparent: true, depthWrite: false, toneMapped: false });
 
+/** The quiet outline that stays under a new item from Channel3, which the student buys from a retailer. */
+export const newItemRingMaterial = new MeshBasicMaterial({ color: new Color(COLOR.stone), transparent: true, opacity: 0.75, depthWrite: false, toneMapped: false });
+
 /** The outline under an item held over a spot that fails the fit check. */
 export const invalidRingMaterial = new MeshBasicMaterial({ color: new Color(COLOR.brick), transparent: true, depthWrite: false, toneMapped: false });
 

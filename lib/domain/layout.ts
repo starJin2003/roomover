@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PLACEMENTS } from "./enums";
+import { LISTING_CATEGORIES, PLACEMENTS } from "./enums";
 import { FURNITURE, FURNITURE_TYPES, PIECE_GAP_MM } from "./furniture";
 import { circle, rectangle, type Polygon } from "./geometry";
 
@@ -9,6 +9,10 @@ import { circle, rectangle, type Polygon } from "./geometry";
  * y at the center of the footprint, `elevationMm` above the floor for items
  * that stand on furniture, and rotation clockwise as seen from above. At 0
  * degrees an item's front faces south, so 90 faces west.
+ *
+ * A new product is a Channel3 product the agent placed where no used item
+ * fits. The student buys it from the retailer, so it never joins the PayPal
+ * order.
  *
  * Dimensions describe one piece. A listing sold as a set of identical pieces
  * stands in a row along the item's width, `PIECE_GAP_MM` apart.
@@ -29,6 +33,8 @@ const layoutItemBase = {
   yMm: offsetMm,
   elevationMm: offsetMm,
   rotationDeg: z.number().int().min(0).max(359),
+  /** What the panel and the agent call the item when its furniture type has no word of its own, taken from the listing's title. */
+  noun: z.string().min(1).max(60).optional(),
 };
 
 export const layoutItemSchema = z.discriminatedUnion("source", [
@@ -43,6 +49,10 @@ export const layoutItemSchema = z.discriminatedUnion("source", [
     channel3ProductId: z.string().min(1),
     productName: z.string().min(1),
     priceCents: z.number().int().positive(),
+    category: z.enum(LISTING_CATEGORIES),
+    /** The retailer's domain, such as target.com, which the panel names as "New from target.com". */
+    retailer: z.string().min(1),
+    buyUrl: z.url({ protocol: /^https$/ }),
   }),
 ]);
 

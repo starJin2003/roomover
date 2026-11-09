@@ -22,9 +22,9 @@ export function listingFacts(listing: VerifiableListing): ListingFacts {
   };
 }
 
-const PUBLIC_PHOTO = /^\/(seed\/listings|handoff-samples)\/[a-z0-9-]+\.jpg$/;
+const PUBLIC_PHOTO = /^\/(seed\/listings|handoff-samples|sell-samples)\/[a-z0-9-]+\.jpg$/;
 
-/** A JPEG committed under the public folder, such as a listing photo or a sample handoff photo. */
+/** A JPEG committed under the public folder, such as a seed listing photo or a sample handoff or Sell photo. */
 export async function readPublicPhoto(src: string): Promise<Buffer> {
   if (!PUBLIC_PHOTO.test(src)) throw new RangeError(`${src} is not a committed listing or sample photo.`);
   return readFile(join(process.cwd(), "public", src));

@@ -1,16 +1,19 @@
 import type { HandoffMode, ListingStatus, PaymentMode } from "./enums";
 import { checkoutPaymentMode, handoffWindow, type MoveWindows, type TimeWindow } from "./handoff";
+import { isSlotShape, slotInside } from "./handoff-slots";
 import { sumCents } from "./money";
 
-/** A listing as checkout reads it from Postgres. The price is the listed price in cents. */
+/** A listing as checkout reads it from Postgres, with the plan's agreed terms when its agents settled on some. */
 export interface CheckoutListing extends MoveWindows {
   id: string;
   title: string;
   sellerId: string;
   sellerName: string;
   priceCents: number;
+  floorPriceCents: number;
   handoffMode: HandoffMode;
   status: ListingStatus;
+  agreement: { priceCents: number; slot: TimeWindow } | null;
 }
 
 export interface CheckoutLine {
@@ -19,7 +22,11 @@ export interface CheckoutLine {
   sellerName: string;
   title: string;
   amountCents: number;
+  /** The listed price, which the line is below when the agents agreed on less. */
+  listPriceCents: number;
   handoff: TimeWindow;
+  /** The handoff slot the agents agreed on, or null when the line keeps the whole handoff window. */
+  slot: TimeWindow | null;
 }
 
 export interface CheckoutPlan {
@@ -42,9 +49,24 @@ export class CheckoutRefused extends Error {
 }
 
 /**
+ * The agreed terms checkout stands behind. Code checks them again here, so
+ * an agreement that no longer fits the listing (a changed price, a moved
+ * window) falls back to the listed price and the whole window.
+ */
+export function standingAgreement(listing: CheckoutListing, handoff: TimeWindow): { priceCents: number; slot: TimeWindow } | null {
+  const agreement = listing.agreement;
+  if (agreement === null) return null;
+  const priceOk = Number.isSafeInteger(agreement.priceCents) && agreement.priceCents >= listing.floorPriceCents && agreement.priceCents <= listing.priceCents;
+  const slotOk = isSlotShape(agreement.slot) && slotInside(agreement.slot, handoff);
+  return priceOk && slotOk ? agreement : null;
+}
+
+/**
  * Turns the listings in a plan into one order. Every amount is the listed
- * price, and the payment mode follows from the handoff windows, so nothing
- * the model writes reaches PayPal. Lines keep the plan's order.
+ * price or the price the agents agreed on within the seller's floor, and the
+ * payment mode follows from the agreed slots or the handoff windows, so
+ * nothing the model writes reaches PayPal unchecked. Lines keep the plan's
+ * order.
  */
 export function buildCheckout(listingIds: readonly string[], listings: ReadonlyMap<string, CheckoutListing>, checkoutAt: Date): CheckoutPlan {
   if (listingIds.length === 0) throw new CheckoutRefused("empty", "The room has no items to pay for yet.");
@@ -60,7 +82,17 @@ export function buildCheckout(listingIds: readonly string[], listings: ReadonlyM
     if (handoff === null || handoff.endsAt <= checkoutAt) {
       throw new CheckoutRefused("no_handoff", `${listing.title} has no handoff time left before move in.`, [id]);
     }
-    return { listingId: id, sellerId: listing.sellerId, sellerName: listing.sellerName, title: listing.title, amountCents: listing.priceCents, handoff };
+    const agreed = standingAgreement(listing, handoff);
+    return {
+      listingId: id,
+      sellerId: listing.sellerId,
+      sellerName: listing.sellerName,
+      title: listing.title,
+      amountCents: agreed?.priceCents ?? listing.priceCents,
+      listPriceCents: listing.priceCents,
+      handoff,
+      slot: agreed !== null && agreed.slot.endsAt > checkoutAt ? agreed.slot : null,
+    };
   });
 
   return {
@@ -69,7 +101,7 @@ export function buildCheckout(listingIds: readonly string[], listings: ReadonlyM
     sellerCount: new Set(lines.map((line) => line.sellerId)).size,
     paymentMode: checkoutPaymentMode(
       checkoutAt,
-      lines.map((line) => line.handoff),
+      lines.map((line) => line.slot ?? line.handoff),
     ),
   };
 }
@@ -77,11 +109,13 @@ export function buildCheckout(listingIds: readonly string[], listings: ReadonlyM
 /** PayPal intent for a payment mode. Authorize holds the money until handoff, capture takes it now. */
 export const intentFor = (mode: PaymentMode): "AUTHORIZE" | "CAPTURE" => (mode === "authorize_then_capture" ? "AUTHORIZE" : "CAPTURE");
 
-/** True when an order's lines are exactly what the plan holds now, at the same prices. */
-export function sameLines(a: readonly Pick<CheckoutLine, "listingId" | "amountCents">[], b: readonly Pick<CheckoutLine, "listingId" | "amountCents">[]): boolean {
-  const key = (lines: readonly Pick<CheckoutLine, "listingId" | "amountCents">[]) =>
+type LineKey = Pick<CheckoutLine, "listingId" | "amountCents" | "slot">;
+
+/** True when an order's lines are exactly what the plan holds now, at the same prices and slots. */
+export function sameLines(a: readonly LineKey[], b: readonly LineKey[]): boolean {
+  const key = (lines: readonly LineKey[]) =>
     lines
-      .map((line) => `${line.listingId}:${line.amountCents}`)
+      .map((line) => `${line.listingId}:${line.amountCents}:${line.slot?.startsAt.getTime() ?? "window"}`)
       .sort()
       .join("|");
   return key(a) === key(b);

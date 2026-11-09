@@ -15,10 +15,10 @@ import { buildFixture } from "../model/fixtures";
 import { buildFurniture, type BedHost } from "../model/furniture";
 import type { Part } from "../model/parts";
 import { buildShell, roomView, SLAB_MM, slabBounds } from "../model/shell";
-import { itemTones } from "../model/tones";
+import { itemTones, type ItemTones } from "../model/tones";
 import type { RoomItemData, RoomPresetData } from "../types";
 import { mergeParts, MM } from "./geometry";
-import { contactShadowMaterial, invalidRingMaterial, materialFor, ringMaterial, selectedRingMaterial } from "./materials";
+import { contactShadowMaterial, invalidRingMaterial, materialFor, newItemRingMaterial, ringMaterial, selectedRingMaterial } from "./materials";
 
 export interface SceneItem {
   data: RoomItemData;
@@ -173,17 +173,24 @@ const shortestTurn = (from: number, to: number) => from + ((((to - from) % (Math
  * agent moves it, it glides to the new spot. When the student holds it, it
  * follows without delay.
  */
+const NEW_ITEM_TONES: ItemTones = ["stone", "paper"];
+
 function PlacedItem({ preset, entry, space, reducedMotion, editable, onHover, onSelect, onLanded, onGrab }: ItemProps) {
   const { layout } = entry.data;
   const bedding = isBedding(entry.data);
   const host = bedding ? bedUnder(preset, entry.data) : undefined;
   const { furnitureType, widthMm, depthMm, heightMm, pieces } = layout;
   const { colors, color } = entry.data;
+  const isNew = entry.data.newFrom !== undefined;
   const parts = useMemo(
-    () => buildFurniture(furnitureType, { width: widthMm, depth: depthMm, height: heightMm }, pieces, itemTones(colors, color), host),
+    () => {
+      // A new item from a retailer has no photo to paint from, so it stands in matte Stone and Paper, apart from the glossy used pieces.
+      if (isNew) return buildFurniture(furnitureType, { width: widthMm, depth: depthMm, height: heightMm }, pieces, NEW_ITEM_TONES, host).map((part) => ({ ...part, look: { ...part.look, finish: "muted" as const } }));
+      return buildFurniture(furnitureType, { width: widthMm, depth: depthMm, height: heightMm }, pieces, itemTones(colors, color), host);
+    },
     // The bed host is rebuilt on every render, so its size stands in for it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [furnitureType, widthMm, depthMm, heightMm, pieces, colors, color, host?.width, host?.length],
+    [furnitureType, widthMm, depthMm, heightMm, pieces, colors, color, isNew, host?.width, host?.length],
   );
   const width = rowWidthMm(layout) * MM;
   const depth = layout.depthMm * MM;
@@ -686,6 +693,11 @@ export function RoomScene({
           onGrab={onGrab}
         />
       ))}
+      {items
+        .filter((entry) => entry.data.newFrom !== undefined && entry !== ring && entry !== outlined)
+        .map((entry) => (
+          <ItemRing key={`new-${entry.data.layout.key}`} entry={entry} space={space} material={newItemRingMaterial} lift={2} />
+        ))}
       {ring !== undefined && ring !== outlined && <ItemRing key={`ring-${ring.data.layout.key}`} entry={ring} space={space} material={ringMaterial} fade />}
       {outlined !== undefined && outline !== null && (
         <ItemRing key={`outline-${outlined.data.layout.key}`} entry={outlined} space={space} material={outline.invalid ? invalidRingMaterial : selectedRingMaterial} lift={4} />

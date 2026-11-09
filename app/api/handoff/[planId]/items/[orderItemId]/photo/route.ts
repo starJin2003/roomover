@@ -3,28 +3,15 @@ import { z } from "zod";
 import { checkPhoto, type PhotoInput } from "@/lib/handoff/check";
 import { handoffFailure, handoffRequest, viewResponse } from "@/lib/handoff/http";
 import { SAMPLE_KINDS } from "@/lib/handoff/samples";
-import { MAX_PHOTO_BYTES, sniffImage } from "@/lib/handoff/upload";
-import { jsonResponse } from "@/lib/http";
+import { isPhotoUpload, jsonResponse, readPhotoUpload } from "@/lib/http";
 
 const itemIdSchema = z.uuid();
 const jsonBodySchema = z.union([z.strictObject({ sample: z.enum(SAMPLE_KINDS) }), z.strictObject({ retry: z.literal(true) })]);
 
 async function readInput(request: NextRequest): Promise<PhotoInput | Response> {
-  const declared = Number(request.headers.get("content-length") ?? "0");
-  if (declared > MAX_PHOTO_BYTES + 64 * 1024) return jsonResponse(413, { error: "That photo is larger than 5 MB. Take it again at a smaller size." });
-  if ((request.headers.get("content-type") ?? "").startsWith("multipart/form-data")) {
-    let file: FormDataEntryValue | null;
-    try {
-      file = (await request.formData()).get("photo");
-    } catch {
-      return jsonResponse(400, { error: "The photo did not arrive whole. Try again." });
-    }
-    if (!(file instanceof File)) return jsonResponse(400, { error: "Attach the photo as the photo field." });
-    if (file.size === 0 || file.size > MAX_PHOTO_BYTES) return jsonResponse(413, { error: "That photo is empty or larger than 5 MB." });
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const contentType = sniffImage(bytes);
-    if (contentType === null) return jsonResponse(415, { error: "Roomover takes JPEG, PNG, or WebP photos." });
-    return { kind: "upload", bytes, contentType };
+  if (isPhotoUpload(request)) {
+    const upload = await readPhotoUpload(request);
+    return upload instanceof Response ? upload : { kind: "upload", ...upload };
   }
   let raw: unknown;
   try {

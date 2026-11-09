@@ -20,6 +20,16 @@ const configSchema = z.object({
   ROOMOVER_VERIFIER_FIXTURE: z.string().regex(/\.json$/, "Expected a path to a .json file"),
   // Tests only. The sandbox judge buyer's password, which the real checkout test types into the PayPal popup.
   PAYPAL_SANDBOX_BUYER_PASSWORD: z.string().min(1),
+  // Live Sell run only. The password of seller 1 (Ava), which the run types into the Log in with PayPal page.
+  PAYPAL_SANDBOX_SELLER_PASSWORD: z.string().min(1),
+  // Tests only. PayPal calls go to a simulated sandbox built from these recorded responses, so no sandbox money moves.
+  ROOMOVER_PAYPAL_FIXTURE: z.string().regex(/\.json$/, "Expected a path to a .json file"),
+  // Tests only. The seller agent replays the replies recorded in this file, keyed by photo, and never calls the API.
+  ROOMOVER_SELLER_FIXTURE: z.string().regex(/\.json$/, "Expected a path to a .json file"),
+  // Tests only. Channel3 image searches replay this file, keyed by photo, and spend no credit.
+  ROOMOVER_CHANNEL3_FIXTURE: z.string().regex(/\.json$/, "Expected a path to a .json file"),
+  // Tests only. Set to 1 to run the end to end tests against the real sandbox, which moves sandbox money.
+  ROOMOVER_E2E_LIVE: z.string().regex(/^1$/, "Expected 1"),
 });
 
 export type Config = z.infer<typeof configSchema>;

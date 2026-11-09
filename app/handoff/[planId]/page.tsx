@@ -3,7 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { Suspense } from "react";
 import { PRIMARY_LINK } from "@/components/furnish/paid-panel";
-import { SiteHeader } from "@/components/site/site-header";
+import { ScreenFrame, SHELL_COLUMNS } from "@/components/site/screen-frame";
 import { Panel } from "@/components/ui/panel";
 import { PanelState } from "@/components/ui/panel-state";
 import { readConfig } from "@/lib/config";
@@ -21,9 +21,9 @@ export const metadata: Metadata = {
 
 function HandoffPending() {
   return (
-    <div aria-hidden="true" className="mx-auto grid w-full max-w-[1360px] gap-6 px-4 sm:px-10 lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-12">
-      <div className="aspect-[8/7] w-full max-lg:hidden" />
-      <div className="h-[36rem] rounded-2xl bg-paper shadow-sheet" />
+    <div aria-hidden="true" className={SHELL_COLUMNS}>
+      <div className="aspect-[8/7] w-full max-lg:hidden lg:aspect-auto" />
+      <div className="h-[36rem] rounded-2xl bg-paper shadow-sheet lg:h-full" />
     </div>
   );
 }
@@ -77,11 +77,10 @@ async function Handoff({ params }: { params: Promise<{ planId: string }> }) {
 
 export default function HandoffPage({ params }: PageProps<"/handoff/[planId]">) {
   return (
-    <>
-      <SiteHeader />
+    <ScreenFrame>
       <Suspense fallback={<HandoffPending />}>
         <Handoff params={params} />
       </Suspense>
-    </>
+    </ScreenFrame>
   );
 }

@@ -169,25 +169,34 @@ export async function runBuyerLoop(options: {
 
   for (let turn = 0; turn < MAX_TURNS[kind]; turn++) {
     await hooks.beforeCall();
-    // Each call runs as soon as its block streams in, in the order the model wrote them, so items land one by one during a long reply.
-    const done = new Map<string, { result: ToolResult; valid: boolean }>();
+    // Each call runs as soon as its block streams in. Most run in the order the model wrote them, so items land one by one,
+    // and concurrent ones (offers to different sellers) start at once so the room keeps filling while seller agents answer.
+    const done = new Map<string, Promise<{ result: ToolResult; valid: boolean } | undefined>>();
     let queue = Promise.resolve();
     let failure: { error: unknown } | null = null;
+    const guard = async (block: ToolUse) => {
+      try {
+        return failure === null ? await runCall(block) : undefined;
+      } catch (error) {
+        failure ??= { error };
+        return undefined;
+      }
+    };
     const onBlock = (block: BetaContentBlock) => {
       if (block.type !== "tool_use") return;
-      queue = queue
-        .then(async () => {
-          if (failure === null) done.set(block.id, await runCall(block));
-        })
-        .catch((error: unknown) => {
-          failure ??= { error };
-        });
+      if (toolByName(block.name)?.concurrent === true) {
+        done.set(block.id, guard(block));
+        return;
+      }
+      const result = queue.then(() => guard(block));
+      queue = result.then(() => undefined);
+      done.set(block.id, result);
     };
     let response: BetaMessage;
     try {
       response = await transport.send(buildRequest(context, messages), onBlock);
     } finally {
-      await queue;
+      await Promise.all([queue, ...done.values()]);
     }
     if (failure !== null) throw (failure as { error: unknown }).error;
     await hooks.afterCall(usageOf(response));
@@ -209,7 +218,7 @@ export async function runBuyerLoop(options: {
     }
 
     const outcomes: { result: ToolResult; valid: boolean }[] = [];
-    for (const call of calls) outcomes.push(done.get(call.id) ?? (await runCall(call)));
+    for (const call of calls) outcomes.push((await done.get(call.id)) ?? (await runCall(call)));
     const invalid = outcomes.some((outcome) => !outcome.valid);
     if (invalid && retried) return { status: "failed", error: "The buyer agent sent invalid tool input twice in a row." };
     retried = invalid;

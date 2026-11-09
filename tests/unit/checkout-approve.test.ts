@@ -64,7 +64,7 @@ function order(overrides: Partial<OrderWithLines> = {}): OrderWithLines {
     approvedAt: null,
     attempt: 1,
     createdAt: NOW,
-    lines: [{ listingId: "lamp", sellerId: "ava", amountCents: 1_600, status: "pending" }],
+    lines: [{ listingId: "lamp", sellerId: "ava", amountCents: 1_600, status: "pending", slot: null }],
     ...overrides,
   };
 }

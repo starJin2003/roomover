@@ -28,12 +28,14 @@ import {
   HANDOFF_STATUSES,
   LEAVING_REASONS,
   LISTING_CATEGORIES,
+  LISTING_DRAFT_STATUSES,
   LISTING_STATUSES,
   NEGOTIATION_STATUSES,
   ORDER_ITEM_STATUSES,
   ORDER_STATUSES,
   PAYMENT_MODES,
   PAYOUT_ITEM_STATUSES,
+  PAYOUT_RECIPIENT_TYPES,
   PAYOUT_STATUSES,
   PAYOUT_WALLETS,
   PLACEMENTS,
@@ -47,6 +49,7 @@ import type { ConditionReport, ListingColor, ListingPhoto, ListingSpecs, RetailR
 import type { OffersLog } from "../domain/negotiation";
 import { EMPTY_LAYOUT, type PlanLayout } from "../domain/layout";
 import type { RoomGeometry } from "../domain/room";
+import type { Channel3Candidate, Channel3Lookup, DraftDetails } from "../domain/sell";
 import type { VerificationReport } from "../domain/verdict";
 
 // drizzle-kit does not read tsconfig paths, so this file uses relative imports.
@@ -73,6 +76,7 @@ export const agentName = pgEnum("agent_name", AGENT_NAMES);
 export const agentRunKind = pgEnum("agent_run_kind", AGENT_RUN_KINDS);
 export const agentRunStatus = pgEnum("agent_run_status", AGENT_RUN_STATUSES);
 export const claudeMode = pgEnum("claude_mode", CLAUDE_MODES);
+export const listingDraftStatus = pgEnum("listing_draft_status", LISTING_DRAFT_STATUSES);
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updatedAt = () =>
@@ -211,11 +215,14 @@ export const listings = pgTable(
     roomPresetId: uuid("room_preset_id").references(() => roomPresets.id),
     roomNumber: text("room_number"),
     status: listingStatus("status").notNull().default("draft"),
+    /** The demo session that listed it on Sell. Seed listings have none, and the cleanup removes the rest after a day. */
+    sessionId: text("session_id"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     index("listings_seller_idx").on(t.sellerId),
+    index("listings_session_created_idx").on(t.sessionId, t.createdAt),
     index("listings_campus_status_category_price_idx").on(t.campus, t.status, t.category, t.priceCents),
     index("listings_campus_status_price_idx").on(t.campus, t.status, t.priceCents),
     index("listings_campus_status_move_out_idx").on(t.campus, t.status, t.moveOutStartsAt, t.moveOutEndsAt),
@@ -377,7 +384,9 @@ export const payoutItems = pgTable(
       .references(() => users.id),
     amountCents: integer("amount_cents").notNull(),
     wallet: payoutWallet("wallet").notNull(),
-    /** Email or Venmo handle at send time, kept so later profile edits do not rewrite history. */
+    /** How PayPal reads the receiver: a payer ID from Log in with PayPal, an email, or a Venmo handle. */
+    recipientType: text("recipient_type", { enum: PAYOUT_RECIPIENT_TYPES }).notNull().default("EMAIL"),
+    /** Payer ID, email, or Venmo handle at send time, kept so later profile edits do not rewrite history. */
     receiver: text("receiver").notNull(),
     senderItemId: text("sender_item_id").notNull().unique(),
     paypalPayoutItemId: text("paypal_payout_item_id").unique(),
@@ -391,6 +400,7 @@ export const payoutItems = pgTable(
     unique("payout_items_payout_seller_key").on(t.payoutId, t.sellerId),
     index("payout_items_seller_idx").on(t.sellerId),
     check("payout_items_amount_check", sql`${t.amountCents} > 0`),
+    check("payout_items_recipient_type_check", sql`${t.recipientType} in ('PAYPAL_ID', 'EMAIL', 'USER_HANDLE')`),
   ],
 );
 
@@ -414,12 +424,16 @@ export const orderItems = pgTable(
     paypalCaptureId: text("paypal_capture_id"),
     paypalRefundId: text("paypal_refund_id").unique(),
     payoutItemId: uuid("payout_item_id").references(() => payoutItems.id),
+    /** The handoff slot the buyer and seller agents agreed on. Null keeps the listing's whole handoff window. */
+    slotStartsAt: at("slot_starts_at"),
+    slotEndsAt: at("slot_ends_at"),
     attempt: attempt(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     unique("order_items_order_listing_key").on(t.orderId, t.listingId),
+    check("order_items_slot_check", sql`(${t.slotStartsAt} is null) = (${t.slotEndsAt} is null) and (${t.slotStartsAt} is null or ${t.slotEndsAt} > ${t.slotStartsAt})`),
     index("order_items_listing_idx").on(t.listingId),
     index("order_items_seller_idx").on(t.sellerId),
     index("order_items_payout_item_idx").on(t.payoutItemId),
@@ -487,6 +501,146 @@ export const handoffPhotos = pgTable(
     check("handoff_photos_type_check", sql`${t.contentType} in ('image/jpeg', 'image/png', 'image/webp')`),
     check("handoff_photos_size_check", sql`${t.byteSize} > 0 and ${t.byteSize} <= 5242880`),
   ],
+);
+
+/**
+ * Photos sellers take on Sell. Listing photos are public, like the seed
+ * photos, so any session can read them once they are listed.
+ */
+export const listingPhotos = pgTable(
+  "listing_photos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sellerId: uuid("seller_id")
+      .notNull()
+      .references(() => users.id),
+    sessionId: text("session_id").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    widthPx: integer("width_px").notNull(),
+    heightPx: integer("height_px").notNull(),
+    sha256: text("sha256").notNull(),
+    bytes: bytea("bytes").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("listing_photos_seller_created_idx").on(t.sellerId, t.createdAt),
+    check("listing_photos_type_check", sql`${t.contentType} in ('image/jpeg', 'image/png', 'image/webp')`),
+    check("listing_photos_size_check", sql`${t.byteSize} > 0 and ${t.byteSize} <= 5242880 and ${t.widthPx} > 0 and ${t.heightPx} > 0`),
+  ],
+);
+
+/**
+ * One photo on its way to a listing. Channel3 matches it first, then the
+ * seller agent fills in the details and the price, and the seller lists it.
+ * The draft keeps what each step returned, so a reload shows the same panel
+ * and Under the hood.
+ */
+export const listingDrafts = pgTable(
+  "listing_drafts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sellerId: uuid("seller_id")
+      .notNull()
+      .references(() => users.id),
+    sessionId: text("session_id").notNull(),
+    /** HMAC of the client address, so the shared run limits count Sell without storing the address. */
+    clientHash: text("client_hash").notNull(),
+    /** A committed sample photo path, or null for an uploaded photo. */
+    sampleSrc: text("sample_src"),
+    photoId: uuid("photo_id").references(() => listingPhotos.id, { onDelete: "cascade" }),
+    photoSha256: text("photo_sha256").notNull(),
+    status: listingDraftStatus("status").notNull().default("matched"),
+    channel3: jsonb("channel3").$type<Channel3Lookup>().notNull(),
+    details: jsonb("details").$type<DraftDetails>(),
+    /** What the seller sees when the seller agent gave no usable answer. */
+    error: text("error"),
+    claudeMode: claudeMode("claude_mode"),
+    claudeCalls: integer("claude_calls").notNull().default(0),
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    describeMs: integer("describe_ms"),
+    listingId: uuid("listing_id").references(() => listings.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("listing_drafts_seller_created_idx").on(t.sellerId, t.createdAt),
+    index("listing_drafts_session_created_idx").on(t.sessionId, t.createdAt),
+    index("listing_drafts_client_created_idx").on(t.clientHash, t.createdAt),
+    check("listing_drafts_photo_check", sql`(${t.sampleSrc} is null) <> (${t.photoId} is null)`),
+    check("listing_drafts_details_check", sql`${t.status} not in ('ready', 'listed') or ${t.details} is not null`),
+    check("listing_drafts_usage_check", sql`${t.claudeCalls} >= 0 and ${t.inputTokens} >= 0 and ${t.outputTokens} >= 0`),
+  ],
+);
+
+/**
+ * Channel3 image searches, one per photo, keyed by the photo's SHA-256. A
+ * second draft of the same photo reads this row and spends no credit. Rows
+ * also count each session's and each day's live calls for the Channel3 caps.
+ */
+export const channel3Lookups = pgTable(
+  "channel3_lookups",
+  {
+    imageSha256: text("image_sha256").primaryKey(),
+    sessionId: text("session_id").notNull(),
+    candidates: jsonb("candidates").$type<Channel3Candidate[]>().notNull(),
+    /** Products the search returned before Roomover kept the ones with a US price. */
+    productCount: integer("product_count").notNull(),
+    credits: integer("credits").notNull(),
+    latencyMs: integer("latency_ms").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("channel3_lookups_session_created_idx").on(t.sessionId, t.createdAt),
+    index("channel3_lookups_created_idx").on(t.createdAt),
+    check("channel3_lookups_credits_check", sql`${t.credits} >= 0 and ${t.productCount} >= 0`),
+  ],
+);
+
+/**
+ * Channel3 text searches by query, for the buyer agent's gap searches and
+ * the new prices behind savings. A query answered once is read from here
+ * and costs no credit again, and gap rows count each session's live
+ * searches for the Channel3 caps.
+ */
+export const channel3Searches = pgTable(
+  "channel3_searches",
+  {
+    queryKey: text("query_key").primaryKey(),
+    purpose: text("purpose").notNull(),
+    query: text("query").notNull(),
+    sessionId: text("session_id"),
+    response: jsonb("response").$type<Record<string, unknown>>().notNull(),
+    productCount: integer("product_count").notNull(),
+    credits: integer("credits").notNull(),
+    latencyMs: integer("latency_ms").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("channel3_searches_purpose_created_idx").on(t.purpose, t.createdAt),
+    check("channel3_searches_purpose_check", sql`${t.purpose} in ('gap', 'reference')`),
+    check("channel3_searches_counts_check", sql`${t.credits} >= 0 and ${t.productCount} >= 0`),
+  ],
+);
+
+/** The new price each used listing is compared against for savings, from comparable Channel3 products. */
+export const retailReferences = pgTable(
+  "retail_references",
+  {
+    listingId: uuid("listing_id")
+      .primaryKey()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    newPriceCents: integer("new_price_cents").notNull(),
+    productName: text("product_name").notNull(),
+    retailer: text("retailer").notNull(),
+    url: text("url").notNull(),
+    /** How many comparable products the median came from. 1 for a product Sell matched. */
+    compared: integer("compared").notNull(),
+    queryKey: text("query_key").notNull(),
+    checkedAt: at("checked_at").notNull().defaultNow(),
+  },
+  (t) => [check("retail_references_price_check", sql`${t.newPriceCents} > 0 and ${t.compared} > 0`)],
 );
 
 export const disputes = pgTable(

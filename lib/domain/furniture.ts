@@ -26,11 +26,14 @@ export const FURNITURE_TYPES = [
   "drawer_unit",
   "basket",
   "tote",
+  "rolling_cart",
+  "generic",
 ] as const;
 export type FurnitureType = (typeof FURNITURE_TYPES)[number];
 
 interface FurnitureSpec {
-  category: ListingCategory;
+  /** Null for the generic shape, which stands in for an item of any category that none of its types describes. */
+  category: ListingCategory | null;
   /** A single round piece covers a circle on the floor. Sets of pieces stand in a row. */
   round: boolean;
   /** Other items may stand on its top. */
@@ -60,6 +63,8 @@ export const FURNITURE: Readonly<Record<FurnitureType, FurnitureSpec>> = {
   drawer_unit: { category: "storage", round: false, host: true, wallClearanceMm: 0 },
   basket: { category: "storage", round: true, host: false, wallClearanceMm: 0 },
   tote: { category: "storage", round: false, host: false, wallClearanceMm: 0 },
+  rolling_cart: { category: "storage", round: false, host: true, wallClearanceMm: 0 },
+  generic: { category: null, round: false, host: false, wallClearanceMm: 0 },
 };
 
 /** Gap between identical pieces sold as one listing, such as three bookcases side by side. */
@@ -72,37 +77,42 @@ interface TypeRule {
 }
 
 /**
- * Rules run in order inside a category, and the last rule of each list is the
- * fallback. Title words decide most cases, because a seller names a clamp lamp
- * or a bean bag in the title long before any dimension tells them apart.
+ * Rules run in order inside a category, and a listing whose title names none
+ * of them gets the generic shape, so a cabinet never draws or reads as a
+ * drawer unit. Title words decide most cases, because a seller names a clamp
+ * lamp or a bean bag in the title long before any dimension tells them apart.
  */
 const TYPE_RULES: Readonly<Record<ListingCategory, readonly TypeRule[]>> = {
   bed_accessory: [
     { type: "pillows", keywords: ["pillow"] },
     { type: "throw", keywords: ["throw", "blanket"] },
-    { type: "comforter" },
+    { type: "comforter", keywords: ["comforter", "duvet", "quilt", "bedspread", "topper"] },
   ],
-  desk: [{ type: "desk" }],
+  desk: [{ type: "desk", keywords: ["desk", "table", "workstation"] }],
   chair: [
     { type: "bean_bag", keywords: ["bean bag", "beanbag"] },
     { type: "pouf", keywords: ["pouf", "ottoman"] },
     { type: "armchair", keywords: ["armchair", "lounge", "wingback", "accent chair"] },
     { type: "desk_chair", keywords: ["desk chair", "task chair", "office chair", "rolling"] },
-    { type: "side_chair" },
+    { type: "side_chair", keywords: ["chair"] },
   ],
-  shelf: [{ type: "bookcase" }],
+  shelf: [{ type: "bookcase", keywords: ["bookcase", "bookshel", "shel"] }],
   lamp: [
     { type: "clamp_lamp", keywords: ["clamp"] },
-    { type: "floor_lamp", placement: "floor" },
+    { type: "floor_lamp", keywords: ["lamp", "light"], placement: "floor" },
     { type: "desk_lamp", keywords: ["desk lamp", "balance arm", "task lamp", "architect"] },
-    { type: "table_lamp" },
+    { type: "table_lamp", keywords: ["lamp"] },
   ],
-  rug: [{ type: "round_rug", keywords: ["round"] }, { type: "rug" }],
-  mini_fridge: [{ type: "mini_fridge" }],
+  rug: [
+    { type: "round_rug", keywords: ["round"] },
+    { type: "rug", keywords: ["rug", "carpet", "runner", "mat"] },
+  ],
+  mini_fridge: [{ type: "mini_fridge", keywords: ["fridge", "refrigerator", "freezer"] }],
   storage: [
     { type: "tote", keywords: ["tote", "bin"] },
-    { type: "basket", keywords: ["basket"] },
-    { type: "drawer_unit" },
+    { type: "basket", keywords: ["basket", "hamper"] },
+    { type: "rolling_cart", keywords: ["cart", "trolley"] },
+    { type: "drawer_unit", keywords: ["drawer", "tower", "organizer", "dresser", "chest"] },
   ],
 };
 
@@ -119,11 +129,27 @@ function mentions(title: string, keyword: string): boolean {
 
 export function furnitureTypeFor(listing: TypedListing): FurnitureType {
   const title = listing.title.toLowerCase();
-  const rules = TYPE_RULES[listing.category];
-  const match = rules.find(
+  const match = TYPE_RULES[listing.category].find(
     (rule) =>
       (rule.keywords === undefined || rule.keywords.some((keyword) => mentions(title, keyword))) &&
       (rule.placement === undefined || rule.placement === listing.placement),
   );
-  return (match ?? rules[rules.length - 1]).type;
+  return match?.type ?? "generic";
+}
+
+/**
+ * A listing's own name as a noun for sentences, such as "wooden step stool"
+ * from "Wooden step stool, folds flat". Words after a comma or "with" are
+ * details, and a leading capital goes unless the word is an acronym.
+ */
+export function nounFromTitle(title: string): string {
+  const head = title.split(/,| with /i)[0].trim().replace(/\s+/g, " ");
+  const words = head.split(" ").slice(0, 6).join(" ");
+  const lowered = /^[A-Z][a-z]/.test(words) ? words[0].toLowerCase() + words.slice(1) : words;
+  return lowered.slice(0, 60).trim() || "item";
+}
+
+/** The noun a layout item carries. Only the generic shape needs one, since every other type has its own word. */
+export function nounFor(type: FurnitureType, title: string): { noun?: string } {
+  return type === "generic" ? { noun: nounFromTitle(title) } : {};
 }

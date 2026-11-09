@@ -30,10 +30,12 @@ const SHORT_NOUN: Readonly<Record<FurnitureType, string>> = {
   drawer_unit: "drawers",
   basket: "baskets",
   tote: "tote",
+  rolling_cart: "cart",
+  generic: "item",
 };
 
-/** "chair" for a mesh back rolling desk chair, the word a student would say. */
-export const shortNoun = (type: FurnitureType): string => SHORT_NOUN[type];
+/** "chair" for a mesh back rolling desk chair, the word a student would say. A generic shape keeps its listing's own noun. */
+export const shortNoun = (item: { furnitureType: FurnitureType; noun?: string }): string => item.noun ?? SHORT_NOUN[item.furnitureType];
 
 export const firstNameOf = (name: string) => name.split(" ")[0];
 

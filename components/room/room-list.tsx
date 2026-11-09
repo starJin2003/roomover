@@ -45,10 +45,11 @@ export function RoomList({ label, items, total, selectedKey, onActivate, onToggl
       ) : (
         <ol className="grid gap-x-4 sm:grid-cols-2">
           {items.map((item, index) => (
-            <li key={item.layout.key}>
+            <li key={item.layout.key} className="flex min-w-0 items-center gap-1">
               <button
                 type="button"
                 data-item={item.layout.key}
+                data-new-item={item.newFrom === undefined ? undefined : true}
                 aria-pressed={selectedKey === item.layout.key}
                 aria-describedby={editing === undefined ? undefined : "room-list-keys"}
                 data-invalid={editing?.invalidKey === item.layout.key || undefined}
@@ -61,17 +62,35 @@ export function RoomList({ label, items, total, selectedKey, onActivate, onToggl
                 onMouseEnter={() => onActivate(item.layout.key)}
                 onMouseLeave={() => onActivate(null)}
                 onClick={() => onToggle(item.layout.key)}
-                className="flex min-h-13 w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left transition-colors duration-(--duration-quick) aria-pressed:bg-well hover:bg-well focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink data-invalid:shadow-[inset_0_0_0_1.5px_var(--color-brick)]"
+                className="flex min-h-13 min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-1.5 text-left transition-colors duration-(--duration-quick) aria-pressed:bg-well hover:bg-well focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink data-invalid:shadow-[inset_0_0_0_1.5px_var(--color-brick)]"
               >
                 <span className="w-4 shrink-0 text-sm text-flint tabular-nums">{index + 1}</span>
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm font-medium">{item.title}</span>
                   <span className="truncate text-xs text-flint">
-                    {item.sellerName}, {item.condition.toLowerCase()}
+                    {item.newFrom === undefined ? `${item.sellerName}, ${item.condition.toLowerCase()}${item.slotLabel === undefined ? "" : `, ${item.slotLabel}`}` : item.condition}
                   </span>
                 </span>
-                <span className="shrink-0 text-sm font-semibold tabular-nums">{formatUsdShort(item.priceCents)}</span>
+                <span className="flex shrink-0 flex-col items-end tabular-nums">
+                  <span className="text-sm font-semibold">{formatUsdShort(item.priceCents)}</span>
+                  {item.listPriceCents !== undefined && (
+                    <span className="text-xs text-flint">
+                      <span className="sr-only">asking price </span>
+                      <s>{formatUsdShort(item.listPriceCents)}</s>
+                    </span>
+                  )}
+                </span>
               </button>
+              {item.newFrom !== undefined && (
+                <a
+                  href={item.newFrom.buyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex min-h-11 shrink-0 items-center rounded-lg px-2 text-sm font-medium underline decoration-stone underline-offset-4 hover:decoration-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
+                >
+                  Buy<span className="sr-only"> the {item.title} at {item.newFrom.retailer}, opens in a new tab</span>
+                </a>
+              )}
             </li>
           ))}
         </ol>

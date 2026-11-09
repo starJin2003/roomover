@@ -1,6 +1,6 @@
 import type { ListingCategory, Placement } from "./enums";
 import { LEVEL_TOLERANCE_MM, type FitRoom } from "./fit";
-import { FURNITURE, furnitureTypeFor } from "./furniture";
+import { FURNITURE, furnitureTypeFor, nounFor } from "./furniture";
 import { contains, rectangle, type Polygon } from "./geometry";
 import { footprint, topMm, type LayoutItem, type PlanLayout } from "./layout";
 import type { ListingSpecs } from "./listing";
@@ -61,11 +61,13 @@ const normalize = (degrees: number) => ((Math.round(degrees) % 360) + 360) % 360
 
 /** The layout item for a listing at a spot, before its elevation is known. */
 export function layoutItemFor(listing: PlaceableListing, spot: Spot, layout: PlanLayout): LayoutItem {
+  const furnitureType = furnitureTypeFor(listing);
   return {
     key: itemKeyFor(listing.title, layout, listing.id),
     source: "listing",
     listingId: listing.id,
-    furnitureType: furnitureTypeFor(listing),
+    furnitureType,
+    ...nounFor(furnitureType, listing.title),
     placement: listing.placement,
     widthMm: listing.widthMm,
     depthMm: listing.depthMm,

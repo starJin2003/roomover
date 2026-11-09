@@ -1,30 +1,38 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DEMO_HOLD_MS, releaseDue } from "@/lib/domain/release";
+import { DEMO_HOLD_MS, IDLE_HANDOFF_MS, releaseReason, SELL_LISTING_TTL_MS, sellListingCleanup } from "@/lib/domain/release";
+import type { OrderStatus } from "@/lib/domain/enums";
 import { canTransition, releasedStatus } from "@/lib/domain/order-state";
 
 const NOW = new Date("2026-11-09T18:00:00Z");
 const ago = (ms: number) => new Date(NOW.getTime() - ms);
 
 describe("the demo release guard", () => {
+  const order = (status: OrderStatus, approvedAt: Date | null, photoCount = 0, lastActivityAt: Date | null = null) => ({ status, approvedAt, photoCount, lastActivityAt });
+
   it("releases an order holding money 2 hours after approval with no handoff photo", () => {
-    expect(releaseDue({ status: "authorized", approvedAt: ago(DEMO_HOLD_MS), photoCount: 0 }, NOW)).toBe(true);
-    expect(releaseDue({ status: "captured", approvedAt: ago(DEMO_HOLD_MS + 1), photoCount: 0 }, NOW)).toBe(true);
+    expect(releaseReason(order("authorized", ago(DEMO_HOLD_MS)), NOW)).toBe("demo_hold");
+    expect(releaseReason(order("captured", ago(DEMO_HOLD_MS + 1)), NOW)).toBe("demo_hold");
   });
 
   it("waits until the 2 hours pass", () => {
-    expect(releaseDue({ status: "authorized", approvedAt: ago(DEMO_HOLD_MS - 1), photoCount: 0 }, NOW)).toBe(false);
+    expect(releaseReason(order("authorized", ago(DEMO_HOLD_MS - 1)), NOW)).toBeNull();
   });
 
-  it("never touches an order whose handoff started", () => {
-    expect(releaseDue({ status: "authorized", approvedAt: ago(10 * DEMO_HOLD_MS), photoCount: 1 }, NOW)).toBe(false);
+  it("releases a handoff that started and then saw no activity for 6 hours, and keeps one still in use", () => {
+    expect(releaseReason(order("authorized", ago(10 * DEMO_HOLD_MS), 2, ago(IDLE_HANDOFF_MS)), NOW)).toBe("idle_handoff");
+    expect(releaseReason(order("captured", ago(10 * DEMO_HOLD_MS), 1, ago(IDLE_HANDOFF_MS + 1)), NOW)).toBe("idle_handoff");
+    expect(releaseReason(order("authorized", ago(10 * DEMO_HOLD_MS), 2, ago(IDLE_HANDOFF_MS - 1)), NOW)).toBeNull();
+    // Without a recorded activity time, the approval counts as the last activity.
+    expect(releaseReason(order("authorized", ago(IDLE_HANDOFF_MS), 1, null), NOW)).toBe("idle_handoff");
   });
 
   it("leaves orders that are settling, settled, released, unpaid, or pending alone", () => {
     for (const status of ["settling", "settled", "releasing", "voided", "refunded", "pending_approval", "canceled", "capture_pending", "capture_declined"] as const) {
-      expect(releaseDue({ status, approvedAt: ago(10 * DEMO_HOLD_MS), photoCount: 0 }, NOW)).toBe(false);
+      expect(releaseReason(order(status, ago(10 * DEMO_HOLD_MS), 0), NOW)).toBeNull();
+      expect(releaseReason(order(status, ago(10 * DEMO_HOLD_MS), 3, ago(10 * IDLE_HANDOFF_MS)), NOW)).toBeNull();
     }
-    expect(releaseDue({ status: "authorized", approvedAt: null, photoCount: 0 }, NOW)).toBe(false);
+    expect(releaseReason(order("authorized", null), NOW)).toBeNull();
   });
 
   it("ends a release voided in authorize mode and refunded in capture mode, and a settlement cannot be released", () => {
@@ -34,6 +42,20 @@ describe("the demo release guard", () => {
     expect(canTransition("captured", "releasing")).toBe(true);
     expect(canTransition("settling", "releasing")).toBe(false);
     expect(canTransition("releasing", "settling")).toBe(false);
+  });
+});
+
+describe("Sell listing cleanup", () => {
+  const listing = (ageMs: number, inOpenOrder = false, referenced = false) => ({ createdAt: ago(ageMs), inOpenOrder, referenced });
+
+  it("deletes a day old listing nothing names, and withdraws one an order or a plan still names", () => {
+    expect(sellListingCleanup(listing(SELL_LISTING_TTL_MS), NOW)).toBe("delete");
+    expect(sellListingCleanup(listing(SELL_LISTING_TTL_MS + 1, false, true), NOW)).toBe("withdraw");
+  });
+
+  it("keeps a listing younger than a day, and any listing an open order names", () => {
+    expect(sellListingCleanup(listing(SELL_LISTING_TTL_MS - 1), NOW)).toBe("keep");
+    expect(sellListingCleanup(listing(10 * SELL_LISTING_TTL_MS, true, true), NOW)).toBe("keep");
   });
 });
 

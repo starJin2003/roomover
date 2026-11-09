@@ -169,6 +169,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 1.6.0
         version: 1.6.0(zod@4.6.7)
+      '@channel3/sdk':
+        specifier: 4.8.0
+        version: 4.8.0
       '@paypal/agent-toolkit':
         specifier: 1.11.0
         version: 1.11.0(react@19.3.0)(supports-color@7.2.0)
@@ -419,6 +422,10 @@ packages:
   '@babel/types@7.29.11':
     resolution: {integrity: sha512-WCsemW40Cpc6gouC1SrY6PBaZ+oLRlEVY9XBvZBI7il/HyUrb2nJ505wE1MHEFyDZNnrWDEuy4jL50WVHfTTSQ==}
     engines: {node: '>=6.9.0'}
+
+  '@channel3/sdk@4.8.0':
+    resolution: {integrity: sha512-eoLdpTxG+7za0pcq3ULYl4vc0EEYN6EdegH4rJOdAhZVM2SFJnlRiZD6WZnT6uiaSaj3jBv3drlLi/X8YI0/bA==}
+    engines: {node: '>=18.0.0'}
 
   '@dimforge/rapier3d-compat@0.12.0':
     resolution: {integrity: sha512-uekIGetywIgopfD97oDL5PfeezkFpNhwlzlaEYNOA0N6ghdsOvh/HYjSMek5Q2O1PYvRSDFcqFVJl4r4ZBwOow==}
@@ -4480,6 +4487,8 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.13
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@channel3/sdk@4.8.0': {}
 
   '@dimforge/rapier3d-compat@0.12.0': {}
 

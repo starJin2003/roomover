@@ -162,10 +162,10 @@ describe("runBuyerLoop", () => {
   });
 
   it("treats an unknown tool name as invalid output", async () => {
-    const transport = scripted([message([call("make_offer", { price: 1 })]), message([call("search_new_products", {})])]);
+    const transport = scripted([message([call("haggle", { price: 1 })]), message([call("buy_new", {})])]);
     const outcome = await runBuyerLoop({ transport, context: harborContext(), kind: "plan", hooks: hooks().value });
     expect(outcome.status).toBe("failed");
-    expect(transport.requests[1].messages.at(-1)).toMatchObject({ content: [{ is_error: true, content: "There is no tool named make_offer." }] });
+    expect(transport.requests[1].messages.at(-1)).toMatchObject({ content: [{ is_error: true, content: "There is no tool named haggle." }] });
   });
 
   it("asks once more when the final reply is not the summary JSON", async () => {

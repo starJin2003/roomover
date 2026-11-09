@@ -4,17 +4,21 @@ import type { Page } from "@playwright/test";
 import { getDb } from "@/lib/db/client";
 import { latestSessionPlan } from "@/lib/db/plans";
 import { listings, orderItems, orders, webhookEvents } from "@/lib/db/schema";
+import { expectNoPageScroll } from "./support/layout";
 import { approveInPopup, BUYER_PASSWORD } from "./support/paypal-popup";
+import { LIVE } from "./support/sandbox";
 import { expect, test } from "./support/session";
 
 test.use({ holdsCatalog: true });
 
 /**
- * One real sandbox checkout. The buyer agent replays its recorded plan, the
- * official PayPal button opens the sandbox popup, the judge buyer approves,
- * and the server authorizes the order. Teardown voids the authorization and
- * puts the listings back on sale. PayPal sends the webhooks to the deployed
- * app, which shares this database.
+ * One checkout. The buyer agent replays its recorded plan, and pressing the
+ * PayPal button approves the order, which the server authorizes. By default
+ * PayPal answers from recorded responses and a stand-in SDK approves at once,
+ * so no sandbox money moves. With ROOMOVER_E2E_LIVE=1 the official button
+ * opens the real sandbox popup, the judge buyer approves, and PayPal sends
+ * the webhooks to the deployed app, which shares this database. Teardown
+ * voids the authorization and puts the listings back on sale.
  */
 
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR ?? "test-results/screenshots";
@@ -27,8 +31,8 @@ async function expectAccessible(page: Page) {
 }
 
 test("the student approves one PayPal checkout and PayPal holds the money for every seller", async ({ page, session }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop-1440", "The real sandbox checkout runs once, on desktop.");
-  test.skip(BUYER_PASSWORD === undefined, "Needs PAYPAL_SANDBOX_BUYER_PASSWORD in .env.local.");
+  test.skip(testInfo.project.name !== "desktop-1440", "The checkout runs once, on desktop.");
+  test.skip(LIVE && BUYER_PASSWORD === undefined, "A live run needs PAYPAL_SANDBOX_BUYER_PASSWORD in .env.local.");
   test.setTimeout(300_000);
   const problems: string[] = [];
   page.on("console", (message) => {
@@ -45,22 +49,25 @@ test("the student approves one PayPal checkout and PayPal holds the money for ev
   await expect(page.locator('[data-paypal-checkout="ready"]')).toBeVisible({ timeout: 30_000 });
   await expect(page.locator("paypal-button")).toBeVisible();
   await expect(page.locator("paypal-pay-later-button")).toBeVisible();
-  await expect(page.getByText(/Pay in 4 interest-free payments of \$25\.00/)).toBeVisible({ timeout: 30_000 });
+  if (LIVE) await expect(page.getByText(/Pay in 4 interest-free payments of \$25\.00/)).toBeVisible({ timeout: 30_000 });
   await expect(page.locator("[data-total]")).toHaveText("$100");
   await expectAccessible(page);
   await page.screenshot({ path: `${SCREENSHOT_DIR}/checkout-ready-1440.png`, fullPage: true, scale: "css" });
 
-  // Closing the popup before approving charges nothing and says how to go on.
-  const firstPopup = page.waitForEvent("popup");
-  await page.locator("paypal-button").click();
-  const closing = await firstPopup;
-  await closing.locator("input#email, input[name=login_email]").waitFor({ timeout: 45_000 });
-  await closing.close();
-  await expect(page.getByText("You closed PayPal before approving, so nothing was charged. Press PayPal when you are ready.")).toBeVisible({ timeout: 30_000 });
-
-  const popupOpened = page.waitForEvent("popup");
-  await page.locator("paypal-button").click();
-  await approveInPopup(await popupOpened, `${SCREENSHOT_DIR}/checkout-popup-1440.png`);
+  if (LIVE) {
+    // Closing the popup before approving charges nothing and says how to go on.
+    const firstPopup = page.waitForEvent("popup");
+    await page.locator("paypal-button").click();
+    const closing = await firstPopup;
+    await closing.locator("input#email, input[name=login_email]").waitFor({ timeout: 45_000 });
+    await closing.close();
+    await expect(page.getByText("You closed PayPal before approving, so nothing was charged. Press PayPal when you are ready.")).toBeVisible({ timeout: 30_000 });
+    const popupOpened = page.waitForEvent("popup");
+    await page.locator("paypal-button").click();
+    await approveInPopup(await popupOpened, `${SCREENSHOT_DIR}/checkout-popup-1440.png`);
+  } else {
+    await page.locator("paypal-button").click();
+  }
 
   // The panel turns to the held state, and Under the hood names the API and both IDs.
   await expect(page.getByText("PayPal holds your $100 until handoff")).toBeVisible({ timeout: 60_000 });
@@ -82,6 +89,7 @@ test("the student approves one PayPal checkout and PayPal holds the money for ev
   await expect(card.getByText(order.paypalOrderId ?? "")).toBeVisible();
   await expect(card.getByText(order.paypalAuthorizationId ?? "")).toBeVisible();
   await expectAccessible(page);
+  await expectNoPageScroll(page);
   await page.screenshot({ path: `${SCREENSHOT_DIR}/checkout-held-1440.png`, fullPage: true, scale: "css" });
 
   // The order rows match the plan with one line per listing at its listed price, and the listings are reserved.
@@ -92,12 +100,12 @@ test("the student approves one PayPal checkout and PayPal holds the money for ev
   expect(order.totalCents).toBe(listed.reduce((sum, listing) => sum + listing.priceCents, 0));
   expect(listed.every((listing) => listing.status === "reserved")).toBe(true);
 
-  // PayPal delivers PAYMENT.AUTHORIZATION.CREATED to the deployed route, which stores it once.
+  // A live run's PAYMENT.AUTHORIZATION.CREATED reaches the deployed route, which stores it once.
   let stored: (typeof webhookEvents.$inferSelect)[] = [];
-  for (const started = Date.now(); Date.now() - started < WEBHOOK_WAIT_MS && stored.length === 0; await page.waitForTimeout(3000)) {
+  for (const started = Date.now(); LIVE && Date.now() - started < WEBHOOK_WAIT_MS && stored.length === 0; await page.waitForTimeout(3000)) {
     stored = await db.select().from(webhookEvents).where(eq(webhookEvents.resourceId, order.paypalAuthorizationId ?? ""));
   }
-  expect(stored.map((event) => event.eventType)).toEqual(["PAYMENT.AUTHORIZATION.CREATED"]);
+  if (LIVE) expect(stored.map((event) => event.eventType)).toEqual(["PAYMENT.AUTHORIZATION.CREATED"]);
   testInfo.annotations.push(
     { type: "paypal-order", description: order.paypalOrderId ?? "" },
     { type: "paypal-authorization", description: order.paypalAuthorizationId ?? "" },

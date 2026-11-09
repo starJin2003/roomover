@@ -2,7 +2,8 @@ import { writeFile } from "node:fs/promises";
 import type Anthropic from "@anthropic-ai/sdk";
 import { listingFacts, photoData, readPublicPhoto, sha256 } from "@/lib/agents/verifier/facts";
 import { comparePhotos } from "@/lib/agents/verifier/compare";
-import { liveVerifierTransport, readVerifierRecording, type VerifierRecording } from "@/lib/agents/verifier/transport";
+import { readReplyRecording, type ReplyRecording } from "@/lib/agents/recording";
+import { liveVerifierTransport } from "@/lib/agents/verifier/transport";
 import { readConfig } from "@/lib/config";
 import { damageWords } from "@/lib/domain/verdict";
 import { samplesFor } from "@/lib/handoff/samples";
@@ -67,7 +68,7 @@ async function main() {
   await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
     for (let job = pending.shift(); job !== undefined; job = pending.shift()) await run(job);
   }));
-  const existing = await readVerifierRecording(OUT).catch((): VerifierRecording => ({ version: 1, photos: {} }));
+  const existing = await readReplyRecording(OUT).catch((): ReplyRecording => ({ version: 1, photos: {} }));
   const photos = Object.fromEntries(Object.entries({ ...existing.photos, ...Object.fromEntries(recorded) }).sort(([a], [b]) => a.localeCompare(b)));
   await writeFile(OUT, `${JSON.stringify({ version: 1, photos }, null, 1)}\n`);
   console.log(`\n${jobs.length} photos, ${misses} misses, ${calls} Claude calls, ${inputTokens} input and ${outputTokens} output tokens. Fixture: ${OUT}`);

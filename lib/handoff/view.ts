@@ -125,7 +125,7 @@ export function buildHandoffView(input: { order: HandoffOrder; roomLabel: string
   const placed = (listingId: string) => input.layout.get(listingId)?.index ?? Number.MAX_SAFE_INTEGER;
   const items = [...order.items].sort((a, b) => placed(a.listingId) - placed(b.listingId)).map((item): HandoffItemView => {
     const ref = input.layout.get(item.listingId);
-    const noun = ref === undefined ? item.title.toLowerCase() : shortNoun(ref.furnitureType);
+    const noun = ref === undefined ? item.title.toLowerCase() : shortNoun(ref);
     const sellerFirstName = firstNameOf(item.sellerName);
     const report = item.handoff?.report ?? null;
     const finding = findingOf(item);

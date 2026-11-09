@@ -6,8 +6,8 @@ import type { CheckoutView } from "@/lib/plan-view";
 export const PRIMARY_LINK =
   "inline-flex h-13 items-center justify-center rounded-lg bg-key px-6 pb-1 text-base font-semibold text-paper shadow-key-ink transition-[translate,box-shadow] duration-(--duration-press) ease-out key-hover:-translate-y-px key-press:translate-y-0.5 key-press:shadow-key-ink-down key-focus:outline-2 key-focus:outline-offset-2 key-focus:outline-ink";
 
-/** The panel after the student approves. It says where the money is and leads on to handoff. */
-export function PaidPanel({ planId, checkout }: { planId: string; checkout: CheckoutView }) {
+/** The panel after the student approves. It says where the money is, and HandoffLink leads on. */
+export function PaidPanel({ checkout }: { checkout: CheckoutView }) {
   const total = formatUsdShort(checkout.totalCents);
   const students = checkout.sellerCount === 1 ? "1 student gets" : `${checkout.sellerCount} students get`;
   const references: PayPalReference[] = [
@@ -25,19 +25,10 @@ export function PaidPanel({ planId, checkout }: { planId: string; checkout: Chec
   }
 
   if (checkout.status === "settled" || checkout.status === "settling") {
-    return (
-      <div className="flex flex-col gap-4">
-        <p className="text-base">{checkout.status === "settled" ? "You checked every item, and PayPal paid the sellers." : "PayPal is settling your handoff now."}</p>
-        <Link href={`/handoff/${planId}`} className={PRIMARY_LINK}>
-          {checkout.status === "settled" ? "See the handoff" : "Go to handoff"}
-        </Link>
-      </div>
-    );
+    return <p className="text-base">{checkout.status === "settled" ? "You checked every item, and PayPal paid the sellers." : "PayPal is settling your handoff now."}</p>;
   }
 
-  return (
-    <div className="flex flex-col gap-4">
-      {checkout.status === "authorized" ? (
+  return checkout.status === "authorized" ? (
         <PayPalCard
           moment="held"
           title={`PayPal holds your ${total} until handoff`}
@@ -51,10 +42,15 @@ export function PaidPanel({ planId, checkout }: { planId: string; checkout: Chec
           detail={`Roomover holds it until you check each item at handoff, and refunds anything you turn down.`}
           references={references}
         />
-      )}
-      <Link href={`/handoff/${planId}`} className={PRIMARY_LINK}>
-        Go to handoff
-      </Link>
-    </div>
+      );
+}
+
+/** The link on to handoff, pinned under the panel. A capture still processing has none yet. */
+export function HandoffLink({ planId, checkout }: { planId: string; checkout: CheckoutView }) {
+  if (checkout.status === "capture_pending") return null;
+  return (
+    <Link href={`/handoff/${planId}`} className={`${PRIMARY_LINK} w-full`}>
+      {checkout.status === "settled" ? "See the handoff" : "Go to handoff"}
+    </Link>
   );
 }
