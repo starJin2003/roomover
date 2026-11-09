@@ -60,7 +60,8 @@ export interface PlanView {
   checkout: CheckoutView | null;
 }
 
-export type PlanMessage = { type: "plan"; plan: PlanView } | { type: "event"; event: ActivityEventView };
+/** What the plan bus carries. `handoff` says the plan's handoff changed, and its screen reads the new state. */
+export type PlanMessage = { type: "plan"; plan: PlanView } | { type: "event"; event: ActivityEventView } | { type: "handoff" };
 
 /** The listing facts a placed item shows. */
 export interface PlanListing {

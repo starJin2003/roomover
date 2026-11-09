@@ -50,6 +50,8 @@ interface RoomStageProps {
   showList?: boolean;
   /** Lets the student drag, turn, and nudge items, with the same fit check the agent faces. */
   editing?: RoomEditing | null;
+  /** Rings one item and keeps its tag up, such as the next item to check at handoff. */
+  mark?: { key: string; label: string } | null;
 }
 
 type GlSupport = "checking" | "yes" | "no";
@@ -105,7 +107,7 @@ interface Draft {
 const snap = (value: number) => Math.round(value / SNAP_MM) * SNAP_MM;
 const clamp = (value: number, max: number) => Math.min(Math.max(0, value), max);
 
-export function RoomStage({ label, preset, items, playable = false, ring = false, showList = true, editing = null }: RoomStageProps) {
+export function RoomStage({ label, preset, items, playable = false, ring = false, showList = true, editing = null, mark = null }: RoomStageProps) {
   const gl = useWebGlSupport();
   const reducedMotion = useReducedMotion();
   const [ready, setReady] = useState(false);
@@ -186,8 +188,11 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
     () => shown.map((data) => ({ data, animate: animating.has(data.layout.key), held: draft?.moved.has(data.layout.key) === true })),
     [shown, animating, draft],
   );
-  const focusKey = drag === null ? (hoverKey ?? listKey ?? selectedKey) : null;
+  const pointedKey = drag === null ? (hoverKey ?? listKey ?? selectedKey) : null;
+  const focusKey = pointedKey ?? (drag === null ? (mark?.key ?? null) : null);
   const focused = shown.find((item) => item.layout.key === focusKey);
+  const markTag = pointedKey === null && mark !== null && focused?.layout.key === mark.key ? mark.label : null;
+  const ringShown = mark === null ? ringKey : mark.key;
   const selected = editing === null ? undefined : shown.find((item) => item.layout.key === selectedKey);
   const invalid = draft !== null && draft.problems.length > 0;
   const locked = editing?.locked ?? null;
@@ -404,7 +409,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
       data-room={preset.slug}
       data-ready={ready}
       data-placed={shown.length}
-      data-ring={ringKey ?? ""}
+      data-ring={ringShown ?? ""}
       data-selected={selected?.layout.key ?? ""}
       data-invalid={invalid}
     >
@@ -418,7 +423,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
             <RoomCanvas
               preset={preset}
               items={sceneItems}
-              ringKey={ringKey}
+              ringKey={ringShown}
               focusKey={focusKey}
               reducedMotion={reducedMotion}
               playing={active}
@@ -443,7 +448,8 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
           </div>
         )}
         <div ref={tag} aria-hidden="true" data-room-tag className="pointer-events-none invisible absolute top-0 left-0 z-10 max-w-64 rounded-md bg-paper px-3 py-2 shadow-sheet">
-          {focused !== undefined && (
+          {markTag !== null && <p className="text-sm font-semibold">{markTag}</p>}
+          {focused !== undefined && markTag === null && (
             <>
               <p className="text-sm font-semibold">{focused.title}</p>
               <p className="text-xs text-flint">

@@ -15,6 +15,13 @@
       "when": 1794165659428,
       "tag": "0001_agent_runs_and_listing_colors",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794215405867,
+      "tag": "0002_handoff_settlement",
+      "breakpoints": true
     }
   ]
 }

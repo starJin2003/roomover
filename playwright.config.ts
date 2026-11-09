@@ -40,9 +40,9 @@ export default defineConfig({
   webServer: {
     command: `pnpm build && pnpm start --port ${port}`,
     url: baseURL,
-    // Always a fresh server with the recorded Claude conversation, so tests never reach the API.
+    // Always a fresh server with the recorded Claude conversations, so tests never reach the API.
     reuseExistingServer: false,
-    env: { ROOMOVER_CLAUDE_FIXTURE: "tests/fixtures/buyer-agent.json" },
+    env: { ROOMOVER_CLAUDE_FIXTURE: "tests/fixtures/buyer-agent.json", ROOMOVER_VERIFIER_FIXTURE: "tests/fixtures/verifier-agent.json" },
     timeout: 180_000,
   },
 });

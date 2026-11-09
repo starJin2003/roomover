@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { HANDOFF_DECISIONS, type HandoffMode, type PaymentMode } from "./enums";
-import { defectSchema } from "./listing";
+import type { HandoffMode, PaymentMode } from "./enums";
 
 /** PayPal keeps an authorization valid for 29 days, counted from checkout to capture. */
 export const AUTHORIZATION_VALIDITY_DAYS = 29;
@@ -58,27 +57,15 @@ export function checkoutPaymentMode(checkoutAt: Date, handoffs: readonly TimeWin
     : "capture_at_checkout";
 }
 
+/** A sample photo committed under the public folder, or an upload Roomover serves to the session that took it. */
+export const HANDOFF_PHOTO_SRC = /^\/(handoff-samples\/[a-z0-9-]+\.jpg|api\/handoff\/photos\/[0-9a-f-]{36})$/;
+
 export const handoffPhotoSchema = z.strictObject({
-  src: z.string().min(1),
+  src: z.string().regex(HANDOFF_PHOTO_SRC),
+  source: z.enum(["upload", "sample"]),
   takenAt: z.iso.datetime({ offset: true }),
 });
 
 export const handoffPhotosSchema = z.array(handoffPhotoSchema);
 
-/**
- * The verifier's structured comparison of listing and handoff photos. It
- * recommends a decision, and deterministic code turns the decision and the
- * defect severities into amounts.
- */
-export const verificationReportSchema = z.strictObject({
-  itemPresent: z.boolean(),
-  matchesListing: z.boolean(),
-  newDefects: z.array(defectSchema),
-  recommendedDecision: z.enum(HANDOFF_DECISIONS),
-  summary: z.string().min(1),
-  model: z.string().min(1),
-  comparedAt: z.iso.datetime({ offset: true }),
-});
-
 export type HandoffPhoto = z.infer<typeof handoffPhotoSchema>;
-export type VerificationReport = z.infer<typeof verificationReportSchema>;

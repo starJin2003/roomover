@@ -33,14 +33,14 @@ function listingInsert(statements: Statement[]): Statement {
 }
 
 describe("terminal order statuses", () => {
-  it("lists only settled, canceled, voided, and reversed", () => {
-    expect([...TERMINAL_ORDER_STATUSES].sort()).toEqual(["canceled", "reversed", "settled", "voided"]);
+  it("lists only settled, canceled, voided, reversed, and refunded", () => {
+    expect([...TERMINAL_ORDER_STATUSES].sort()).toEqual(["canceled", "refunded", "reversed", "settled", "voided"]);
     for (const status of TERMINAL_ORDER_STATUSES) expect(ORDER_STATUSES).toContain(status);
   });
 
-  it("keeps every order that can still capture, refund, or retry open", () => {
+  it("keeps every order that can still capture, refund, retry, settle, or release open", () => {
     const open = ORDER_STATUSES.filter((status) => !(TERMINAL_ORDER_STATUSES as readonly string[]).includes(status));
-    expect(open).toEqual(["pending_approval", "approved", "authorized", "capture_pending", "captured", "capture_declined"]);
+    expect(open).toEqual(["pending_approval", "approved", "authorized", "capture_pending", "captured", "capture_declined", "settling", "releasing"]);
   });
 });
 

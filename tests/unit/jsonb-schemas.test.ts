@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evidenceBundleSchema } from "@/lib/domain/dispute";
-import { handoffPhotosSchema, verificationReportSchema } from "@/lib/domain/handoff";
+import { handoffPhotosSchema } from "@/lib/domain/handoff";
+import { verificationReportSchema } from "@/lib/domain/verdict";
 import { hallConstraintsSchema } from "@/lib/domain/hall-rules";
 import {
   conditionReportSchema,
@@ -182,19 +183,24 @@ describe("negotiation, handoff, and dispute JSONB", () => {
     expect(offersLogSchema.safeParse([backwards]).success).toBe(false);
   });
 
-  it("accepts handoff photos and a verification report", () => {
-    expect(handoffPhotosSchema.parse([{ src: "/uploads/h1.jpg", takenAt: "2027-01-02T10:05:00-06:00" }])).toHaveLength(1);
+  it("accepts handoff photos from the samples or the upload route, and a verification report", () => {
+    const photos = [
+      { src: "/handoff-samples/marcus-mesh-desk-chair-torn.jpg", source: "sample", takenAt: "2027-01-02T10:05:00-06:00" },
+      { src: "/api/handoff/photos/0b8a3d4e-7c51-4f2a-9a43-1d2e3f405162", source: "upload", takenAt: "2027-01-02T10:06:00-06:00" },
+    ];
+    expect(handoffPhotosSchema.parse(photos)).toHaveLength(2);
+    expect(handoffPhotosSchema.safeParse([{ ...photos[0], src: "https://example.com/photo.jpg" }]).success).toBe(false);
     const report = {
-      itemPresent: true,
-      matchesListing: true,
-      newDefects: [{ location: "left leg", description: "Fresh scratch", severity: "minor" }],
-      recommendedDecision: "adjusted",
-      summary: "Same desk, one new scratch.",
+      verdict: "new_damage",
+      damage: { kind: "tear", location: "seat cover", sizeCm: 3, severity: "minor" },
+      confidence: "high",
+      observations: "Same chair with a small new split in the seat vinyl.",
       model: "claude-sonnet-5-5",
+      attempts: 1,
       comparedAt: "2027-01-02T10:06:00-06:00",
     };
     expect(verificationReportSchema.parse(report)).toEqual(report);
-    expect(verificationReportSchema.safeParse({ ...report, recommendedDecision: "maybe" }).success).toBe(false);
+    expect(verificationReportSchema.safeParse({ ...report, verdict: "maybe" }).success).toBe(false);
   });
 
   it("caps dispute notes at 2000 characters", () => {

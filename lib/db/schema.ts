@@ -3,6 +3,7 @@ import {
   bigint,
   boolean,
   check,
+  customType,
   date,
   index,
   integer,
@@ -40,12 +41,13 @@ import {
   ROOM_TYPES,
   USER_ROLES,
 } from "../domain/enums";
-import type { HandoffPhoto, VerificationReport } from "../domain/handoff";
+import type { HandoffPhoto } from "../domain/handoff";
 import type { HallConstraint } from "../domain/hall-rules";
 import type { ConditionReport, ListingColor, ListingPhoto, ListingSpecs, RetailReference } from "../domain/listing";
 import type { OffersLog } from "../domain/negotiation";
 import { EMPTY_LAYOUT, type PlanLayout } from "../domain/layout";
 import type { RoomGeometry } from "../domain/room";
+import type { VerificationReport } from "../domain/verdict";
 
 // drizzle-kit does not read tsconfig paths, so this file uses relative imports.
 
@@ -79,6 +81,8 @@ const updatedAt = () =>
     .defaultNow()
     .$onUpdate(() => new Date());
 const at = (name: string) => timestamp(name, { withTimezone: true });
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
 
 /** Counts PayPal attempts on a record. It feeds the PayPal-Request-Id key. */
 const attempt = () => integer("attempt").notNull().default(1);
@@ -310,9 +314,17 @@ export const orders = pgTable(
     authorizationExpiresAt: at("authorization_expires_at"),
     /** Set once. Roomover reauthorizes an authorization at most one time. */
     reauthorizedAt: at("reauthorized_at"),
+    /** The authorization a reauthorization returned. Later captures run against it. */
+    paypalReauthorizationId: text("paypal_reauthorization_id").unique(),
     /** The single capture of an order that captures at checkout. */
     paypalCaptureId: text("paypal_capture_id").unique(),
     approvedAt: at("approved_at"),
+    /** Set when the remaining authorization was voided, by settlement or by a release. */
+    voidedAt: at("voided_at"),
+    settledAt: at("settled_at"),
+    releasedAt: at("released_at"),
+    /** What the student sees when settlement stopped partway, until a retry finishes it. */
+    settlementError: text("settlement_error"),
     attempt: attempt(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -370,6 +382,8 @@ export const payoutItems = pgTable(
     senderItemId: text("sender_item_id").notNull().unique(),
     paypalPayoutItemId: text("paypal_payout_item_id").unique(),
     status: payoutItemStatus("status").notNull().default("pending"),
+    /** When the status last changed, which orders the sellers paid rows as they fill. */
+    statusChangedAt: at("status_changed_at"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -432,7 +446,11 @@ export const handoffs = pgTable(
     location: text("location").notNull(),
     photos: jsonb("photos").$type<HandoffPhoto[]>().notNull().default([]),
     verificationReport: jsonb("verification_report").$type<VerificationReport>(),
+    /** Why the last comparison produced no verdict, shown until the next one. */
+    verifierError: text("verifier_error"),
     decision: handoffDecision("decision"),
+    /** What the student agreed to pay for the item, set with the decision. */
+    payCents: integer("pay_cents"),
     decidedAt: at("decided_at"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -441,6 +459,33 @@ export const handoffs = pgTable(
     index("handoffs_slot_idx").on(t.slotStartsAt),
     check("handoffs_slot_check", sql`${t.slotEndsAt} > ${t.slotStartsAt}`),
     check("handoffs_decision_check", sql`(${t.decision} is null) = (${t.decidedAt} is null)`),
+    check("handoffs_pay_check", sql`(${t.decision} is null) = (${t.payCents} is null) and (${t.payCents} is null or ${t.payCents} >= 0)`),
+  ],
+);
+
+/**
+ * Photos students upload at handoff. Each belongs to one handoff and one
+ * demo session, and only that session can read it back. Sample photos stay
+ * files under the public folder and get no row.
+ */
+export const handoffPhotos = pgTable(
+  "handoff_photos",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    handoffId: uuid("handoff_id")
+      .notNull()
+      .references(() => handoffs.id, { onDelete: "cascade" }),
+    sessionId: text("session_id").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    sha256: text("sha256").notNull(),
+    bytes: bytea("bytes").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("handoff_photos_handoff_idx").on(t.handoffId),
+    check("handoff_photos_type_check", sql`${t.contentType} in ('image/jpeg', 'image/png', 'image/webp')`),
+    check("handoff_photos_size_check", sql`${t.byteSize} > 0 and ${t.byteSize} <= 5242880`),
   ],
 );
 

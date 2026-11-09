@@ -1,7 +1,7 @@
-# Roomover on Render. One always on web service, a daily reseed cron job, and
-# the roomover-db Postgres instance, all in Ohio so both services reach the
-# database over the private network. Secret values live only in the Render
-# dashboard (sync false).
+# Roomover on Render. One always on web service, a daily reseed cron job, an
+# hourly demo release cron job, and the roomover-db Postgres instance, all in
+# Ohio so every service reaches the database over the private network. Secret
+# values live only in the Render dashboard (sync false).
 services:
   - type: web
     name: roomover
@@ -59,6 +59,37 @@ services:
           property: connectionString
       - key: COREPACK_ENABLE_DOWNLOAD_PROMPT
         value: "0"
+
+  # Gives the money back on demo orders whose handoff did not start within 2
+  # hours of approval (a void, or a refund in capture mode) and puts their
+  # listings back on sale, so judges who pay and leave do not empty the
+  # catalog. The PayPal credentials come from the web service.
+  - type: cron
+    name: roomover-release
+    runtime: node
+    region: ohio
+    plan: 0.5c-512mb
+    schedule: "0 * * * *"
+    autoDeployTrigger: commit
+    buildCommand: npm install --global corepack@0.36.0 && corepack enable pnpm && pnpm install --frozen-lockfile
+    startCommand: npm run orders:release
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: roomover-db
+          property: connectionString
+      - key: COREPACK_ENABLE_DOWNLOAD_PROMPT
+        value: "0"
+      - key: PAYPAL_CLIENT_ID
+        fromService:
+          name: roomover
+          type: web
+          envVarKey: PAYPAL_CLIENT_ID
+      - key: PAYPAL_CLIENT_SECRET
+        fromService:
+          name: roomover
+          type: web
+          envVarKey: PAYPAL_CLIENT_SECRET
 
 databases:
   # Adopted by name. The instance already exists, so its plan, disk, version,

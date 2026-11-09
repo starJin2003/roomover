@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Database } from "@/lib/db/client";
 import { cancelPendingOrder, currentOrder, insertPendingOrder, loadCheckoutListings, setPayPalOrderId, type OrderWithLines } from "@/lib/db/orders";
 import { buildCheckout, CheckoutRefused, intentFor, sameLines, type CheckoutPlan } from "@/lib/domain/checkout";
+import type { OrderStatus } from "@/lib/domain/enums";
 import type { PlanLayout } from "@/lib/domain/layout";
 import { orderCreateKey } from "@/lib/paypal/idempotency";
 import { retryTransient } from "@/lib/paypal/retry";
@@ -15,6 +16,8 @@ import { createOrder } from "@/lib/paypal/server-sdk/orders";
 const ORDER_REUSE_MS = 5 * 60 * 60 * 1000;
 
 const createdOrderSchema = z.object({ id: z.string().min(1) });
+
+const REPAYABLE_STATUSES: ReadonlySet<OrderStatus> = new Set(["pending_approval", "approved", "voided", "refunded"]);
 
 export interface CheckoutDeps {
   db: Database;
@@ -51,7 +54,8 @@ export async function prepareCheckout(deps: CheckoutDeps, plan: CheckoutPlanRef)
   const { db, sdk, now } = deps;
   const ids = listingIdsOf(plan.layout);
   const current = await currentOrder(db, plan.id);
-  if (current !== null && current.status !== "pending_approval" && current.status !== "approved") {
+  // A released order gave its money back, so the room can be paid for again.
+  if (current !== null && !REPAYABLE_STATUSES.has(current.status)) {
     throw new CheckoutRefused("paid", "This room is already paid for.");
   }
   const checkout = buildCheckout(ids, await loadCheckoutListings(db, ids), now);

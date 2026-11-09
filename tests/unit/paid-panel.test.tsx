@@ -14,10 +14,12 @@ const authorized: CheckoutView = {
   captureId: null,
 };
 
+const PLAN_ID = "4b890249-7438-45b7-aaff-03a2e3f5efad";
+
 const render = (checkout: CheckoutView, underTheHood = false) =>
   renderToStaticMarkup(
     <UnderTheHoodProvider defaultOn={underTheHood}>
-      <PaidPanel checkout={checkout} />
+      <PaidPanel planId={PLAN_ID} checkout={checkout} />
     </UnderTheHoodProvider>,
   );
 
@@ -27,7 +29,7 @@ describe("PaidPanel", () => {
     expect(html).toContain('data-paypal-moment="held"');
     expect(html).toContain("PayPal holds your $141 until handoff");
     expect(html).toContain("5 students get paid then.");
-    expect(html).toContain('href="/handoff"');
+    expect(html).toContain(`href="/handoff/${PLAN_ID}"`);
     expect(html).not.toContain("94R599622M802332T");
   });
 
@@ -43,6 +45,13 @@ describe("PaidPanel", () => {
     expect(html).toContain('data-paypal-moment="captured"');
     expect(html).toContain("PayPal captured $141");
     expect(html).toContain("2GG279541U471931P");
+  });
+
+  it("leads back to the finished handoff once PayPal paid the sellers", () => {
+    const html = render({ ...authorized, status: "settled" });
+    expect(html).toContain("You checked every item, and PayPal paid the sellers.");
+    expect(html).toContain("See the handoff");
+    expect(html).not.toContain("data-paypal-moment");
   });
 
   it("says a pending capture is still processing without the card", () => {

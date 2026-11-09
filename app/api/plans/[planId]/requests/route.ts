@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/pla
   const plan = await loadSessionPlan(db, planId, session);
   if (plan === null) return jsonResponse(404, { error: "No such plan." });
   if (plan.layout.items.length === 0) return jsonResponse(409, { error: "Plan the room first, then ask for changes." });
-  if (plan.status === "checked_out") return jsonResponse(409, { error: "This room is paid for, so its items stay as they are. You can still move them by hand." });
+  if (plan.status === "checked_out" || plan.status === "completed") return jsonResponse(409, { error: "This room is paid for, so its items stay as they are. You can still move them by hand." });
   const preset = (await loadPresetsWithRules(db)).find((candidate) => candidate.id === plan.roomPresetId);
   if (preset === undefined) return jsonResponse(500, { error: "The plan's room preset is missing." });
 

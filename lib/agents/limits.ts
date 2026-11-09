@@ -95,3 +95,23 @@ export class RunStopped extends Error {
     this.name = "RunStopped";
   }
 }
+
+/** Live verifier comparisons one browser may run per rolling hour. Each takes one or two Claude calls. */
+export const COMPARISONS_PER_HOUR = 30;
+const CALLS_PER_COMPARISON = 2;
+
+/** Whether a live comparison may start, against the session's hourly count and the shared daily allowance. */
+export function decideComparisonLimit(counts: { session: WindowCount; claudeCallsToday: number }, now: Date, limits: RunLimits = RUN_LIMITS): LimitDecision {
+  if (counts.session.count >= COMPARISONS_PER_HOUR) {
+    return {
+      allowed: false,
+      reason: "session",
+      message: `This browser compared ${COMPARISONS_PER_HOUR} photos in the last hour, the most the demo allows.`,
+      retryAt: slotOpens(counts.session, now),
+    };
+  }
+  if (counts.claudeCallsToday + CALLS_PER_COMPARISON > limits.claudeCallsPerDay) {
+    return { allowed: false, reason: "daily", message: "The demo used today's allowance of Claude calls. It resets at midnight UTC.", retryAt: nextUtcMidnight(now) };
+  }
+  return { allowed: true };
+}

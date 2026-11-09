@@ -47,7 +47,7 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/plan
       const deliver = (message: PlanMessage) => {
         if (message.type === "plan") {
           send(formatSse({ event: "plan", data: message.plan }));
-        } else if (message.event.seq > lastSeq) {
+        } else if (message.type === "event" && message.event.seq > lastSeq) {
           lastSeq = message.event.seq;
           send(formatSse({ id: lastSeq, event: "activity", data: message.event }));
         }

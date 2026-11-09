@@ -3,13 +3,14 @@ import { publish } from "@/lib/agents/bus";
 import type { Database } from "@/lib/db/client";
 import { ListingTaken, recordApproval, type ApprovalRecord } from "@/lib/db/orders";
 import type { Transaction } from "@/lib/db/plans";
+import { onItemCaptureCompleted } from "@/lib/handoff/webhooks";
 import type { PayPalWebhookEvent } from "@/lib/paypal/webhooks/events";
 
 /**
  * Checkout results that arrive as webhooks. They land through the same
  * recordApproval as the API answer, so whichever arrives second changes
- * nothing. An event for an order Roomover does not know, or one a later
- * task settles, is acknowledged and logged.
+ * nothing. An event for an order Roomover does not know is acknowledged and
+ * logged, and a capture of an authorization belongs to handoff settlement.
  */
 
 const relatedIds = z.object({ related_ids: z.object({ order_id: z.string().min(1).optional(), authorization_id: z.string().min(1).optional() }).optional() }).optional();
@@ -52,7 +53,7 @@ export async function onCaptureCompleted(event: PayPalWebhookEvent, db: Database
     return;
   }
   if (related.authorization_id !== undefined) {
-    console.info("paypal webhook capture of an authorization, settled at handoff", { eventId: event.id });
+    await onItemCaptureCompleted(event, db);
     return;
   }
   await land(event, { paypalOrderId: related.order_id, status: "captured", captureId: resource.data.id, source: "webhook", at: new Date(event.create_time) }, db);

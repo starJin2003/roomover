@@ -54,7 +54,9 @@ function mergeEvents(current: readonly ActivityEventView[], incoming: readonly A
   return fresh.length === 0 ? [...current] : [...current, ...fresh].sort((a, b) => a.seq - b.seq);
 }
 
-const PAID_STATUSES: ReadonlySet<string> = new Set(["authorized", "capture_pending", "captured"]);
+const PAID_STATUSES: ReadonlySet<string> = new Set(["authorized", "capture_pending", "captured", "settling", "settled", "releasing"]);
+/** A paid room whose handoff has not moved money yet, which a new plan releases. */
+const RELEASABLE_STATUSES: ReadonlySet<string> = new Set(["authorized", "captured"]);
 
 export function FurnishScreen({ paypalClientId, presets, listingCount, initialPlan, initialEvents }: FurnishScreenProps) {
   const [plan, setPlan] = useState<PlanView | null>(initialPlan);
@@ -67,6 +69,8 @@ export function FurnishScreen({ paypalClientId, presets, listingCount, initialPl
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [asking, setAsking] = useState(false);
   const [askError, setAskError] = useState<string | null>(null);
+  const [releasing, setReleasing] = useState(false);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
 
   const lastSeq = events.at(-1)?.seq ?? 0;
   const onPlan = useCallback((next: PlanView) => setPlan((current) => (current === null || current.id === next.id ? next : current)), []);
@@ -191,7 +195,31 @@ export function FurnishScreen({ paypalClientId, presets, listingCount, initialPl
   const failed = run?.status === "failed";
   const checkout = plan?.checkout ?? null;
   const paid = checkout !== null && PAID_STATUSES.has(checkout.status);
+  const releasable = checkout !== null && RELEASABLE_STATUSES.has(checkout.status);
+  const released = checkout !== null && (checkout.status === "voided" || checkout.status === "refunded");
   const step = phase !== "ready" || failed ? 0 : paid ? 2 : 1;
+
+  const newPlan = async () => {
+    if (plan === null) return;
+    if (releasable) {
+      setReleasing(true);
+      setReleaseError(null);
+      try {
+        const response = await fetch(`/api/plans/${plan.id}/release`, { method: "POST" });
+        if (!response.ok) {
+          setReleaseError((await readError(response)).error);
+          return;
+        }
+      } catch {
+        setReleaseError("Roomover could not reach the server. Try again in a moment.");
+        return;
+      } finally {
+        setReleasing(false);
+      }
+    }
+    setPresetSlug(plan.presetSlug);
+    setComposing(true);
+  };
 
   return (
     <main className="mx-auto grid w-full max-w-[1360px] gap-6 px-4 pb-0 sm:px-10 lg:grid-cols-[minmax(0,1fr)_440px] lg:items-start lg:gap-12 lg:pb-16">
@@ -262,9 +290,10 @@ export function FurnishScreen({ paypalClientId, presets, listingCount, initialPl
                 )}
               </div>
 
-              {phase === "ready" && paid && checkout !== null && <PaidPanel checkout={checkout} />}
+              {phase === "ready" && paid && checkout !== null && <PaidPanel planId={plan.id} checkout={checkout} />}
               {phase === "ready" && !paid && (
                 <>
+                  {released && <p className="text-sm text-flint">PayPal released your last payment for this room, so nothing was charged. Press PayPal to pay again.</p>}
                   {failed && plan.items.length > 0 && run?.kind === "edit" && (
                     <p className="text-sm font-medium text-brick">The change did not finish. {run.error}</p>
                   )}
@@ -281,18 +310,19 @@ export function FurnishScreen({ paypalClientId, presets, listingCount, initialPl
                 </>
               )}
               {phase === "ready" && (
-                <Button
-                  variant="quiet"
-                  size="sm"
-                  className="self-start"
-                  disabled={running}
-                  onClick={() => {
-                    setPresetSlug(plan.presetSlug);
-                    setComposing(true);
-                  }}
-                >
-                  Start a new plan
-                </Button>
+                <div className="flex flex-col gap-1">
+                  <Button variant="quiet" size="sm" className="self-start" disabled={running || releasing} loadingLabel={releasing ? "Releasing your hold" : undefined} onClick={() => void newPlan()}>
+                    Start a new plan
+                  </Button>
+                  {releasable && checkout !== null && releaseError === null && (
+                    <p className="text-xs text-flint">This gives your {formatUsdShort(checkout.totalCents)} back through PayPal first.</p>
+                  )}
+                  {releaseError !== null && (
+                    <p role="alert" className="text-sm font-medium text-brick">
+                      {releaseError}
+                    </p>
+                  )}
+                </div>
               )}
             </>
           )}

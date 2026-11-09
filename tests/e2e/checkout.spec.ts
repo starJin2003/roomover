@@ -1,11 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { Page } from "@playwright/test";
-import { readOptionalConfig } from "@/lib/config";
 import { getDb } from "@/lib/db/client";
 import { latestSessionPlan } from "@/lib/db/plans";
 import { listings, orderItems, orders, webhookEvents } from "@/lib/db/schema";
+import { approveInPopup, BUYER_PASSWORD } from "./support/paypal-popup";
 import { expect, test } from "./support/session";
+
+test.use({ holdsCatalog: true });
 
 /**
  * One real sandbox checkout. The buyer agent replays its recorded plan, the
@@ -16,32 +18,12 @@ import { expect, test } from "./support/session";
  */
 
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR ?? "test-results/screenshots";
-const JUDGE_BUYER = "roomover-judge-jin0608@personal.example.com";
 const WEBHOOK_WAIT_MS = 120_000;
-const BUYER_PASSWORD = readOptionalConfig("PAYPAL_SANDBOX_BUYER_PASSWORD");
 
 async function expectAccessible(page: Page) {
   const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
   const blocking = axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
   expect(blocking.map((violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`)).toEqual([]);
-}
-
-async function approveInPopup(popup: Page) {
-  await popup.waitForLoadState("domcontentloaded");
-  const email = popup.locator("input#email, input[name=login_email]");
-  await email.waitFor({ timeout: 45_000 });
-  await email.fill(JUDGE_BUYER);
-  const next = popup.locator("#btnNext");
-  if (await next.isVisible()) await next.click();
-  const password = popup.locator("input#password, input[name=login_password]");
-  await password.waitFor({ timeout: 30_000 });
-  await password.fill(BUYER_PASSWORD ?? "");
-  await popup.locator("#btnLogin").click();
-  const complete = popup.getByTestId("submit-button-initial");
-  await complete.waitFor({ timeout: 60_000 });
-  await popup.waitForTimeout(1500);
-  await popup.screenshot({ path: `${SCREENSHOT_DIR}/checkout-popup-1440.png` });
-  await complete.click();
 }
 
 test("the student approves one PayPal checkout and PayPal holds the money for every seller", async ({ page, session }, testInfo) => {
@@ -78,7 +60,7 @@ test("the student approves one PayPal checkout and PayPal holds the money for ev
 
   const popupOpened = page.waitForEvent("popup");
   await page.locator("paypal-button").click();
-  await approveInPopup(await popupOpened);
+  await approveInPopup(await popupOpened, `${SCREENSHOT_DIR}/checkout-popup-1440.png`);
 
   // The panel turns to the held state, and Under the hood names the API and both IDs.
   await expect(page.getByText("PayPal holds your $100 until handoff")).toBeVisible({ timeout: 60_000 });
@@ -124,6 +106,7 @@ test("the student approves one PayPal checkout and PayPal holds the money for ev
   console.log(JSON.stringify({ order: order.paypalOrderId, authorization: order.paypalAuthorizationId, totalCents: order.totalCents, webhooks: stored.map((event) => [event.eventType, event.paypalEventId, event.receivedAt]) }));
 
   await page.getByRole("link", { name: "Go to handoff" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Handoff opens next" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Handoff" })).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/handoff/${plan.id}$`));
   expect(problems).toEqual([]);
 });

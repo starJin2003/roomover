@@ -3,6 +3,7 @@
 import { ActivityLog, type ActivityEntry } from "@/components/activity/activity-log";
 import { useUnderTheHood } from "@/components/paypal/under-the-hood";
 import { Details } from "@/components/ui/details";
+import type { PayPalIdKind } from "@/lib/domain/agent-events";
 import type { ActivityEventView } from "@/lib/plan-view";
 
 /** How many everyday sentences the panel keeps in view. */
@@ -15,7 +16,15 @@ const dayFormat = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago"
 export const timeLabel = (iso: string) => `${dayFormat.format(new Date(iso))}, ${timeFormat.format(new Date(iso))}`;
 
 const ACTORS = { buyer: "Buyer agent", seller: "Seller agent", verifier: "Verifier agent", platform: "Roomover" } as const;
-const ID_LABELS = { order: "Order", authorization: "Authorization", capture: "Capture" } as const;
+const ID_LABELS: Readonly<Record<PayPalIdKind, string>> = {
+  order: "Order",
+  authorization: "Authorization",
+  capture: "Capture",
+  refund: "Refund",
+  reauthorization: "Reauthorization",
+  payout_batch: "Payout batch",
+  payout_item: "Payout item",
+};
 
 function toEntry(event: ActivityEventView): ActivityEntry {
   const refs = [
@@ -37,13 +46,13 @@ function toEntry(event: ActivityEventView): ActivityEntry {
   };
 }
 
-/** What the agent did, in about three sentences, with every step and its IDs one press away. */
-export function ActivityFeed({ events }: { events: readonly ActivityEventView[] }) {
+/** What the agents did, in about three sentences, with every step and its IDs one press away. */
+export function ActivityFeed({ events, shown = SENTENCES_SHOWN }: { events: readonly ActivityEventView[]; shown?: number }) {
   const underTheHood = useUnderTheHood();
-  const sentences = events.filter((event) => event.sentence !== null).slice(-SENTENCES_SHOWN);
+  const sentences = shown === 0 ? [] : events.filter((event) => event.sentence !== null).slice(-shown);
   return (
     <div className="flex flex-col gap-2">
-      <ul aria-live="polite" aria-relevant="additions" className="flex flex-col gap-3">
+      <ul aria-live="polite" aria-relevant="additions" className={`flex flex-col gap-3 ${sentences.length === 0 ? "hidden" : ""}`}>
         {sentences.map((event) => (
           <li key={event.seq} className="grid grid-cols-[6px_minmax(0,1fr)] gap-x-3 gap-y-0.5 text-base">
             <span aria-hidden="true" className={`mt-[9px] size-1.5 rounded-full ${event.tool === "run_failed" ? "bg-brick" : "bg-stone"}`} />

@@ -16,6 +16,8 @@ const configSchema = z.object({
   ROOMOVER_CLAUDE_FIXTURE: z.string().regex(/\.json$/, "Expected a path to a .json file"),
   // Local development only. Live buyer agent runs write their Claude replies to this file.
   ROOMOVER_CLAUDE_RECORD: z.string().regex(/\.json$/, "Expected a path to a .json file"),
+  // Tests only. The verifier agent replays the comparisons recorded in this file, keyed by photo, and never calls the API.
+  ROOMOVER_VERIFIER_FIXTURE: z.string().regex(/\.json$/, "Expected a path to a .json file"),
   // Tests only. The sandbox judge buyer's password, which the real checkout test types into the PayPal popup.
   PAYPAL_SANDBOX_BUYER_PASSWORD: z.string().min(1),
 });

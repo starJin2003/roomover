@@ -16,15 +16,20 @@
     "test:e2e": "playwright test",
     "room:benchmark": "tsx scripts/room/benchmark.ts",
     "furnish:run": "tsx --env-file-if-exists=.env.local scripts/furnish/real-run.ts",
+    "handoff:samples": "tsx scripts/handoff/make-samples.ts",
+    "handoff:record-verifier": "tsx --env-file-if-exists=.env.local scripts/handoff/record-verifier.ts",
+    "handoff:run": "tsx --env-file-if-exists=.env.local scripts/handoff/real-run.ts",
     "paypal:smoke": "tsx --env-file-if-exists=.env.local scripts/paypal-smoke.ts",
     "paypal:webhook": "tsx --env-file-if-exists=.env.local scripts/paypal/register-webhook.ts",
     "paypal:payout-proof": "tsx --env-file-if-exists=.env.local scripts/paypal/payout-proof.ts",
     "paypal:resend": "tsx --env-file-if-exists=.env.local scripts/paypal/resend-event.ts",
+    "paypal:venmo-probe": "tsx --env-file-if-exists=.env.local scripts/paypal/venmo-probe.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db/migrate.ts",
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/db/seed.ts",
     "db:reset": "tsx --env-file-if-exists=.env.local scripts/db/reset.ts",
-    "db:counts": "tsx --env-file-if-exists=.env.local scripts/db/counts.ts"
+    "db:counts": "tsx --env-file-if-exists=.env.local scripts/db/counts.ts",
+    "orders:release": "tsx --env-file-if-exists=.env.local scripts/orders/release.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.6.0",

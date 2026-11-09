@@ -251,12 +251,18 @@ async function windowCount(tx: Transaction, column: typeof agentRuns.sessionId |
   return { count: row?.count ?? 0, oldest: row?.oldest === null || row?.oldest === undefined ? null : new Date(row.oldest) };
 }
 
+/** Live Claude calls since midnight UTC, from buyer agent runs and verifier comparisons together. */
 export async function claudeCallsToday(db: Database | Transaction, now: Date): Promise<number> {
-  const [row] = await db
+  const since = startOfUtcDay(now);
+  const [runs] = await db
     .select({ calls: sql<number>`coalesce(sum(${agentRuns.claudeCalls}), 0)::int` })
     .from(agentRuns)
-    .where(and(eq(agentRuns.claudeMode, "live"), gte(agentRuns.startedAt, startOfUtcDay(now))));
-  return row?.calls ?? 0;
+    .where(and(eq(agentRuns.claudeMode, "live"), gte(agentRuns.startedAt, since)));
+  const [comparisons] = await db
+    .select({ calls: sql<number>`coalesce(sum((${agentEvents.detail}->>'claudeCalls')::int), 0)::int` })
+    .from(agentEvents)
+    .where(and(eq(agentEvents.agent, "verifier"), gte(agentEvents.createdAt, since)));
+  return (runs?.calls ?? 0) + (comparisons?.calls ?? 0);
 }
 
 /**
@@ -386,6 +392,12 @@ export async function insertEvents(
     )
     .returning(eventColumns);
   return rows.map(toEventView).sort((a, b) => a.seq - b.seq);
+}
+
+/** Every activity line of one order, oldest first. */
+export async function orderEventViews(db: Database | Transaction, orderId: string): Promise<ActivityEventView[]> {
+  const rows = await db.select(eventColumns).from(agentEvents).where(eq(agentEvents.orderId, orderId)).orderBy(asc(agentEvents.seq));
+  return rows.map(toEventView);
 }
 
 export async function eventsAfter(db: Database, planId: string, afterSeq: number): Promise<ActivityEventView[]> {

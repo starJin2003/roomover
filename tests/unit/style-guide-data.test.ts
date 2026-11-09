@@ -51,7 +51,7 @@ describe("style guide demo data", () => {
     expect(HANDOFF.items.filter((item) => item.check === "next")).toHaveLength(1);
     const adjusted = HANDOFF.items.filter((item) => item.check === "adjusted");
     expect(adjusted).toHaveLength(1);
-    expect(adjusted[0].finding).toBe("new 3 cm tear. You pay $30 of $35");
+    expect(adjusted[0].note).toBe("new 3 cm tear. You pay $30 of $35");
   });
 
   it("lists Ava's lamp from the seed with its floor under the price", () => {

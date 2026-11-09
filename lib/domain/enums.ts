@@ -76,7 +76,9 @@ export type NegotiationStatus = (typeof NEGOTIATION_STATUSES)[number];
 /**
  * `capture_pending`, `capture_declined`, and `reversed` mirror the
  * PAYMENT.CAPTURE.PENDING, DECLINED, and REVERSED webhooks for orders that
- * capture at checkout.
+ * capture at checkout. `settling` runs the handoff's captures, refunds, and
+ * payout, and `releasing` gives an unchecked order's money back, ending
+ * `voided` in authorize mode and `refunded` in capture mode.
  */
 export const ORDER_STATUSES = [
   "pending_approval",
@@ -89,6 +91,9 @@ export const ORDER_STATUSES = [
   "canceled",
   "voided",
   "reversed",
+  "settling",
+  "releasing",
+  "refunded",
 ] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
@@ -96,7 +101,7 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number];
  * Orders that no longer hold their listings. `capture_declined` stays open
  * because the buyer can retry with another funding source.
  */
-export const TERMINAL_ORDER_STATUSES = ["settled", "canceled", "voided", "reversed"] as const satisfies readonly OrderStatus[];
+export const TERMINAL_ORDER_STATUSES = ["settled", "canceled", "voided", "reversed", "refunded"] as const satisfies readonly OrderStatus[];
 
 /**
  * `held` is an item captured at checkout and held by the platform. `captured`

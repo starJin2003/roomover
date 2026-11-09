@@ -2,20 +2,24 @@ import type { OrderItemStatus, OrderStatus, PaymentMode } from "./enums";
 
 /**
  * The order state machine. Checkout moves an order out of pending approval
- * once, through the API answer or a webhook, whichever arrives first. Later
- * tasks add settlement at handoff.
+ * once, through the API answer or a webhook, whichever arrives first. At
+ * handoff an order holding money either settles (captures, refunds, and the
+ * payout) or is released in full by the demo release or a new plan.
  */
 const ORDER_TRANSITIONS: Readonly<Record<OrderStatus, readonly OrderStatus[]>> = {
   pending_approval: ["approved", "authorized", "capture_pending", "captured", "capture_declined", "canceled"],
   approved: ["authorized", "capture_pending", "captured", "capture_declined", "canceled"],
-  authorized: ["settled", "voided"],
+  authorized: ["settling", "releasing", "voided"],
   capture_pending: ["captured", "capture_declined"],
-  captured: ["settled", "reversed"],
+  captured: ["settling", "releasing", "reversed"],
   capture_declined: ["canceled"],
+  settling: ["settled"],
+  releasing: ["voided", "refunded"],
   settled: [],
   canceled: [],
   voided: [],
   reversed: [],
+  refunded: [],
 };
 
 export const canTransition = (from: OrderStatus, to: OrderStatus): boolean => ORDER_TRANSITIONS[from].includes(to);
@@ -47,9 +51,17 @@ export const ITEM_STATUS_AFTER: Readonly<Record<ApprovalStatus, OrderItemStatus>
 };
 
 /** Orders whose money PayPal holds for the buyer, which keep their listings reserved. */
-export const MONEY_HELD_STATUSES = ["authorized", "capture_pending", "captured"] as const satisfies readonly OrderStatus[];
+export const MONEY_HELD_STATUSES = ["authorized", "capture_pending", "captured", "settling", "releasing"] as const satisfies readonly OrderStatus[];
 
 export const holdsMoney = (status: OrderStatus): boolean => (MONEY_HELD_STATUSES as readonly OrderStatus[]).includes(status);
+
+/** Orders a handoff can still check, before any money moves. */
+export const CHECKABLE_STATUSES = ["authorized", "captured"] as const satisfies readonly OrderStatus[];
+
+export const canCheck = (status: OrderStatus): boolean => (CHECKABLE_STATUSES as readonly OrderStatus[]).includes(status);
+
+/** Where a released order ends, by how it paid. */
+export const releasedStatus = (mode: PaymentMode): Extract<OrderStatus, "voided" | "refunded"> => (mode === "authorize_then_capture" ? "voided" : "refunded");
 
 /**
  * What one approval result does to an order, whether the API answer or a

@@ -10,6 +10,8 @@ export interface SellerPayout {
   readonly sellerName: string;
   readonly itemTitle: string;
   readonly amountCents: number;
+  /** Replaces "Payout pending" when PayPal reports something else, such as an unclaimed or failed payout. */
+  readonly note?: { readonly text: string; readonly alert: boolean };
 }
 
 interface SellersPaidProps {
@@ -69,7 +71,9 @@ export function SellersPaid({ payouts, paidIds }: SellersPaidProps) {
                 </span>
                 <span className="flex flex-col items-end">
                   <span className="text-base font-semibold tabular-nums">{formatUsdShort(row.amountCents)}</span>
-                  <span className={`text-xs ${paid ? "font-medium text-ink" : "text-flint"}`}>{paid ? "Paid with PayPal" : "Payout pending"}</span>
+                  <span className={`text-xs ${paid ? "font-medium text-ink" : row.note?.alert === true ? "font-medium text-brick" : "text-flint"}`}>
+                    {paid ? "Paid with PayPal" : (row.note?.text ?? "Payout pending")}
+                  </span>
                 </span>
               </div>
             </li>

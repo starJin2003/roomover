@@ -189,7 +189,7 @@ export const HANDOFF = {
       sellerFirstName: firstName(item.seller),
       photo: { src: listing.photos[0].src },
       check: check[item.seller],
-      finding: item.seller === "marcus" ? `new 3 cm tear. You pay ${usd(ADJUSTED_CHAIR_CENTS)} of ${usd(chair.priceCents)}` : undefined,
+      note: item.seller === "marcus" ? `new 3 cm tear. You pay ${usd(ADJUSTED_CHAIR_CENTS)} of ${usd(chair.priceCents)}` : undefined,
     };
   }),
 };
