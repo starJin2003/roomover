@@ -9,7 +9,16 @@ const caller: McpCaller = { buyerSession: "mcp-abcdefghijklmnopqrst", clientHash
 const harbor = { id: "preset-harbor", slug: "harbor-hall-double", name: "Harbor Hall double", hallName: "Harbor Hall" } as PresetWithRules;
 
 const item = (title: string, sellerName: string, priceCents: number, extra: Partial<RoomItemData> = {}): RoomItemData =>
-  ({ layout: { key: title } as RoomItemData["layout"], title, condition: "Good", priceCents, sellerName, color: "white", colors: [], ...extra }) as RoomItemData;
+  ({
+    layout: (extra.newFrom === undefined ? { key: title, source: "listing", listingId: `listing-${sellerName}` } : { key: title, source: "new_product" }) as RoomItemData["layout"],
+    title,
+    condition: "Good",
+    priceCents,
+    sellerName,
+    color: "white",
+    colors: [],
+    ...extra,
+  }) as RoomItemData;
 
 function view(overrides: Partial<PlanView> = {}): PlanView {
   return {
@@ -61,6 +70,7 @@ function planDeps(overrides: Partial<PlanRoomDeps> = {}): PlanRoomDeps & { recor
       return "finished";
     },
     view: async () => view(),
+    handoffModes: async () => new Map([["listing-Jun Park", "storage_hold" as const]]),
     ...overrides,
   };
 }
@@ -77,8 +87,21 @@ describe("plan_room", () => {
     expect(progress).toHaveLength(2);
     expect(deps.recorded).toEqual(["Claude Code asked Roomover over MCP to furnish Harbor Hall 214 for “$150, cozy, I study late”"]);
     expect(outcome.data).toMatchObject({ planId: PLAN_ID, status: "ready", paypalTotal: "$35", newItemsTotal: "$12.99", budget: "$150", previewUrl: `https://roomover.example/p/${PLAN_ID}` });
-    expect(outcome.data.items[0]).toEqual({ title: "Black balance arm desk lamp", kind: "used", from: "Ava Lindqvist", price: "$15", askingPrice: "$16", condition: "Good", handoffSlot: "Mon, Nov 23, 10 AM to noon", buyUrl: null });
-    expect(outcome.data.items[2]).toMatchObject({ kind: "new", from: "Target", condition: "New", buyUrl: "https://buy.trychannel3.com/x" });
+    expect(outcome.data.items[0]).toEqual({
+      title: "Black balance arm desk lamp",
+      kind: "used",
+      from: "Ava Lindqvist",
+      price: "$15",
+      askingPrice: "$16",
+      condition: "Good",
+      handoffSlot: "Mon, Nov 23, 10 AM to noon",
+      handoffPlace: "Handed over in person by Ava",
+      buyUrl: null,
+    });
+    expect(outcome.data.items[1].handoffPlace).toBe("Waits in campus storage after Jun moves out, ready to collect");
+    expect(outcome.data.items[2]).toMatchObject({ kind: "new", from: "Target", condition: "New", handoffPlace: null, buyUrl: "https://buy.trychannel3.com/x" });
+    expect(outcome.text).toContain("- Black balance arm desk lamp, from Ava Lindqvist, $15 (asking $16), handed over in person by Ava, Mon, Nov 23, 10 AM to noon");
+    expect(outcome.text).toContain("- Round jute rug, from Jun Park, $20, waits in campus storage after Jun moves out, ready to collect");
     expect(outcome.data.summary).toBe("Harbor Hall 214 has 2 used items from 2 students for $35 through one PayPal approval, plus 1 new item for $12.99 the student buys from the retailer, $47.99 of a $150 budget.");
     expect(outcome.data.savings).toBe("$55 less than the cheapest comparable new items on Channel3.");
     expect(outcome.text).toContain(`Preview: https://roomover.example/p/${PLAN_ID}`);
@@ -130,7 +153,7 @@ const order: PreparedOrder = {
 function checkoutDeps(overrides: Partial<CreateCheckoutDeps> = {}): CreateCheckoutDeps {
   return {
     appUrl: "https://roomover.example",
-    ownPlan: async (planId, buyerSession) => (planId === PLAN_ID && buyerSession === caller.buyerSession ? { id: PLAN_ID, running: false, hasUsedItems: true } : null),
+    ownPlan: async (planId, buyerSession) => (planId === PLAN_ID && buyerSession === caller.buyerSession ? { id: PLAN_ID, running: false, hasUsedItems: true, held: null } : null),
     prepare: async () => ({ ok: true, order }),
     ...overrides,
   };
@@ -157,13 +180,25 @@ describe("create_checkout", () => {
   });
 
   it("waits for a running agent, refuses an empty room, and passes on why PayPal or checkout said no", async () => {
-    expect(await createCheckout(checkoutDeps({ ownPlan: async () => ({ id: PLAN_ID, running: true, hasUsedItems: true }) }), caller, { planId: PLAN_ID })).toMatchObject({ ok: false, record: { planId: PLAN_ID } });
-    expect(await createCheckout(checkoutDeps({ ownPlan: async () => ({ id: PLAN_ID, running: false, hasUsedItems: false }) }), caller, { planId: PLAN_ID })).toMatchObject({
+    expect(await createCheckout(checkoutDeps({ ownPlan: async () => ({ id: PLAN_ID, running: true, hasUsedItems: true, held: null }) }), caller, { planId: PLAN_ID })).toMatchObject({ ok: false, record: { planId: PLAN_ID } });
+    expect(await createCheckout(checkoutDeps({ ownPlan: async () => ({ id: PLAN_ID, running: false, hasUsedItems: false, held: null }) }), caller, { planId: PLAN_ID })).toMatchObject({
       ok: false,
       message: "This room holds no used items, so there is nothing to pay for through PayPal.",
     });
     expect(await createCheckout(checkoutDeps({ prepare: async () => ({ ok: false, message: "This room is already paid for." }) }), caller, { planId: PLAN_ID })).toMatchObject({ ok: false, message: "This room is already paid for." });
     expect(await createCheckout(checkoutDeps({ prepare: async () => ({ ok: true, order: { ...order, approvalUrl: null } }) }), caller, { planId: PLAN_ID })).toMatchObject({ ok: false });
+  });
+
+  it("tells the assistant the room is paid once a student approved it, and never prepares another order", async () => {
+    let prepared = false;
+    const held = (settled: boolean) => checkoutDeps({ ownPlan: async () => ({ id: PLAN_ID, running: false, hasUsedItems: true, held: { totalCents: 10_200, settled } }), prepare: async () => ((prepared = true), { ok: true, order }) });
+    expect(await createCheckout(held(false), caller, { planId: PLAN_ID })).toMatchObject({
+      ok: false,
+      message: "The student already approved this room in PayPal, so PayPal holds $102 until the handoff, which runs in the browser that approved it.",
+      record: { planId: PLAN_ID },
+    });
+    expect(await createCheckout(held(true), caller, { planId: PLAN_ID })).toMatchObject({ ok: false, message: "The student already approved this room in PayPal and checked every item at handoff, so PayPal paid the sellers from the $102." });
+    expect(prepared).toBe(false);
   });
 
   it("refuses an ID that is not a plan ID", () => {

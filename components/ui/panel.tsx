@@ -51,7 +51,7 @@ export function Panel({ id, title, subtitle, action, heading: Heading = "h3", sh
         data-panel-body
         // A scrolling body takes focus, so the keyboard can scroll it even when it holds no control.
         tabIndex={shell ? 0 : undefined}
-        className={`flex flex-col gap-6 ${INSET} ${sheet ? "max-lg:px-5" : ""} pt-6 ${footer === undefined ? "pb-6 sm:pb-8" : "pb-6"} ${shell ? "lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:border-t lg:border-hair lg:pt-5" : ""}`}
+        className={`flex flex-col gap-6 ${INSET} ${sheet ? "max-lg:px-5" : ""} pt-6 ${footer === undefined ? "pb-6 sm:pb-8" : "pb-6"} ${shell ? "lg:relative lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:border-t lg:border-hair lg:pt-5" : ""}`}
       >
         {children}
       </div>

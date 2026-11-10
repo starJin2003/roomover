@@ -134,13 +134,15 @@ describe("MCP sessions over streamable HTTP", () => {
     expect(response.status).toBe(403);
   });
 
-  it("caps the sessions one network holds open and closes idle ones", async () => {
-    for (let index = 0; index < 30; index += 1) expect((await handleMcpRequest(post(initialize), setup("net-busy"))).status).toBe(200);
-    const refused = await handleMcpRequest(post(initialize), setup("net-busy"));
+  it("lets one network open more than the old 30 sessions, caps the demo at 300, and closes idle ones", async () => {
+    for (let index = 0; index < 31; index += 1) expect((await handleMcpRequest(post(initialize), setup("anthropic-cloud"))).status).toBe(200);
+    const stale = Date.now() - 31 * 60 * 1000;
+    for (let index = openSessions().size; index < 300; index += 1) openSessions().set(`filler-${index}`, { transport: { close: async () => undefined } as never, lastActive: Date.now() });
+    const refused = await handleMcpRequest(post(initialize), setup("net-other"));
     expect(refused.status).toBe(503);
-    expect(((await message(refused)).error as { message: string }).message).toBe("Your network has too many Roomover MCP sessions open. Close one or wait 30 minutes.");
-    expect((await handleMcpRequest(post(initialize), setup("net-other"))).status).toBe(200);
-    closeIdleSessions(Date.now() + 31 * 60 * 1000);
+    expect(((await message(refused)).error as { message: string }).message).toBe("Roomover has 300 MCP sessions open, the most the demo allows, so try again in a few minutes once idle ones close.");
+    for (const session of openSessions().values()) session.lastActive = stale;
+    closeIdleSessions(Date.now());
     expect(openSessions().size).toBe(0);
   });
 });

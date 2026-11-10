@@ -20,6 +20,8 @@ const templatesSchema = z.object({
   authorization: z.record(z.string(), z.unknown()),
   payoutBatch: z.object({ batch_header: z.record(z.string(), z.unknown()), items: z.array(z.record(z.string(), z.unknown())).min(1) }),
   userinfo: z.record(z.string(), z.unknown()),
+  /** A transaction search answer recorded for one capture, which the dispute run's read gets back with the asked ID written in. */
+  transactionSearch: z.object({ transaction_details: z.array(z.record(z.string(), z.unknown())).min(1) }).loose().optional(),
 });
 
 export const sandboxRecordingSchema = z.object({ version: z.literal(1), templates: templatesSchema });
@@ -29,6 +31,8 @@ export type SandboxTemplates = z.infer<typeof templatesSchema>;
 export interface SimulatedRequest {
   method: string;
   path: string;
+  /** The query string without its question mark. */
+  query?: string;
   headers: Readonly<Record<string, string>>;
   body: string;
 }
@@ -94,6 +98,8 @@ export function createSimulatedSandbox(templates: SandboxTemplates, now: () => D
   const authorizations = new Map<string, AuthorizationState>();
   const captures = new Map<string, Json>();
   const batches = new Map<string, BatchState>();
+  // A buyer opens a dispute on PayPal's site, which no test can reach, so the sandbox learns each dispute from the webhook it is asked to verify.
+  const disputes = new Map<string, Json>();
 
   function authorizationJson(state: AuthorizationState): Json {
     const body = clone(templates.authorization);
@@ -246,6 +252,39 @@ export function createSimulatedSandbox(templates: SandboxTemplates, now: () => D
     return json(200, { batch_header: header, items, links: [] });
   }
 
+  /** Signatures always verify here. PayPal itself checks them in every run that moves sandbox money. */
+  function verifyWebhook(request: Json): SimulatedResponse {
+    const event = z.object({ event_type: z.string(), resource: z.looseObject({ dispute_id: z.string().optional() }) }).safeParse(request.webhook_event);
+    if (event.success && event.data.event_type.startsWith("CUSTOMER.DISPUTE.") && event.data.resource.dispute_id !== undefined) {
+      disputes.set(event.data.resource.dispute_id, clone(event.data.resource));
+    }
+    return json(200, { verification_status: "SUCCESS" });
+  }
+
+  function disputeJson(dispute: Json): Json {
+    const id = String(dispute.dispute_id);
+    const links: Json[] = [{ href: `${API}/v1/customer/disputes/${id}`, rel: "self", method: "GET" }];
+    if (dispute.status === "WAITING_FOR_SELLER_RESPONSE") links.push({ href: `${API}/v1/customer/disputes/${id}/provide-evidence`, rel: "provide_evidence", method: "POST" });
+    return { ...dispute, links };
+  }
+
+  function provideEvidence(id: string): SimulatedResponse {
+    const dispute = disputes.get(id);
+    if (dispute === undefined) return problem(404, "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID");
+    if (dispute.status !== "WAITING_FOR_SELLER_RESPONSE") return problem(422, "UNPROCESSABLE_ENTITY", "NOT_AUTHORIZED_TO_PROVIDE_EVIDENCE");
+    disputes.set(id, { ...dispute, status: "UNDER_REVIEW", update_time: at(now()) });
+    return json(200, { links: [{ href: `${API}/v1/customer/disputes/${id}`, rel: "self", method: "GET" }] });
+  }
+
+  function searchTransactions(query: URLSearchParams): SimulatedResponse {
+    const id = query.get("transaction_id");
+    const template = templates.transactionSearch;
+    if (id === null || template === undefined) return json(200, { transaction_details: [], total_items: 0, total_pages: 0 });
+    const detail = clone(template.transaction_details[0]);
+    const info = (detail.transaction_info ?? {}) as Json;
+    return json(200, { ...template, transaction_details: [{ ...detail, transaction_info: { ...info, transaction_id: id } }], total_items: 1, total_pages: 1 });
+  }
+
   function token(form: URLSearchParams): SimulatedResponse {
     const grant = form.get("grant_type");
     if (grant === "client_credentials") return json(200, { scope: "https://uri.paypal.com/services/payments/payment", access_token: `A21AA${paypalId(40)}`, token_type: "Bearer", app_id: "APP-80W284485P519543T", expires_in: 32400, nonce: `${at(now())}${paypalId(20)}` });
@@ -279,6 +318,13 @@ export function createSimulatedSandbox(templates: SandboxTemplates, now: () => D
     if (request.method === "POST" && parts[2] === "authorizations" && parts[4] === "reauthorize") return reauthorize(parts[3]);
     if (request.method === "POST" && parts[2] === "captures" && parts[4] === "refund") return refund(parts[3], body());
     if (key === "POST v1/payments/payouts") return createPayout(body());
+    if (key === "POST v1/notifications/verify-webhook-signature") return verifyWebhook(body());
+    if (request.method === "GET" && parts[1] === "customer" && parts[2] === "disputes" && parts.length === 4) {
+      const dispute = disputes.get(parts[3]);
+      return dispute === undefined ? problem(404, "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID") : json(200, disputeJson(dispute));
+    }
+    if (request.method === "POST" && parts[2] === "disputes" && parts[4] === "provide-evidence") return provideEvidence(parts[3]);
+    if (key === "GET v1/reporting/transactions") return searchTransactions(new URLSearchParams(request.query ?? ""));
     if (request.method === "GET" && parts[1] === "payments" && parts[2] === "payouts" && parts.length === 4) return readPayout(parts[3]);
     return problem(404, "RESOURCE_NOT_FOUND", "UNKNOWN_ENDPOINT");
   }
@@ -311,7 +357,7 @@ export function simulatedFetch(sandbox: SimulatedSandbox) {
   return async (input: string, init: RequestInit): Promise<Response> => {
     const url = new URL(input);
     const body = typeof init.body === "string" ? init.body : init.body instanceof URLSearchParams ? init.body.toString() : "";
-    const answer = sandbox.handle({ method: (init.method ?? "GET").toUpperCase(), path: url.pathname, headers: headerRecord(init.headers), body });
+    const answer = sandbox.handle({ method: (init.method ?? "GET").toUpperCase(), path: url.pathname, query: url.search.slice(1), headers: headerRecord(init.headers), body });
     return new Response(answer.status === 204 ? null : answer.body, { status: answer.status, headers: { "content-type": "application/json", "paypal-debug-id": paypalId(13).toLowerCase() } });
   };
 }

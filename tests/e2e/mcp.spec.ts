@@ -4,7 +4,7 @@ import { and, asc, eq } from "drizzle-orm";
 import type { Page } from "@playwright/test";
 import { readConfig } from "@/lib/config";
 import { getDb } from "@/lib/db/client";
-import { agentEvents, orders } from "@/lib/db/schema";
+import { agentEvents, orders, plans } from "@/lib/db/schema";
 import { mcpBuyerSession } from "@/lib/session";
 import { captureFullHeight, expectFitsDesktops } from "./support/layout";
 import { removeSessionData } from "./support/remove-session";
@@ -18,7 +18,9 @@ test.use({ holdsCatalog: true });
  * /mcp, lists the tools, reads the rooms and listings, plans Harbor Hall 214
  * with the buyer agent's recorded run, and gets a sandbox approval link. The
  * student then opens the preview link, and PayPal's return authorizes the
- * order. The MCP session's buyer session is torn down like any e2e session.
+ * order and hands the plan to that browser, which opens Handoff, while
+ * another browser reads the held payment and the MCP session reads its
+ * status. The MCP session's buyer session is torn down like any e2e session.
  */
 
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR ?? "test-results/screenshots";
@@ -40,7 +42,7 @@ async function expectAccessible(page: Page) {
   expect(blocking.map((violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`)).toEqual([]);
 }
 
-test("an outside assistant plans a room over MCP and the student approves it from the preview link", async ({ page, baseURL }, testInfo) => {
+test("an outside assistant plans a room over MCP and the student approves it from the preview link", async ({ page, baseURL, browser, session }, testInfo) => {
   test.skip(LIVE, "The live sandbox needs the judge buyer to sign in to PayPal, which the outside client run covers.");
   test.setTimeout(300_000);
   const desktop = testInfo.project.name === "desktop-1440";
@@ -131,6 +133,15 @@ test("an outside assistant plans a room over MCP and the student approves it fro
     await expect(page.getByText(`PayPal holds your ${plan.paypalTotal} until handoff`)).toBeVisible();
     const [row] = await getDb().select({ status: orders.status }).from(orders).where(and(eq(orders.planId, plan.planId), eq(orders.paypalOrderId, order.paypalOrderId)));
     expect(row?.status).toBe("authorized");
+
+    // The approving browser now holds the plan, once, and the MCP session keeps reading it.
+    const [claimed] = await getDb().select({ sessionId: plans.sessionId, mcpSessionId: plans.mcpSessionId, claimedAt: plans.claimedAt }).from(plans).where(eq(plans.id, plan.planId));
+    expect(claimed).toMatchObject({ sessionId: session, mcpSessionId: buyerSession });
+    expect(claimed?.claimedAt).not.toBeNull();
+    const status = await client.callTool({ name: "create_checkout", arguments: { planId: plan.planId } });
+    expect(status.isError).toBe(true);
+    expect(text(status)).toBe(`The student already approved this room in PayPal, so PayPal holds ${plan.paypalTotal} until the handoff, which runs in the browser that approved it.`);
+    await expect(page.getByRole("link", { name: "Go to handoff" })).toBeVisible();
     await page.getByRole("switch", { name: "Under the hood" }).click();
     await expect(page.locator("[data-via-mcp]").first()).toHaveText(/via MCP from roomover-e2e/);
     await expect(page.locator("[data-room]")).toHaveAttribute("data-ready", "true", { timeout: 30_000 });
@@ -138,9 +149,29 @@ test("an outside assistant plans a room over MCP and the student approves it fro
     await captureFullHeight(page, `${SCREENSHOT_DIR}/mcp-held-${width}.png`);
     await expectAccessible(page);
 
-    // A second return finds the order already held and changes nothing.
+    // A second return finds the order already held and changes nothing, and the claim stays one line.
     await page.goto(`/p/${plan.planId}/approved?token=${order.paypalOrderId}&PayerID=E2ETESTPAYER`);
     await expect(page.getByText(`PayPal holds your ${plan.paypalTotal} until handoff`)).toBeVisible();
+    const claims = await getDb().select({ tool: agentEvents.tool }).from(agentEvents).where(and(eq(agentEvents.planId, plan.planId), eq(agentEvents.tool, "claim_plan")));
+    expect(claims).toHaveLength(1);
+
+    // Another browser with the link reads the held payment and cannot take the plan.
+    const stranger = await browser.newContext({ viewport: page.viewportSize() ?? undefined });
+    const strangerPage = await stranger.newPage();
+    await strangerPage.goto(`${baseURL}/p/${plan.planId}/approved?token=${order.paypalOrderId}`);
+    await expect(strangerPage.getByText(`PayPal holds your ${plan.paypalTotal} until handoff`)).toBeVisible();
+    await expect(strangerPage.locator("[data-preview-read-only]")).toHaveText("Jordan approved this payment in another browser, which runs the handoff.");
+    await expect(strangerPage.getByRole("link", { name: "Go to handoff" })).toHaveCount(0);
+    expect((await stranger.cookies()).filter((cookie) => cookie.name === "roomover_session")).toHaveLength(0);
+    await stranger.close();
+
+    // The preview's Handoff step opens Handoff in the browser that approved.
+    await page.getByRole("link", { name: "Go to handoff" }).click();
+    await expect(page).toHaveURL(new RegExp(`/handoff/${plan.planId}$`));
+    await expect(page.getByRole("heading", { level: 1, name: "Handoff" })).toBeVisible();
+    await expect(page.getByText(`PayPal is holding ${plan.paypalTotal}`)).toBeVisible();
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/claimed-handoff-${width}.png`, fullPage: true, scale: "css" });
     expect(problems).toEqual([]);
   } finally {
     await client.close();

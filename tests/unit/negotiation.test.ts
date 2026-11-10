@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { campusInstant, formatSlot, isSlotShape, overlapOf, slotFor, slotFromWindow, slotsInside, windowDays, windowSlotOf } from "@/lib/domain/handoff-slots";
+import { campusInstant, formatSlot, isSlotShape, overlapOf, slotFor, slotFromWindow, slotsInside, spreadSlot, windowDays, windowSlotOf } from "@/lib/domain/handoff-slots";
 import {
   advance,
   allocateBundle,
@@ -198,5 +198,34 @@ describe("negotiation state machine", () => {
     ];
     expect(stateFromLog(log, "agreed")).toMatchObject({ status: "agreed", round: 1, agreed: terms(4_800) });
     expect(stateFromLog(log, "canceled").status).toBe("canceled");
+  });
+});
+
+describe("spreadSlot", () => {
+  const day = { startsAt: campusInstant("2026-11-23", 10), endsAt: campusInstant("2026-11-23", 20) };
+  const at = (hour: number) => slotFor({ day: "2026-11-23", startHour: hour });
+  const label = (result: ReturnType<typeof spreadSlot>) => formatSlot(result.slot);
+
+  it("keeps the requested slot when no other seller holds it", () => {
+    expect(spreadSlot(at(10), day, "jun", [{ sellerId: "ava", slot: at(12) }])).toEqual({ slot: at(10), moved: null });
+  });
+
+  it("moves to the nearest free slot, the later one on a tie, when another seller holds the one asked for", () => {
+    expect(label(spreadSlot(at(10), day, "lea", [{ sellerId: "ava", slot: at(10) }]))).toBe("Mon, Nov 23, noon to 2 PM");
+    const tie = spreadSlot(at(14), day, "lea", [{ sellerId: "ava", slot: at(14) }]);
+    expect(tie).toMatchObject({ moved: "spread" });
+    expect(label(tie)).toBe("Mon, Nov 23, 4 to 6 PM");
+  });
+
+  it("keeps one seller's items together in the slot that seller already holds", () => {
+    expect(spreadSlot(at(16), day, "jun", [{ sellerId: "jun", slot: at(12) }])).toEqual({ slot: at(12), moved: "together" });
+    expect(spreadSlot(at(12), day, "jun", [{ sellerId: "jun", slot: at(12) }])).toEqual({ slot: at(12), moved: null });
+  });
+
+  it("ignores a held slot outside this item's window and leaves the request when every slot is taken", () => {
+    const outside = { sellerId: "jun", slot: slotFor({ day: "2026-11-24", startHour: 10 }) };
+    expect(spreadSlot(at(10), day, "jun", [outside])).toEqual({ slot: at(10), moved: null });
+    const everyone = [10, 12, 14, 16, 18].map((hour, index) => ({ sellerId: `seller-${index}`, slot: at(hour) }));
+    expect(spreadSlot(at(10), day, "lea", everyone)).toEqual({ slot: at(10), moved: null });
   });
 });

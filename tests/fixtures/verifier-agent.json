@@ -1481,5 +1481,138 @@
     "diagnostics": null
    }
   ]
+ },
+ "disputes": {
+  "31b666cb-bd18-577f-b931-e4483075db04:MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED": [
+   {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgt8GrwcMFqYuQ1r47rYe",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_015qfbiJUqZ62mStzsxFnurQ",
+      "name": "get_dispute",
+      "input": {},
+      "caller": {
+       "type": "direct"
+      }
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_01GcqwR1QpzTgdQHwu6LgNqb",
+      "name": "get_order",
+      "input": {},
+      "caller": {
+       "type": "direct"
+      }
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_018bWveAJn5MtHFW1EmpBYiH",
+      "name": "list_transactions",
+      "input": {},
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 312,
+     "cache_creation_input_tokens": 1212,
+     "cache_read_input_tokens": 0,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 1212,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 312,
+       "output_tokens": 76,
+       "cache_read_input_tokens": 0,
+       "cache_creation_input_tokens": 1212,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 1212,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 76,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   },
+   {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgt8HB1JVy4aLM1qV3KFo",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "",
+      "signature": "CAQSvQcKEAgTGAI4AUIIdGhpbmtpbmcSDE4IMgB6b3OarK6lNxoMT91WLSjq4vKjo6BZIjAndg04GY/QVql5hdEBtJ1hP8F05bdTcw3isjAq00o6u2vnVCJOmiTdk3a22VxsU6cq2gbO5lqcgyLfur3EJ+OGytXJ/dx7dC4Q706G8oyK4dBdSNKiohZR4pVEMW6pyqh3aVKsG574sGBrEnF6xiNYYGB8qhvvEB3YnJf+KGU5iRNq6dvq6cKHlg+nWLhzC61b8088AH1FyMLQQ1PznbBvVfI3eT3JMhE2LhEigptXpb2Vj8D4uZD+3BsSJgJXaMUL0XMqJovsGL8sLfmiJo0LlbbhRABgl/i4WyKGUexLpWIC61OrExk3/Bj/0RWfOdEaRFrKPh/E2wI59MFim5qMtG48TPKd5E6Z353dAtpajf/rga2reg/ymUSvBYWSWRLm7zKuxd/vFMxVwJc9xEeB2lQhe6eWOQRgLUDIieMTeS2lCTxYiDMkKj0U0Ca3VZ0RLSITg8FcU4QPoGt33Ug9SB2136qBIzvwh7VfpS/04gpuUhzq4sZxAC6UyodlSGdXgpSMqJY5im3vAXznjBBQO2wpA4ks4PEAMPdnIZ1lSS6B30OqWUeGEE7JoiDWefPOgpvdjNeXGN5r9T+4KEmrrpJ8H5ypTGRhcQq+zlhH3wFIx+hMOVD+ceLoIGl7H6Q7PlqRx2i9q9fePUMX+vHR2rSdxxAeWy+oOfVp6G7A6qb1pMGIZws0YfO3FoyiFZEv15VjW6iMWUIu8t3vTNQF+joxBowMt9g0lqShVE1ACV9rhW83KU3A4t6Pes+fVkDk6zxfENXMfRQzE8vR5CWSlrxiMebmyvuyzwn89meAVnLOah7lC5yCZX04Ug/cCbWhIYnIxKq9ANpuszDfVayJgSVjyPInJwbtwZwPtTgx4Q5mdrgHOwjqaOoO2o241ctbMm1UV8duqiRHF/usosvUIWfCG5pURgbwWzgq1HQ7J3AI4Om1JbRihJjjxgOss66SXKc84TLe/MFMqbO/k5caIXcCkX1w+04Dgi1oo4/Svblb6Paa+uNgd5Y1P5tKSO+00oSb1eeaukuIn0N8fYSC2Xh3czPtWDm9GB749YBoq++LELLJiR06xXN+QvAKg1REIoPl2C8D/fXpLRqLwpft9lMAYD5k3BFd9eiPS0KbtR85PiiiLt0HTdnMJ53+hZNBFrJX5hfKtF7z3Svg0ORHyL4qWggJ/+jDOpBgTzgArrp1V9/DjitGiqIIMwwYAQ=="
+     },
+     {
+      "type": "tool_use",
+      "id": "toolu_01QERQi6LT6cpRZ2mive7sXk",
+      "name": "write_dispute_note",
+      "input": {
+       "note": "The item is a mesh back rolling desk chair, listed by Marcus at $35 with an agreed price of $35. It was handed over in person in Harbor Hall 214 during the Monday, Nov 23 handoff slot (9 AM to 6 PM), and Jordan photographed it there. Roomover's photo comparison found a new 3 cm tear in Jordan's own handoff photo. Jordan kept the chair at handoff and paid $30 of the $35 price."
+      },
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 6960,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 1212,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 6960,
+       "output_tokens": 337,
+       "cache_read_input_tokens": 1212,
+       "cache_creation_input_tokens": 0,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 337,
+     "output_tokens_details": {
+      "thinking_tokens": 132
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   }
+  ]
  }
 }

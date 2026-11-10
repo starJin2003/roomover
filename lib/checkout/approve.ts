@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { cancelPendingOrder, ListingTaken, loadCheckoutListings, orderByPayPalId, recordApproval, type ApprovalRecord, type ApprovalResult, type OrderWithLines } from "@/lib/db/orders";
+import { cancelPendingOrder, claimHeldPlan, ListingTaken, loadCheckoutListings, orderByPayPalId, recordApproval, type ApprovalRecord, type ApprovalResult, type OrderWithLines } from "@/lib/db/orders";
+import type { PlanClaim } from "@/lib/domain/mcp";
 import { holdsMoney } from "@/lib/domain/order-state";
 import { PayPalApiError } from "@/lib/paypal/errors";
 import { orderAuthorizeKey, orderCaptureKey, refundKey, voidKey } from "@/lib/paypal/idempotency";
@@ -87,13 +88,18 @@ async function release(deps: CheckoutDeps, order: OrderWithLines, record: Approv
  * Finishes a checkout after the student approves in PayPal. Authorize mode
  * authorizes the order and capture mode captures it, each with a key derived
  * from the order, so a retried request moves money once. A webhook may land
- * the same result first, and then this call returns what it recorded.
+ * the same result first, and then this call returns what it recorded. With
+ * a claim, the approving browser takes over a plan an MCP session made,
+ * inside the order row lock the approval holds.
  */
-export async function approveCheckout(deps: CheckoutDeps, input: { planId: string; paypalOrderId: string }): Promise<ApprovalResult> {
+export async function approveCheckout(deps: CheckoutDeps, input: { planId: string; paypalOrderId: string; claim?: PlanClaim }): Promise<ApprovalResult> {
   const { db, sdk, now } = deps;
   const order = await orderByPayPalId(db, input.paypalOrderId);
   if (order === null || order.planId !== input.planId) throw failure("not_found");
-  if (holdsMoney(order.status)) return { order, step: "duplicate", events: [] };
+  if (holdsMoney(order.status)) {
+    const claimed = input.claim === undefined ? { claimed: false, events: [] } : await claimHeldPlan(db, order.id, input.claim);
+    return { order, step: "duplicate", events: claimed.events, claimed: claimed.claimed };
+  }
   if (order.status === "canceled") throw failure("expired");
 
   const listings = await loadCheckoutListings(db, order.lines.map((line) => line.listingId), order.planId);
@@ -133,7 +139,7 @@ export async function approveCheckout(deps: CheckoutDeps, input: { planId: strin
   }
 
   try {
-    const result = await recordApproval(db, record);
+    const result = await recordApproval(db, record, input.claim);
     if (result === null) throw failure("not_found");
     return result;
   } catch (error) {

@@ -742,6 +742,36 @@
      "confirmed": true
     }
    ]
+  },
+  "transactionSearch": {
+   "found": true,
+   "transaction_details": [
+    {
+     "transaction_info": {
+      "paypal_account_id": "ZF5VPUBXGV7FU",
+      "transaction_id": "8YE464155G502411H",
+      "paypal_reference_id": "87S91919A36663839",
+      "paypal_reference_id_type": "TXN",
+      "transaction_event_code": "T0006",
+      "transaction_initiation_date": "2026-11-09T11:45:52Z",
+      "transaction_updated_date": "2026-11-09T11:45:52Z",
+      "transaction_amount": {
+       "currency_code": "USD",
+       "value": "30.00"
+      },
+      "fee_amount": {
+       "currency_code": "USD",
+       "value": "-1.54"
+      },
+      "transaction_status": "S",
+      "custom_field": "ab60a524-bcc5-4a17-b189-cf1755e8e1a7",
+      "protection_eligibility": "01",
+      "instrument_type": "PayPal",
+      "instrument_sub_type": "PayPal Wallet"
+     }
+    }
+   ],
+   "total_items": 1
   }
  }
 }

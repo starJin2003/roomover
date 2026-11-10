@@ -1,11 +1,14 @@
 import { PayPalAgentToolkit } from "@paypal/agent-toolkit/bedrock";
 import { describe, expect, it } from "vitest";
 import {
-  createPayPalReadTools,
   isPayPalReadToolName,
+  PAYPAL_READ_DESCRIPTIONS,
   PAYPAL_READ_TOOL_NAMES,
+  PayPalReadFailed,
   TOOLKIT_READ_ACTIONS,
+  toolkitReads,
 } from "@/lib/agents/tools/paypal-read";
+import { DISPUTE_INSTRUCTIONS, buildDisputeRequest } from "@/lib/agents/verifier/dispute";
 
 const credentials = { clientId: "test-client-id", clientSecret: "test-client-secret" };
 
@@ -57,28 +60,20 @@ describe("PayPal read tool allowlist", () => {
     expect([...advertised].sort()).toEqual([...PAYPAL_READ_TOOL_NAMES].sort());
   });
 
-  it("exposes one Anthropic tool definition per allowlisted name", () => {
-    const tools = createPayPalReadTools(credentials);
-
-    expect(tools.map((tool) => tool.name)).toEqual([...PAYPAL_READ_TOOL_NAMES]);
-    for (const tool of tools) {
-      if (!("input_schema" in tool)) throw new Error(`${tool.name} is not a custom tool definition.`);
-      expect(tool.description?.length).toBeGreaterThan(20);
-      expect(tool.input_schema).toMatchObject({ type: "object" });
-    }
+  it("gives the verifier's dispute run exactly the allowlisted reads, under the toolkit's names, plus its note", () => {
+    const request = buildDisputeRequest([{ role: "user", content: "facts" }]);
+    const names = (request.tools ?? []).map((tool) => ("name" in tool ? tool.name : ""));
+    expect(names).toEqual([...PAYPAL_READ_TOOL_NAMES, "write_dispute_note"]);
+    expect(names).not.toContain("accept_dispute_claim");
+    for (const name of PAYPAL_READ_TOOL_NAMES) expect(PAYPAL_READ_DESCRIPTIONS[name].length).toBeGreaterThan(20);
+    expect(DISPUTE_INSTRUCTIONS).toMatch(/Do not argue, speculate about the buyer, accept the claim, offer a refund, or promise anything/);
   });
 
-  it("validates agent input before anything reaches PayPal", () => {
-    const getOrder = createPayPalReadTools(credentials).find((tool) => tool.name === "get_order");
-
-    expect(() => getOrder?.parse({ id: "../../v1/payments/payouts" })).toThrow();
-    expect(getOrder?.parse({ id: "5O190127TN364715T" })).toEqual({ id: "5O190127TN364715T" });
-  });
-
-  it("fills list_transactions defaults so the toolkit never sees an unbounded search", () => {
-    const listTransactions = createPayPalReadTools(credentials).find((tool) => tool.name === "list_transactions");
-
-    expect(listTransactions?.parse({})).toEqual({ search_months: 1, page_size: 20, page: 1 });
-    expect(() => listTransactions?.parse({ search_months: 12 })).toThrow();
+  it("refuses a write tool and invalid input before anything reaches PayPal", async () => {
+    const reads = toolkitReads(credentials);
+    await expect(reads.read("accept_dispute_claim" as never, { dispute_id: "PP-D-1", note: "x" })).rejects.toBeInstanceOf(PayPalReadFailed);
+    await expect(reads.read("get_order", { id: "../../v1/payments/payouts" })).rejects.toThrow(/get_order input is invalid/);
+    await expect(reads.read("list_transactions", { search_months: 12 })).rejects.toThrow(/list_transactions input is invalid/);
+    await expect(reads.read("get_dispute", { dispute_id: "PP-D-1/../accept-claim" })).rejects.toThrow(/get_dispute input is invalid/);
   });
 });

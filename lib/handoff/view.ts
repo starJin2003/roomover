@@ -1,5 +1,7 @@
+import type { DisputeRow } from "@/lib/db/disputes";
 import type { HandoffOrder } from "@/lib/db/handoffs";
-import type { HandoffDecision, OrderItemStatus, OrderStatus, PaymentMode, PayoutItemStatus, PayoutStatus } from "@/lib/domain/enums";
+import { disputeWords } from "@/lib/domain/dispute";
+import type { DisputeEvidenceState, DisputeStatus, HandoffDecision, OrderItemStatus, OrderStatus, PaymentMode, PayoutItemStatus, PayoutStatus } from "@/lib/domain/enums";
 import type { FurnitureType } from "@/lib/domain/furniture";
 import { choicesFor, settleChoice, type Finding, type HandoffChoice } from "@/lib/domain/money-policy";
 import { payoutBatchFinal, payoutItemWaiting } from "@/lib/domain/payout-state";
@@ -57,6 +59,21 @@ export interface SellerPaidView {
 
 export type HandoffPhase = "checking" | "settling" | "paid" | "released";
 
+/** A PayPal dispute on the order, in the words the status card shows. */
+export interface DisputeView {
+  paypalDisputeId: string;
+  orderItemId: string | null;
+  /** The seller whose item is disputed, which the Sellers paid row notes. Null for the whole order. */
+  sellerName: string | null;
+  status: DisputeStatus;
+  stage: string | null;
+  reason: string | null;
+  evidenceState: DisputeEvidenceState;
+  evidence: { evidenceType: string; files: number; submittedAt: string } | null;
+  title: string;
+  detail: string;
+}
+
 export interface HandoffView {
   planId: string;
   orderId: string;
@@ -82,6 +99,7 @@ export interface HandoffView {
   payout: { senderBatchId: string; paypalBatchId: string | null; status: PayoutStatus; totalCents: number; waiting: boolean; sellers: SellerPaidView[] } | null;
   events: ActivityEventView[];
   schedule: ScheduleView;
+  disputes: DisputeView[];
 }
 
 export interface LayoutRef {
@@ -138,7 +156,40 @@ export function scheduleWords(order: HandoffOrder, input: { layout: ReadonlyMap<
   };
 }
 
-export function buildHandoffView(input: { order: HandoffOrder; roomLabel: string; buyerFirstName: string; layout: ReadonlyMap<string, LayoutRef>; events: readonly ActivityEventView[] }): HandoffView {
+function disputeViews(rows: readonly DisputeRow[], items: readonly HandoffItemView[], buyerFirstName: string): DisputeView[] {
+  return rows.map((row) => {
+    const item = items.find((entry) => entry.orderItemId === row.orderItemId) ?? null;
+    const words = disputeWords({
+      buyerFirstName,
+      sellerFirstName: item?.sellerFirstName ?? "the sellers",
+      noun: item?.noun ?? null,
+      status: row.status,
+      outcome: row.outcome,
+      evidenceState: row.evidenceState,
+      refundedCents: row.refundedCents,
+    });
+    return {
+      paypalDisputeId: row.paypalDisputeId,
+      orderItemId: row.orderItemId,
+      sellerName: item?.sellerName ?? null,
+      status: row.status,
+      stage: row.stage,
+      reason: row.reason,
+      evidenceState: row.evidenceState,
+      evidence: row.evidence === null || row.evidenceSubmittedAt === null ? null : { evidenceType: row.evidence.evidenceType, files: row.evidence.files.length, submittedAt: row.evidenceSubmittedAt.toISOString() },
+      ...words,
+    };
+  });
+}
+
+export function buildHandoffView(input: {
+  order: HandoffOrder;
+  roomLabel: string;
+  buyerFirstName: string;
+  layout: ReadonlyMap<string, LayoutRef>;
+  events: readonly ActivityEventView[];
+  disputes?: readonly DisputeRow[];
+}): HandoffView {
   const { order } = input;
   const placed = placedIn(input.layout);
   const items = [...order.items].sort((a, b) => placed(a) - placed(b)).map((item): HandoffItemView => {
@@ -225,5 +276,6 @@ export function buildHandoffView(input: { order: HandoffOrder; roomLabel: string
           },
     events: [...input.events],
     schedule: scheduleOf(order, scheduleWords(order, input)),
+    disputes: disputeViews(input.disputes ?? [], items, input.buyerFirstName),
   };
 }

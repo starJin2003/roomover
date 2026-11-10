@@ -4,7 +4,7 @@ import { cancelPendingOrder, currentOrder, insertPendingOrder, loadCheckoutListi
 import { buildCheckout, CheckoutRefused, intentFor, sameLines, type CheckoutPlan } from "@/lib/domain/checkout";
 import type { OrderStatus } from "@/lib/domain/enums";
 import type { PlanLayout } from "@/lib/domain/layout";
-import { approvedPath, isSharedPlanSession, previewPath } from "@/lib/domain/mcp";
+import { approvedPath, previewPath } from "@/lib/domain/mcp";
 import { orderCreateKey } from "@/lib/paypal/idempotency";
 import { retryTransient } from "@/lib/paypal/retry";
 import type { PayPalSdk } from "@/lib/paypal/server-sdk/client";
@@ -42,8 +42,8 @@ export interface PreparedCheckout {
 export interface CheckoutPlanRef {
   id: string;
   buyerId: string;
-  /** An MCP session's plan sends the student back to its preview page after PayPal. */
-  sessionId: string | null;
+  /** A plan an MCP session made sends the student back to its preview page after PayPal. */
+  mcpSessionId: string | null;
   layout: PlanLayout;
 }
 
@@ -52,8 +52,8 @@ export interface CheckoutPlanRef {
  * outside assistant made is approved from its preview link, so PayPal
  * returns there, and the return route authorizes or captures the order.
  */
-export function checkoutReturnUrls(appUrl: string, plan: Pick<CheckoutPlanRef, "id" | "sessionId">): { returnUrl: string; cancelUrl: string } {
-  if (!isSharedPlanSession(plan.sessionId)) return { returnUrl: absoluteUrl(appUrl, "/furnish"), cancelUrl: absoluteUrl(appUrl, "/furnish") };
+export function checkoutReturnUrls(appUrl: string, plan: Pick<CheckoutPlanRef, "id" | "mcpSessionId">): { returnUrl: string; cancelUrl: string } {
+  if (plan.mcpSessionId === null) return { returnUrl: absoluteUrl(appUrl, "/furnish"), cancelUrl: absoluteUrl(appUrl, "/furnish") };
   return { returnUrl: absoluteUrl(appUrl, approvedPath(plan.id)), cancelUrl: absoluteUrl(appUrl, `${previewPath(plan.id)}?paypal=canceled`) };
 }
 

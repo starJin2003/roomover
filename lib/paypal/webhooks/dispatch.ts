@@ -1,4 +1,5 @@
 import { onAuthorizationCreated, onCaptureCompleted } from "@/lib/checkout/webhooks";
+import { afterDisputeEvent, onDisputeEvent } from "@/lib/disputes/webhooks";
 import { onAuthorizationVoided, onPayoutBatchEvent, onPayoutItemEvent } from "@/lib/handoff/webhooks";
 import type { Database } from "@/lib/db/client";
 import type { Transaction } from "@/lib/db/plans";
@@ -13,8 +14,8 @@ import {
 type Handler = (event: PayPalWebhookEvent, db: Database | Transaction) => Promise<void>;
 
 // The route has already stored the event and skipped duplicates. Checkout,
-// handoff, and payout events move records through transitions that ignore
-// stale events, and the rest are logged.
+// handoff, payout, and dispute events move records through transitions that
+// ignore stale events, and the rest are logged.
 function logOnly(subject: string): Handler {
   return async (event) => {
     console.info("paypal webhook", {
@@ -27,7 +28,6 @@ function logOnly(subject: string): Handler {
 }
 
 const capture = logOnly("capture");
-const dispute = logOnly("dispute");
 
 const HANDLERS: Record<PayPalWebhookEventType, Handler> = {
   "PAYMENT.AUTHORIZATION.CREATED": onAuthorizationCreated,
@@ -47,10 +47,15 @@ const HANDLERS: Record<PayPalWebhookEventType, Handler> = {
   "PAYMENT.PAYOUTS-ITEM.REFUNDED": onPayoutItemEvent,
   "PAYMENT.PAYOUTS-ITEM.RETURNED": onPayoutItemEvent,
   "PAYMENT.PAYOUTS-ITEM.UNCLAIMED": onPayoutItemEvent,
-  "CUSTOMER.DISPUTE.CREATED": dispute,
-  "CUSTOMER.DISPUTE.UPDATED": dispute,
-  "CUSTOMER.DISPUTE.RESOLVED": dispute,
+  "CUSTOMER.DISPUTE.CREATED": onDisputeEvent,
+  "CUSTOMER.DISPUTE.UPDATED": onDisputeEvent,
+  "CUSTOMER.DISPUTE.RESOLVED": onDisputeEvent,
 };
+
+/** Work that waits until the event's transaction commits. A dispute event starts the verifier agent's dispute run. */
+export function followUpWebhookEvent(event: PayPalWebhookEvent): Promise<void> | null {
+  return event.event_type.startsWith("CUSTOMER.DISPUTE.") ? afterDisputeEvent(event) : null;
+}
 
 /** Returns false for an event type Roomover does not subscribe to. The route still acknowledges it so PayPal stops redelivering. */
 export async function dispatchWebhookEvent(event: PayPalWebhookEvent, db: Database | Transaction): Promise<boolean> {

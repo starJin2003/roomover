@@ -118,6 +118,41 @@ describe("make_offer", () => {
     expect(second.startedAt).toBeGreaterThanOrEqual(first.endedAt);
   });
 
+  it("spreads parallel offers to different sellers over their own slots and keeps one seller's items together", async () => {
+    const port = negotiator(() => accept, 30);
+    const context = harborContext({ negotiator: port });
+    const [desk, lamp, beanBag] = await Promise.all([
+      call(context, "make_offer", { listingIds: [DESK], priceDollars: 48, slot: MONDAY_2PM }),
+      call(context, "make_offer", { listingIds: [LAMP], priceDollars: 14, slot: MONDAY_2PM }),
+      call(context, "make_offer", { listingIds: [BEAN_BAG], priceDollars: 27, slot: MONDAY_2PM }),
+    ]);
+    const slots = [desk, lamp, beanBag].map((outcome) => result<{ slot: { label: string } }>(outcome).slot.label);
+    expect(slots[0]).toBe("Mon, Nov 23, 2 to 4 PM");
+    expect(new Set(slots).size).toBe(3);
+    expect(result(lamp)).toMatchObject({ slotNote: "Another seller holds that slot, so code moved the handoff to the nearest free one." });
+    expect(lamp.events[0].summary).toMatch(/Another seller holds that slot/);
+    expect(port.asked.map((entry) => entry.facts.offer.slotLabel)).toEqual(expect.arrayContaining(slots));
+
+    const chair = await call(context, "make_offer", { listingIds: [CHAIR], priceDollars: 17, slot: { windowDay: 2, startHour: 10 } });
+    expect(result(chair)).toMatchObject({ slot: { label: "Mon, Nov 23, 2 to 4 PM" }, slotNote: "Code kept this seller's items in the slot they already hold." });
+  });
+
+  it("offers a countering seller agent only slots no other seller holds", async () => {
+    const port = negotiator((facts) => (facts.sellerFirstName === "Ava" ? counter(15) : accept));
+    const context = harborContext({ negotiator: port });
+    await call(context, "make_offer", { listingIds: [DESK], priceDollars: 48, slot: MONDAY_2PM });
+    await call(context, "make_offer", { listingIds: [LAMP], priceDollars: 12, slot: { windowDay: 2, startHour: 12 } });
+    const ava = port.asked.find((entry) => entry.facts.sellerFirstName === "Ava");
+    expect(ava?.facts.slots.map((slot) => slot.label)).not.toContain("Mon, Nov 23, 2 to 4 PM");
+  });
+
+  it("still refuses a slot outside the window after spreading", async () => {
+    const port = negotiator(() => accept);
+    const context = harborContext({ negotiator: port });
+    await call(context, "make_offer", { listingIds: [DESK], priceDollars: 48, slot: MONDAY_2PM });
+    expect(result(await call(context, "make_offer", { listingIds: [LAMP], priceDollars: 14, slot: { windowDay: 3, startHour: 18 } }))).toMatchObject({ sent: false });
+  });
+
   it("ends after three rounds and keeps the asking price", async () => {
     const context = harborContext({ negotiator: negotiator(() => counter(54)) });
     for (const dollars of [41, 43, 45]) await call(context, "make_offer", { listingIds: [DESK], priceDollars: dollars, slot: MONDAY_2PM });

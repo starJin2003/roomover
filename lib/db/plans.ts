@@ -1,13 +1,13 @@
-import { and, asc, desc, eq, gt, gte, inArray, like, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, like, lt, or, sql } from "drizzle-orm";
 import type { CatalogListing, EventDraft } from "@/lib/agents/buyer/context";
-import { decideLimit, RunConflictError, RunLimitError, startOfUtcDay, type LimitCounts, type WindowCount } from "@/lib/agents/limits";
+import { decideLimit, decideMcpRunLimit, RunConflictError, RunLimitError, startOfUtcDay, type LimitCounts, type LimitDecision, type WindowCount } from "@/lib/agents/limits";
 import { agentEventDetailSchema } from "@/lib/domain/agent-events";
 import type { AgentName, AgentRunKind, AgentRunStatus, ClaudeMode, HandoffMode, PlanStatus, RoomType } from "@/lib/domain/enums";
 import { hallConstraintsSchema, type HallConstraint } from "@/lib/domain/hall-rules";
 import { handoffWindow } from "@/lib/domain/handoff";
 import { planLayoutSchema, type PlanLayout } from "@/lib/domain/layout";
 import { listingColorsSchema, listingSpecsSchema } from "@/lib/domain/listing";
-import { MCP_SESSION_TAG } from "@/lib/domain/mcp";
+import { isMcpSession, MCP_SESSION_TAG, planClaimStep, type ClaimStep, type PlanClaim } from "@/lib/domain/mcp";
 import { roomGeometrySchema, type RoomGeometry } from "@/lib/domain/room";
 import type { ActivityEventView, PlanListing, RunView } from "@/lib/plan-view";
 import type { Database } from "./client";
@@ -167,6 +167,9 @@ export interface PlanRow {
   buyerId: string;
   buyerName: string;
   sessionId: string | null;
+  /** The MCP buyer session that planned the room, which makes the plan open to its preview link. */
+  mcpSessionId: string | null;
+  claimedAt: Date | null;
   roomPresetId: string;
   roomNumber: string | null;
   budgetCents: number;
@@ -180,6 +183,8 @@ const planColumns = {
   buyerId: plans.buyerId,
   buyerName: users.displayName,
   sessionId: plans.sessionId,
+  mcpSessionId: plans.mcpSessionId,
+  claimedAt: plans.claimedAt,
   roomPresetId: plans.roomPresetId,
   roomNumber: plans.roomNumber,
   budgetCents: plans.budgetCents,
@@ -188,13 +193,20 @@ const planColumns = {
   status: plans.status,
 };
 
-const toPlanRow = (row: Omit<PlanRow, "layout"> & { layout: unknown }): PlanRow => ({ ...row, layout: planLayoutSchema.parse(row.layout) });
+const toPlanRow = (row: Omit<PlanRow, "layout"> & { layout: unknown }): PlanRow => ({
+  ...row,
+  mcpSessionId: row.mcpSessionId ?? (isMcpSession(row.sessionId) ? row.sessionId : null),
+  layout: planLayoutSchema.parse(row.layout),
+});
 
 export async function createPlan(
   db: Database,
   input: { buyerId: string; sessionId: string; roomPresetId: string; roomNumber: string | null; budgetCents: number; stylePrompt: string },
 ): Promise<string> {
-  const [row] = await db.insert(plans).values({ ...input, status: "draft" }).returning({ id: plans.id });
+  const [row] = await db
+    .insert(plans)
+    .values({ ...input, mcpSessionId: isMcpSession(input.sessionId) ? input.sessionId : null, status: "draft" })
+    .returning({ id: plans.id });
   return row.id;
 }
 
@@ -208,13 +220,24 @@ export async function loadSessionPlan(db: Database, planId: string, sessionId: s
   return row === undefined ? null : toPlanRow(row);
 }
 
-/** A plan an MCP session made, which anyone holding its preview link may see and pay for. */
+/** A plan an MCP session made, which anyone holding its preview link may see, and pay for until a browser claims it. */
 export async function loadSharedPlan(db: Database, planId: string): Promise<PlanRow | null> {
   const [row] = await db
     .select(planColumns)
     .from(plans)
     .innerJoin(users, eq(plans.buyerId, users.id))
-    .where(and(eq(plans.id, planId), like(plans.sessionId, `${MCP_SESSION_TAG}%`)));
+    // Plans made before the MCP column existed still carry their MCP session as the owner.
+    .where(and(eq(plans.id, planId), or(like(plans.mcpSessionId, `${MCP_SESSION_TAG}%`), like(plans.sessionId, `${MCP_SESSION_TAG}%`))));
+  return row === undefined ? null : toPlanRow(row);
+}
+
+/** A plan the MCP session made. The session keeps reading it after a browser claims it. */
+export async function loadMcpPlan(db: Database, planId: string, mcpSessionId: string): Promise<PlanRow | null> {
+  const [row] = await db
+    .select(planColumns)
+    .from(plans)
+    .innerJoin(users, eq(plans.buyerId, users.id))
+    .where(and(eq(plans.id, planId), eq(plans.mcpSessionId, mcpSessionId)));
   return row === undefined ? null : toPlanRow(row);
 }
 
@@ -223,12 +246,39 @@ export async function loadPayablePlan(db: Database, planId: string, sessionId: s
   return (sessionId === null ? null : await loadSessionPlan(db, planId, sessionId)) ?? (await loadSharedPlan(db, planId));
 }
 
-/** Plans a session created in the window, which caps how many rooms one MCP session plans an hour. */
-export async function countSessionPlans(db: Database, sessionId: string, since: Date): Promise<WindowCount> {
+/**
+ * Hands a plan an MCP session made to the browser that approved its
+ * payment, with one activity line. The caller holds the order row lock the
+ * approval took, so two approvals cannot both claim.
+ */
+export async function claimPlan(tx: Transaction, input: { planId: string; orderId: string; paypalOrderId: string | null; claim: PlanClaim }): Promise<{ step: ClaimStep; events: ActivityEventView[] }> {
+  const [row] = await tx.select({ sessionId: plans.sessionId, mcpSessionId: plans.mcpSessionId, claimedAt: plans.claimedAt }).from(plans).where(eq(plans.id, input.planId)).for("update");
+  const plan = row === undefined ? undefined : { claimedAt: row.claimedAt, mcpSessionId: row.mcpSessionId ?? (isMcpSession(row.sessionId) ? row.sessionId : null) };
+  const step = plan === undefined ? "not_shared" : planClaimStep(plan, true);
+  if (step !== "claim") return { step, events: [] };
+  await tx.update(plans).set({ sessionId: input.claim.sessionId, mcpSessionId: plan?.mcpSessionId, claimedAt: input.claim.at }).where(eq(plans.id, input.planId));
+  const events = await insertEvents(tx, {
+    runId: input.orderId,
+    planId: input.planId,
+    orderId: input.orderId,
+    agent: "platform",
+    drafts: [
+      {
+        tool: "claim_plan",
+        summary: `The browser that approved PayPal order ${input.paypalOrderId ?? "for this plan"} took the plan over from MCP buyer session ${plan?.mcpSessionId ?? ""}, which keeps read access.`,
+        sentence: "The browser that approved the payment now holds this room, so the handoff runs there.",
+      },
+    ],
+  });
+  return { step, events };
+}
+
+/** Plans an MCP session created in the window, claimed ones included, which caps how many rooms it plans an hour. */
+export async function countMcpPlans(db: Database, mcpSessionId: string, since: Date): Promise<WindowCount> {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int`, oldest: sql<string | Date | null>`min(${plans.createdAt})` })
     .from(plans)
-    .where(and(eq(plans.sessionId, sessionId), gte(plans.createdAt, since)));
+    .where(and(eq(plans.mcpSessionId, mcpSessionId), gte(plans.createdAt, since)));
   return { count: row?.count ?? 0, oldest: row?.oldest === null || row?.oldest === undefined ? null : new Date(row.oldest) };
 }
 
@@ -300,14 +350,39 @@ export async function latestRun(db: Database, planId: string): Promise<RunRow | 
 export async function windowCount(tx: Database | Transaction, by: "session" | "client", value: string, since: Date): Promise<WindowCount> {
   const runColumn = by === "session" ? agentRuns.sessionId : agentRuns.clientHash;
   const draftColumn = by === "session" ? listingDrafts.sessionId : listingDrafts.clientHash;
+  // MCP runs have limits of their own and never count against a network, since every Claude app connector shares Anthropic's.
   const result = await tx.execute<{ count: number; oldest: string | Date | null }>(sql`
     select count(*)::int as count, min(started) as oldest from (
-      select ${agentRuns.startedAt} as started from ${agentRuns} where ${runColumn} = ${value} and ${agentRuns.claudeMode} = 'live' and ${agentRuns.startedAt} >= ${since}
+      select ${agentRuns.startedAt} as started from ${agentRuns} where ${runColumn} = ${value} and ${agentRuns.sessionId} not like ${`${MCP_SESSION_TAG}%`} and ${agentRuns.claudeMode} = 'live' and ${agentRuns.startedAt} >= ${since}
       union all
       select ${listingDrafts.createdAt} from ${listingDrafts} where ${draftColumn} = ${value} and ${listingDrafts.claudeMode} = 'live' and ${listingDrafts.createdAt} >= ${since}
     ) as runs`);
   const row = result.rows[0];
   return { count: row?.count ?? 0, oldest: row?.oldest === null || row?.oldest === undefined ? null : new Date(row.oldest) };
+}
+
+/** Live runs every MCP session together started in the window. */
+export async function mcpRunCount(tx: Database | Transaction, since: Date): Promise<WindowCount> {
+  const [row] = await tx
+    .select({ count: sql<number>`count(*)::int`, oldest: sql<string | Date | null>`min(${agentRuns.startedAt})` })
+    .from(agentRuns)
+    .where(and(like(agentRuns.sessionId, `${MCP_SESSION_TAG}%`), eq(agentRuns.claudeMode, "live"), gte(agentRuns.startedAt, since)));
+  return { count: row?.count ?? 0, oldest: row?.oldest === null || row?.oldest === undefined ? null : new Date(row.oldest) };
+}
+
+/** Live Claude calls MCP runs spent since midnight UTC, which may reach 150 of the day's 400. */
+export async function mcpClaudeCallsToday(db: Database | Transaction, now: Date): Promise<number> {
+  const [row] = await db
+    .select({ calls: sql<number>`coalesce(sum(${agentRuns.claudeCalls}), 0)::int` })
+    .from(agentRuns)
+    .where(and(like(agentRuns.sessionId, `${MCP_SESSION_TAG}%`), eq(agentRuns.claudeMode, "live"), gte(agentRuns.startedAt, startOfUtcDay(now))));
+  return row?.calls ?? 0;
+}
+
+/** Whether a live run of this session has used up its share of today's Claude calls, checked before each call. */
+export async function dailyAllowanceSpent(db: Database, sessionId: string, limits: { total: number; mcp: number }, now: Date): Promise<boolean> {
+  if ((await claudeCallsToday(db, now)) >= limits.total) return true;
+  return isMcpSession(sessionId) && (await mcpClaudeCallsToday(db, now)) >= limits.mcp;
 }
 
 /** Live Claude calls since midnight UTC, from buyer agent runs, verifier comparisons, and seller agent drafts together. */
@@ -355,12 +430,17 @@ export async function startRun(
     if (input.claudeMode === "live") {
       await lockRunLimits(tx);
       const since = new Date(input.now.getTime() - HOUR_MS);
-      const counts: LimitCounts = {
-        session: await windowCount(tx, "session", input.sessionId, since),
-        client: await windowCount(tx, "client", input.clientHash, since),
-        claudeCallsToday: await claudeCallsToday(tx, input.now),
-      };
-      const decision = decideLimit(counts, input.kind, input.now);
+      let decision: LimitDecision;
+      if (isMcpSession(input.sessionId)) {
+        decision = decideMcpRunLimit({ mcpRuns: await mcpRunCount(tx, since), mcpClaudeCallsToday: await mcpClaudeCallsToday(tx, input.now), claudeCallsToday: await claudeCallsToday(tx, input.now) }, input.kind, input.now);
+      } else {
+        const counts: LimitCounts = {
+          session: await windowCount(tx, "session", input.sessionId, since),
+          client: await windowCount(tx, "client", input.clientHash, since),
+          claudeCallsToday: await claudeCallsToday(tx, input.now),
+        };
+        decision = decideLimit(counts, input.kind, input.now);
+      }
       if (!decision.allowed) throw new RunLimitError(decision);
     }
 

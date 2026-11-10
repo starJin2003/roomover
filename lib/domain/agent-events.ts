@@ -1,8 +1,12 @@
 import { z } from "zod";
 import { MCP_TOOL_NAMES } from "./mcp";
 
-export const PAYPAL_ID_KINDS = ["order", "authorization", "capture", "refund", "reauthorization", "payout_batch", "payout_item"] as const;
+export const PAYPAL_ID_KINDS = ["order", "authorization", "capture", "refund", "reauthorization", "payout_batch", "payout_item", "dispute", "transaction"] as const;
 export type PayPalIdKind = (typeof PAYPAL_ID_KINDS)[number];
+
+/** The read only PayPal Agent Toolkit tools an agent may call, under the toolkit's own names. No write tool is among them. */
+export const TOOLKIT_READ_TOOLS = ["get_order", "list_transactions", "get_dispute"] as const;
+export type ToolkitReadTool = (typeof TOOLKIT_READ_TOOLS)[number];
 
 /**
  * Structured facts behind an activity line, kept for the full log and the
@@ -56,6 +60,10 @@ export const agentEventDetailSchema = z.strictObject({
       keys: z.array(z.string().regex(/^[0-9a-f]{64}$/)).max(24).optional(),
     })
     .optional(),
+  /** A read the verifier made through the PayPal Agent Toolkit, or its recorded answer in tests. */
+  toolkit: z.strictObject({ tool: z.enum(TOOLKIT_READ_TOOLS), source: z.enum(["agent_toolkit", "recorded"]), ok: z.boolean() }).optional(),
+  /** Evidence Roomover sent PayPal for a dispute. */
+  evidence: z.strictObject({ evidenceType: z.string().min(1), files: z.number().int().nonnegative(), skipped: z.number().int().nonnegative(), bytes: z.number().int().nonnegative() }).optional(),
   /** A step an outside assistant asked for over MCP, with the client's own name for itself. */
   mcp: z.strictObject({ tool: z.enum(MCP_TOOL_NAMES), client: z.string().min(1).max(80) }).optional(),
   /** A new item placed from Channel3, which the student buys from the retailer. */

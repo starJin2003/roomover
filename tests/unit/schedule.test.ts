@@ -33,14 +33,14 @@ const harbor = (overrides: Partial<ScheduleInput> = {}): ScheduleInput => ({
 });
 
 describe("buildSchedule", () => {
-  it("gives each seller a row in checklist order and the student the last row", () => {
+  it("gives the student the first row, since every bar is read against it, and each seller a row in checklist order", () => {
     const schedule = buildSchedule(harbor());
     expect(schedule.resources.map((row) => [row.id, row.kind, row.name, row.detail])).toEqual([
+      [STUDENT_ROW, "student", "Jordan", "moves in"],
       ["jun", "seller", "Jun Park", "desk"],
       ["marcus", "seller", "Marcus Smith", "chair"],
       ["sofia", "seller", "Sofia Smith", "clamp lamp"],
       ["lea", "seller", "Lea Smith", "bean bag"],
-      [STUDENT_ROW, "student", "Jordan", "moves in"],
     ]);
   });
 
@@ -79,7 +79,7 @@ describe("buildSchedule", () => {
     const schedule = buildSchedule(harbor({ items: [item("rug", "Jun", "rug", "direct", JUN_OUT, slot), item("chair2", "Jun", "chair", "direct", JUN_OUT, slot)] }));
     expect(schedule.slots).toHaveLength(1);
     expect(schedule.slots[0]).toMatchObject({ orderItemIds: ["rug", "chair2"], nouns: "rug and chair", sellerFirstName: "Jun", label: "Tue, Nov 24, noon to 2 PM", agreed: true, movable: true });
-    expect(schedule.resources[0].detail).toBe("rug and chair");
+    expect(schedule.resources[1].detail).toBe("rug and chair");
     expect(listWords(["lamp", "cart", "rug"])).toBe("lamp, cart, and rug");
   });
 
@@ -190,7 +190,7 @@ describe("scheduleOf", () => {
 
   it("reads each handoff row's slot, follows the checklist order, and holds slots to PayPal's 29 day authorization", () => {
     const schedule = scheduleOf(order(), words);
-    expect(schedule.resources.map((row) => row.name)).toEqual(["Jun Park", "Sofia Park", "Jordan"]);
+    expect(schedule.resources.map((row) => row.name)).toEqual(["Jordan", "Jun Park", "Sofia Park"]);
     expect(schedule.slots.map((slot) => [slot.nouns, slot.label, slot.movable])).toEqual([
       ["desk", "Mon, Nov 23, 2 to 4 PM", true],
       ["clamp lamp", "Mon, Nov 23, 10 AM to noon", true],

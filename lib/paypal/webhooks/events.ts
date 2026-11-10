@@ -43,6 +43,7 @@ export type PayPalWebhookEvent = z.infer<typeof webhookEventSchema>;
 
 const resourceIdSchema = z.union([
   z.object({ id: z.string().min(1) }).transform((resource) => resource.id),
+  z.object({ dispute_id: z.string().min(1) }).transform((resource) => resource.dispute_id),
   z.object({ payout_item_id: z.string().min(1) }).transform((resource) => resource.payout_item_id),
   z.object({ batch_header: z.object({ payout_batch_id: z.string().min(1) }) }).transform(
     (resource) => resource.batch_header.payout_batch_id,
@@ -50,9 +51,9 @@ const resourceIdSchema = z.union([
 ]);
 
 /**
- * The PayPal ID of the resource an event is about. Captures, authorizations,
- * and disputes carry `id`, payout item events `payout_item_id`, and payout
- * batch events `batch_header.payout_batch_id`.
+ * The PayPal ID of the resource an event is about. Captures and
+ * authorizations carry `id`, disputes `dispute_id`, payout item events
+ * `payout_item_id`, and payout batch events `batch_header.payout_batch_id`.
  */
 export function webhookResourceId(event: PayPalWebhookEvent): string | null {
   const parsed = resourceIdSchema.safeParse(event.resource);

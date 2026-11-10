@@ -6,11 +6,13 @@ import { RunConflictError, RunLimitError } from "@/lib/agents/limits";
 import { approvalUrlFor, prepareCheckout } from "@/lib/checkout/prepare";
 import { readConfig } from "@/lib/config";
 import { getDb } from "@/lib/db/client";
-import { countSessionPlans, createPlan, insertEvents, latestRun, loadCatalog, loadListingExtras, loadPresetsWithRules, loadSessionPlan, loadSharedPlan, type PresetWithRules } from "@/lib/db/plans";
+import { currentOrder } from "@/lib/db/orders";
+import { countMcpPlans, createPlan, insertEvents, latestRun, loadCatalog, loadListingExtras, loadMcpPlan, loadPresetsWithRules, loadSessionPlan, loadSharedPlan, type PresetWithRules } from "@/lib/db/plans";
 import { plans } from "@/lib/db/schema";
 import { DEMO_BUYER_ID, DEMO_ROOM } from "@/lib/demo";
 import { CheckoutRefused } from "@/lib/domain/checkout";
 import { MCP_LIMITS, type McpToolName } from "@/lib/domain/mcp";
+import { holdsMoney } from "@/lib/domain/order-state";
 import { PayPalApiError } from "@/lib/paypal/errors";
 import { paypalSdk } from "@/lib/paypal/server-sdk/client";
 import { CAMPUS, UNIVERSITY } from "@/scripts/seed/campus";
@@ -93,7 +95,7 @@ export function liveMcpDeps(): McpDeps {
         appUrl: appUrl(),
         presets,
         roomNumberFor,
-        recentPlans: (buyerSession, since) => countSessionPlans(db, buyerSession, since),
+        recentPlans: (buyerSession, since) => countMcpPlans(db, buyerSession, since),
         async createPlan(input) {
           const id = await createPlan(db, {
             buyerId: DEMO_BUYER_ID,
@@ -133,15 +135,24 @@ export function liveMcpDeps(): McpDeps {
           if (plan === null) throw new Error(`Plan ${planId} is missing.`);
           return loadPlanView(db, plan, preset, await latestRun(db, planId));
         },
+        async handoffModes(listingIds) {
+          return new Map([...(await loadListingExtras(db, listingIds))].map(([id, extra]) => [id, extra.handoffMode]));
+        },
       };
     },
     createCheckout() {
       return {
         appUrl: appUrl(),
         async ownPlan(planId, buyerSession) {
-          const plan = await loadSessionPlan(db, planId, buyerSession);
+          const plan = await loadMcpPlan(db, planId, buyerSession);
           if (plan === null) return null;
-          return { id: plan.id, running: (await latestRun(db, planId))?.status === "running", hasUsedItems: plan.layout.items.some((item) => item.source === "listing") };
+          const order = await currentOrder(db, planId);
+          return {
+            id: plan.id,
+            running: (await latestRun(db, planId))?.status === "running",
+            hasUsedItems: plan.layout.items.some((item) => item.source === "listing"),
+            held: order !== null && (holdsMoney(order.status) || order.status === "settled") ? { totalCents: order.totalCents, settled: order.status === "settled" } : null,
+          };
         },
         async prepare(planId) {
           const plan = await loadSharedPlan(db, planId);

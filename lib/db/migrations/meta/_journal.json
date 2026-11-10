@@ -36,6 +36,20 @@
       "when": 1794232410270,
       "tag": "0004_negotiation",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794256502463,
+      "tag": "0005_plan_claims_and_disputes",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794257548681,
+      "tag": "0006_dispute_refunds",
+      "breakpoints": true
     }
   ]
 }

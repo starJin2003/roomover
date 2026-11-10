@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -10,6 +11,7 @@ import { readConfig } from "@/lib/config";
 import { getDb } from "@/lib/db/client";
 import { planIdSchema } from "@/lib/http";
 import { loadPreview, previewNotice } from "@/lib/preview";
+import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import { furnishPresets } from "../../screen-data";
 import { PreviewScreen } from "./preview-screen";
 
@@ -63,9 +65,12 @@ async function Preview({ params, searchParams }: { params: Promise<{ planId: str
   const preset = presets.find((candidate) => candidate.slug === preview?.plan.presetSlug);
   if (preview === null || preset === undefined) return <NoPreview />;
   const code = typeof query.paypal === "string" ? query.paypal : undefined;
+  const { PAYPAL_CLIENT_ID, SESSION_SECRET } = readConfig(["PAYPAL_CLIENT_ID", "SESSION_SECRET"]);
+  const viewer = verifySession((await cookies()).get(SESSION_COOKIE)?.value, SESSION_SECRET);
   return (
     <PreviewScreen
-      paypalClientId={readConfig(["PAYPAL_CLIENT_ID"]).PAYPAL_CLIENT_ID}
+      paypalClientId={PAYPAL_CLIENT_ID}
+      holder={!preview.claimed ? "open" : viewer !== null && viewer === preview.ownerSessionId ? "this_browser" : "another_browser"}
       preset={preset}
       initialPlan={preview.plan}
       initialEvents={preview.events}

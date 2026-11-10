@@ -2,13 +2,14 @@ import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { EventDraft } from "@/lib/agents/buyer/context";
 import type { CheckoutListing, CheckoutPlan } from "@/lib/domain/checkout";
 import type { OrderItemStatus, OrderStatus, PaymentMode } from "@/lib/domain/enums";
-import { ITEM_STATUS_AFTER, planApproval, type ApprovalStatus } from "@/lib/domain/order-state";
+import type { PlanClaim } from "@/lib/domain/mcp";
+import { holdsMoney, ITEM_STATUS_AFTER, planApproval, type ApprovalStatus } from "@/lib/domain/order-state";
 import { formatUsdShort } from "@/lib/format";
 import type { ActivityEventView } from "@/lib/plan-view";
 import type { TimeWindow } from "@/lib/domain/handoff";
 import type { Database } from "./client";
 import { agreedTerms } from "./negotiations";
-import { insertEvents, type Transaction } from "./plans";
+import { claimPlan, insertEvents, type Transaction } from "./plans";
 import { listings, orderItems, orders, plans, users } from "./schema";
 
 export interface OrderRow {
@@ -179,7 +180,7 @@ export class ListingTaken extends Error {
   }
 }
 
-export type ApprovalResult = { order: OrderWithLines; step: "apply" | "duplicate" | "stale"; events: ActivityEventView[] };
+export type ApprovalResult = { order: OrderWithLines; step: "apply" | "duplicate" | "stale"; events: ActivityEventView[]; claimed?: boolean };
 
 function approvalEvent(order: OrderRow, sellers: number, record: ApprovalRecord): EventDraft {
   const total = formatUsdShort(order.totalCents);
@@ -202,13 +203,16 @@ function approvalEvent(order: OrderRow, sellers: number, record: ApprovalRecord)
  * the daily reseed. The same result twice, or one the order has moved past,
  * changes nothing. Returns null when no order has the PayPal ID.
  */
-export async function recordApproval(db: Executor, record: ApprovalRecord): Promise<ApprovalResult | null> {
+export async function recordApproval(db: Executor, record: ApprovalRecord, claim?: PlanClaim): Promise<ApprovalResult | null> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select(orderColumns).from(orders).where(eq(orders.paypalOrderId, record.paypalOrderId)).for("update");
     if (row === undefined) return null;
     const lines = await linesOf(tx, row.id);
     const { step, reserveListings } = planApproval(row, record.status);
-    if (step !== "apply") return { order: { ...row, lines }, step, events: [] };
+    if (step !== "apply") {
+      const claimed = await claimIfHeld(tx, row, claim);
+      return { order: { ...row, lines }, step, events: claimed.events, claimed: claimed.step === "claim" };
+    }
 
     const captured = record.status === "captured";
     const [order] = await tx
@@ -243,7 +247,27 @@ export async function recordApproval(db: Executor, record: ApprovalRecord): Prom
 
     const sellers = new Set(lines.map((line) => line.sellerId)).size;
     const events = await insertEvents(tx, { runId: row.id, planId: row.planId, orderId: row.id, agent: "platform", drafts: [approvalEvent(order, sellers, record)] });
-    return { order: { ...order, lines: await linesOf(tx, row.id) }, step, events };
+    const claimed = await claimIfHeld(tx, order, claim);
+    return { order: { ...order, lines: await linesOf(tx, row.id) }, step, events: [...events, ...claimed.events], claimed: claimed.step === "claim" };
+  });
+}
+
+async function claimIfHeld(tx: Transaction, order: OrderRow, claim: PlanClaim | undefined) {
+  if (claim === undefined || !holdsMoney(order.status)) return { step: "not_held" as const, events: [] };
+  return claimPlan(tx, { planId: order.planId, orderId: order.id, paypalOrderId: order.paypalOrderId, claim });
+}
+
+/**
+ * Claims the plan of an order a webhook already landed, under the same row
+ * lock an approval takes, for a student whose return from PayPal arrives
+ * after the webhook.
+ */
+export async function claimHeldPlan(db: Executor, orderId: string, claim: PlanClaim): Promise<{ claimed: boolean; events: ActivityEventView[] }> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx.select(orderColumns).from(orders).where(eq(orders.id, orderId)).for("update");
+    if (row === undefined) return { claimed: false, events: [] };
+    const result = await claimIfHeld(tx, row, claim);
+    return { claimed: result.step === "claim", events: result.events };
   });
 }
 

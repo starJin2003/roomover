@@ -26,6 +26,7 @@
     "paypal:payout-proof": "tsx --env-file-if-exists=.env.local scripts/paypal/payout-proof.ts",
     "paypal:resend": "tsx --env-file-if-exists=.env.local scripts/paypal/resend-event.ts",
     "paypal:venmo-probe": "tsx --env-file-if-exists=.env.local scripts/paypal/venmo-probe.ts",
+    "paypal:dispute": "tsx --env-file-if-exists=.env.local scripts/paypal/dispute-sandbox.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=.env.local scripts/db/migrate.ts",
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/db/seed.ts",

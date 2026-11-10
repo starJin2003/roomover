@@ -12,6 +12,8 @@ export interface SellerPayout {
   readonly amountCents: number;
   /** Replaces "Payout pending" when PayPal reports something else, such as an unclaimed or failed payout. */
   readonly note?: { readonly text: string; readonly alert: boolean };
+  /** A PayPal dispute on this seller's item, noted under the payout. */
+  readonly dispute?: { readonly text: string; readonly open: boolean };
 }
 
 interface SellersPaidProps {
@@ -74,6 +76,12 @@ export function SellersPaid({ payouts, paidIds }: SellersPaidProps) {
                   <span className={`text-xs ${paid ? "font-medium text-ink" : row.note?.alert === true ? "font-medium text-brick" : "text-flint"}`}>
                     {paid ? "Paid with PayPal" : (row.note?.text ?? "Payout pending")}
                   </span>
+                  {row.dispute !== undefined && (
+                    // A Paper chip keeps Brick readable on a row PayPal blue has filled.
+                    <span data-seller-dispute className={`mt-0.5 text-xs ${row.dispute.open ? "rounded-sm bg-paper px-1.5 font-medium text-brick" : paid ? "text-ink" : "text-flint"}`}>
+                      {row.dispute.text}
+                    </span>
+                  )}
                 </span>
               </div>
             </li>

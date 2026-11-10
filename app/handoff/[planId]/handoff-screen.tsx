@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityFeed } from "@/components/furnish/activity-feed";
 import { PRIMARY_LINK } from "@/components/furnish/paid-panel";
 import { CurrentItem } from "@/components/handoff/current-item";
+import { DisputeCard, DisputeHelp } from "@/components/handoff/dispute-card";
 import { ItemActions } from "@/components/handoff/item-actions";
 import { ItemChecklist, type HandoffChecklistItem } from "@/components/handoff/item-checklist";
 import { preparePhoto } from "@/components/photos/prepare-photo";
@@ -82,6 +83,7 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
   const [preview, setPreview] = useState<{ id: string; src: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settling, setSettling] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const settleAsked = useRef(false);
   const retakeInput = useRef<HTMLInputElement>(null);
 
@@ -189,6 +191,7 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
       ? { title: view.totals.agreedCents === 0 ? `PayPal released your ${total} hold` : `PayPal captured ${agreed}`, detail: released > 0 && view.totals.agreedCents > 0 ? `The other ${formatUsdShort(released)} went back to ${buyerFirstName}.` : `For ${items.length === 1 ? "1 item" : `${items.length} items`} you checked.` }
       : { title: `Roomover keeps ${agreed} for the sellers`, detail: released > 0 ? `PayPal refunded ${formatUsdShort(released)} to ${buyerFirstName}.` : "PayPal captured it at checkout." };
 
+  const disputeFor = (sellerName: string) => view.disputes.find((dispute) => dispute.sellerName === sellerName);
   const sellerRows: SellerPayout[] = (view.payout?.sellers ?? []).map((seller) => ({
     payoutItemId: seller.payoutItemId,
     sellerName: seller.sellerName,
@@ -200,6 +203,7 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
         : seller.status === "pending" || seller.status === "held" || seller.status === "succeeded"
           ? undefined
           : { text: `Payout ${seller.status}`, alert: true },
+    ...(disputeFor(seller.sellerName) === undefined ? {} : { dispute: { text: disputeFor(seller.sellerName)?.status === "resolved" ? "Dispute closed" : "Dispute open", open: disputeFor(seller.sellerName)?.status !== "resolved" } }),
   }));
   const allPaid = sellerRows.length > 0 && paidIds.length === sellerRows.length;
   const moneyBack = view.events.filter((event) => event.tool === "money_back" && event.sentence !== null);
@@ -267,10 +271,11 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
   return (
     <main className={SHELL_COLUMNS}>
       <section aria-label={`${view.roomLabel}, the room`} className="flex min-w-0 flex-col gap-4 max-lg:hidden lg:h-full lg:min-h-0">
-        <div className="flex min-h-0 flex-1 flex-col">
+        {/* On a short screen the open schedule takes the room's place, label and all, so neither shrinks to a sliver. */}
+        <div data-handoff-room className={`flex min-h-[200px] flex-1 flex-col ${scheduleOpen ? "[@media(max-height:879px)]:hidden" : ""}`}>
           <RoomStage label={view.roomLabel} preset={preset} items={roomItems} showList={false} mark={mark} fill />
         </div>
-        <ScheduleSection schedule={view.schedule} planId={view.planId} collapsible onView={setView} />
+        <ScheduleSection schedule={view.schedule} planId={view.planId} collapsible onOpenChange={setScheduleOpen} onView={setView} />
       </section>
 
       <UnderTheHoodProvider>
@@ -333,6 +338,9 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
 
           {view.phase === "paid" && (
             <>
+              {view.disputes.map((dispute) => (
+                <DisputeCard key={dispute.paypalDisputeId} dispute={dispute} events={view.events} />
+              ))}
               {sellerRows.length > 0 ? (
                 <SellersPaid payouts={sellerRows} paidIds={paidIds} />
               ) : (
@@ -362,6 +370,7 @@ export function HandoffScreen({ initialView, preset, roomItems, buyerFirstName }
                   Waiting for PayPal to confirm each payout
                 </p>
               )}
+              {allPaid && <DisputeHelp />}
               <ActivityFeed events={view.events} shown={0} />
             </>
           )}

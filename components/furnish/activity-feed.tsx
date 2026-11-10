@@ -24,6 +24,8 @@ const ID_LABELS: Readonly<Record<PayPalIdKind, string>> = {
   reauthorization: "Reauthorization",
   payout_batch: "Payout batch",
   payout_item: "Payout item",
+  dispute: "Dispute",
+  transaction: "Transaction",
 };
 
 function toEntry(event: ActivityEventView): ActivityEntry {

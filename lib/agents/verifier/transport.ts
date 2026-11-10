@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { replayReplies } from "@/lib/agents/recording";
+import { replayDisputeReplies, replayReplies } from "@/lib/agents/recording";
 import { readConfig, readOptionalConfig } from "@/lib/config";
 import type { ClaudeMode } from "@/lib/domain/enums";
 import type { VerifierTransport } from "./compare";
@@ -25,5 +25,15 @@ export function verifierMode(): ClaudeMode {
 export async function verifierTransportFor(photoSha256: string): Promise<{ mode: ClaudeMode; transport: VerifierTransport }> {
   const fixture = readOptionalConfig("ROOMOVER_VERIFIER_FIXTURE");
   if (fixture !== undefined) return { mode: "fixture", transport: await replayVerifierTransport(fixture, photoSha256) };
+  return { mode: "live", transport: liveVerifierTransport(readConfig(["ANTHROPIC_API_KEY"]).ANTHROPIC_API_KEY) };
+}
+
+/** The transport for one dispute run. A configured fixture replays the run recorded for this listing and reason. */
+export async function disputeTransportFor(key: string): Promise<{ mode: ClaudeMode; transport: VerifierTransport }> {
+  const fixture = readOptionalConfig("ROOMOVER_VERIFIER_FIXTURE");
+  if (fixture !== undefined) {
+    const reply = await replayDisputeReplies(fixture, key);
+    return { mode: "fixture", transport: { send: (_request, call) => reply(call) } };
+  }
   return { mode: "live", transport: liveVerifierTransport(readConfig(["ANTHROPIC_API_KEY"]).ANTHROPIC_API_KEY) };
 }

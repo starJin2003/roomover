@@ -14,7 +14,6 @@ import { buildMcpServer } from "./server";
 
 interface OpenSession {
   transport: WebStandardStreamableHTTPServerTransport;
-  clientHash: string;
   lastActive: number;
 }
 
@@ -66,15 +65,14 @@ export async function handleMcpRequest(request: Request, setup: McpSessionSetup)
   }
   if (!isInitializeRequest(body)) return rpcError(400, -32000, "Bad Request: send Mcp-Session-Id, or POST initialize to start a session.");
 
-  const sessions = [...openSessions().values()];
-  const decision = decideMcpSessionOpen({ total: sessions.length, fromClient: sessions.filter((session) => session.clientHash === setup.clientHash).length });
+  const decision = decideMcpSessionOpen({ total: openSessions().size });
   if (!decision.allowed) return rpcError(503, -32000, decision.message);
 
   const id = randomUUID();
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: () => id,
     onsessioninitialized: () => {
-      openSessions().set(id, { transport, clientHash: setup.clientHash, lastActive: now });
+      openSessions().set(id, { transport, lastActive: now });
     },
     onsessionclosed: () => {
       openSessions().delete(id);

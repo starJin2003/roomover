@@ -3,7 +3,7 @@ import type { TimeWindow } from "./handoff";
 import { campusClock, campusInstant, formatCampusDay, formatMoment, formatSlot, isSlotShape, overlapOf, SLOT_HOURS } from "./handoff-slots";
 
 /**
- * The Handoff schedule: one row per seller and one for the student, each
+ * The Handoff schedule: the student's row first, then one row per seller, each
  * seller's move out, the student's move in, the time an item waits in
  * storage or in the room, and the handoff slot each pair of agents agreed
  * on. Every time is an instant, and the screen draws it in campus time.
@@ -198,7 +198,8 @@ export function buildSchedule(input: ScheduleInput): ScheduleView {
 
   return {
     buyerFirstName: input.buyerFirstName,
-    resources: [...sellers, { id: STUDENT_ROW, kind: "student", name: input.buyerFirstName, detail: "moves in" }],
+    // The student's row leads, since every handoff bar is read against the move in.
+    resources: [{ id: STUDENT_ROW, kind: "student", name: input.buyerFirstName, detail: "moves in" }, ...sellers],
     ranges,
     slots,
     span: span === null ? { startsAt: new Date(0).toISOString(), endsAt: new Date(DAY_MS).toISOString() } : iso(span),

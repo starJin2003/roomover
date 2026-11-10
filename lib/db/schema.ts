@@ -22,6 +22,7 @@ import {
   AGENT_RUN_KINDS,
   AGENT_RUN_STATUSES,
   CLAUDE_MODES,
+  DISPUTE_EVIDENCE_STATES,
   DISPUTE_STATUSES,
   HANDOFF_DECISIONS,
   HANDOFF_MODES,
@@ -72,6 +73,7 @@ export const handoffDecision = pgEnum("handoff_decision", HANDOFF_DECISIONS);
 export const payoutStatus = pgEnum("payout_status", PAYOUT_STATUSES);
 export const payoutItemStatus = pgEnum("payout_item_status", PAYOUT_ITEM_STATUSES);
 export const disputeStatus = pgEnum("dispute_status", DISPUTE_STATUSES);
+export const disputeEvidenceState = pgEnum("dispute_evidence_state", DISPUTE_EVIDENCE_STATES);
 export const agentName = pgEnum("agent_name", AGENT_NAMES);
 export const agentRunKind = pgEnum("agent_run_kind", AGENT_RUN_KINDS);
 export const agentRunStatus = pgEnum("agent_run_status", AGENT_RUN_STATUSES);
@@ -253,8 +255,12 @@ export const plans = pgTable(
       .notNull()
       .references(() => roomPresets.id),
     roomNumber: text("room_number"),
-    /** The signed demo session that created the plan. Each judge's browser sees only its own plans. */
+    /** The signed demo session that owns the plan. Each judge's browser sees only its own plans. */
     sessionId: text("session_id"),
+    /** The MCP buyer session that planned the room. It keeps reading the plan after a browser claims it, and its preview link stays open. */
+    mcpSessionId: text("mcp_session_id"),
+    /** When the first browser to approve the plan's payment from its preview link took the plan over. */
+    claimedAt: at("claimed_at"),
     budgetCents: integer("budget_cents").notNull(),
     stylePrompt: text("style_prompt").notNull(),
     layout: jsonb("layout").$type<PlanLayout>().notNull().default(EMPTY_LAYOUT),
@@ -267,7 +273,9 @@ export const plans = pgTable(
   (t) => [
     index("plans_buyer_created_idx").on(t.buyerId, t.createdAt),
     index("plans_session_created_idx").on(t.sessionId, t.createdAt),
+    index("plans_mcp_session_created_idx").on(t.mcpSessionId, t.createdAt),
     check("plans_budget_check", sql`${t.budgetCents} > 0`),
+    check("plans_claim_check", sql`${t.claimedAt} is null or ${t.mcpSessionId} is not null`),
     check(
       "plans_move_in_check",
       sql`(${t.moveInStartsAt} is null) = (${t.moveInEndsAt} is null) and (${t.moveInStartsAt} is null or ${t.moveInEndsAt} > ${t.moveInStartsAt})`,
@@ -650,17 +658,34 @@ export const disputes = pgTable(
     paypalDisputeId: text("paypal_dispute_id").notNull().unique(),
     orderId: uuid("order_id").references(() => orders.id),
     orderItemId: uuid("order_item_id").references(() => orderItems.id),
+    /** The platform's transaction the buyer disputes, which is one item's capture or the checkout capture. */
+    disputedCaptureId: text("disputed_capture_id"),
     status: disputeStatus("status").notNull(),
+    /** PayPal's dispute_life_cycle_stage, such as INQUIRY or CHARGEBACK. */
+    stage: text("stage"),
     reason: text("reason"),
     amountCents: integer("amount_cents"),
+    /** PayPal's outcome_code once the dispute is resolved. */
+    outcome: text("outcome"),
+    /** What PayPal says went back to the buyer when the dispute resolved in the buyer's favor. */
+    refundedCents: integer("refunded_cents"),
+    sellerResponseDueAt: at("seller_response_due_at"),
+    /** PayPal's update_time for the state held here, so an older event changes nothing. */
+    paypalUpdatedAt: at("paypal_updated_at"),
+    evidenceState: disputeEvidenceState("evidence_state").notNull().default("not_due"),
     evidence: jsonb("evidence").$type<EvidenceBundle>(),
+    /** The lifecycle stage the evidence went in for. A later stage that asks again gets a new submission. */
+    evidenceStage: text("evidence_stage"),
     evidenceSubmittedAt: at("evidence_submitted_at"),
+    evidenceError: text("evidence_error"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [
     index("disputes_order_idx").on(t.orderId),
     check("disputes_amount_check", sql`${t.amountCents} is null or ${t.amountCents} > 0`),
+    check("disputes_evidence_check", sql`${t.evidenceState} <> 'sent' or (${t.evidenceSubmittedAt} is not null and ${t.evidenceStage} is not null)`),
+    check("disputes_refunded_check", sql`${t.refundedCents} is null or ${t.refundedCents} >= 0`),
   ],
 );
 

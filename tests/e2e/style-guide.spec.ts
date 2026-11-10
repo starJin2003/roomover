@@ -65,18 +65,24 @@ test("Under the hood reveals the PayPal API name and sandbox ID under every PayP
 
 test("sellers paid fills each row as its payout event arrives and ends on the full total", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
+  // The replay fires one payout event every 600 ms. A paused clock steps through them, so a busy machine cannot merge two.
+  await page.clock.install();
   await page.goto("/style-guide");
   const done = page.locator('section[aria-labelledby="handoff-done-title"]');
   const paidRows = done.locator('li[data-paid="true"]');
   await expect(paidRows).toHaveCount(5);
   await expect(done.getByText("sent to 5 sellers")).toBeVisible();
+  await page.clock.pauseAt(Date.now() + 60_000);
 
   await done.getByRole("button", { name: "Replay payout events" }).click();
   await expect(done.getByText("Payout pending")).toHaveCount(5);
+  await page.clock.runFor(600);
   await expect(paidRows).toHaveCount(1);
   await expect(paidRows.first()).toContainText("Lea Moreau");
+  await page.clock.runFor(600);
   await expect(paidRows).toHaveCount(2);
   await expect(paidRows.first()).toContainText("Jun Park");
+  await page.clock.runFor(3_000);
   await expect(paidRows).toHaveCount(5);
   await expect(done.getByText("Paid with PayPal")).toHaveCount(5);
   await expect(done.getByText("$136", { exact: true })).toBeVisible();

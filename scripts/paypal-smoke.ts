@@ -6,7 +6,7 @@
  *   pnpm paypal:smoke
  */
 import { z } from "zod";
-import { createPayPalReadTools } from "@/lib/agents/tools/paypal-read";
+import { toolkitReads } from "@/lib/agents/tools/paypal-read";
 import { readConfig } from "@/lib/config";
 import { orderCreateKey } from "@/lib/paypal/idempotency";
 import { appTokens } from "@/lib/paypal/rest/app-token";
@@ -55,11 +55,7 @@ async function main(): Promise<void> {
   line("Server SDK get order", `${fetched.id} ${fetched.status} ${unit?.amount?.value} ${unit?.amount?.currencyCode}`);
   line("Items", String(unit?.items?.length ?? 0));
 
-  const getOrderTool = createPayPalReadTools().find((tool) => tool.name === "get_order");
-  if (getOrderTool === undefined) throw new Error("get_order is missing from the read tools.");
-  const toolResult = await getOrderTool.run({ id: created.id });
-  if (typeof toolResult !== "string") throw new Error("get_order returned content blocks, expected JSON text.");
-  const toolOrder = toolOrderSchema.parse(JSON.parse(toolResult));
+  const toolOrder = toolOrderSchema.parse(JSON.parse(await toolkitReads().read("get_order", { id: created.id })));
   line("Agent Toolkit get_order", `${toolOrder.id} ${toolOrder.status}`);
 
   line("Approval link", approvalLink(fetched) ?? approvalLink(created) ?? "none");

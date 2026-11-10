@@ -22,7 +22,7 @@ test.use({ holdsCatalog: true });
 
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR ?? "test-results/screenshots";
 const PROMPT = "$120, cozy, I study late, I already have storage";
-const SLOT = String.raw`\w{3}, \w{3} \d{1,2}, 10 AM to noon`;
+const SLOT = String.raw`\w{3}, \w{3} \d{1,2}, noon to 2 PM`;
 
 async function expectAccessible(page: Page) {
   const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();

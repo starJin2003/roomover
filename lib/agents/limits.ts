@@ -1,4 +1,5 @@
 import type { AgentRunKind } from "@/lib/domain/enums";
+import { MCP_LIMITS } from "@/lib/domain/mcp";
 import { MAX_TURNS } from "./buyer/loop";
 
 /**
@@ -27,7 +28,7 @@ export interface LimitCounts {
   claudeCallsToday: number;
 }
 
-export type LimitReason = "session" | "client" | "daily";
+export type LimitReason = "session" | "client" | "daily" | "mcp_hour" | "mcp_daily";
 
 export type LimitDecision = { allowed: true } | { allowed: false; reason: LimitReason; message: string; retryAt: Date };
 
@@ -73,6 +74,41 @@ export function decideLimit(counts: LimitCounts, kind: AgentRunKind | "sell", no
       message: "The demo used today's allowance of Claude calls. It resets at midnight UTC.",
       retryAt: nextUtcMidnight(now),
     };
+  }
+  return { allowed: true };
+}
+
+export interface McpLimitCounts {
+  /** Live runs every MCP session together started in the last hour. */
+  mcpRuns: WindowCount;
+  mcpClaudeCallsToday: number;
+  claudeCallsToday: number;
+}
+
+/**
+ * Whether a run an outside assistant asked for over MCP may start. Claude
+ * app connectors all arrive from Anthropic's servers, so MCP runs skip the
+ * per browser and per network limits. They share one hourly limit and at
+ * most 150 of the day's Claude calls instead, which keeps 250 for the web
+ * demo. Each refusal is one sentence that says when to try again.
+ */
+export function decideMcpRunLimit(counts: McpLimitCounts, kind: AgentRunKind, now: Date, limits: RunLimits = RUN_LIMITS): LimitDecision {
+  const reserve = MAX_TURNS[kind];
+  if (counts.mcpRuns.count >= MCP_LIMITS.planRoomsPerHour) {
+    const retryAt = slotOpens(counts.mcpRuns, now);
+    return {
+      allowed: false,
+      reason: "mcp_hour",
+      message: `Outside assistants planned ${MCP_LIMITS.planRoomsPerHour} rooms through Roomover's MCP server in the last hour, the most the demo allows, so try again after ${retryAt.toISOString()}.`,
+      retryAt,
+    };
+  }
+  const midnight = nextUtcMidnight(now);
+  if (counts.mcpClaudeCallsToday + reserve > MCP_LIMITS.claudeCallsPerDay) {
+    return { allowed: false, reason: "mcp_daily", message: `Outside assistants used today's ${MCP_LIMITS.claudeCallsPerDay} Claude calls for MCP, so try again after ${midnight.toISOString()} when the allowance resets.`, retryAt: midnight };
+  }
+  if (counts.claudeCallsToday + reserve > limits.claudeCallsPerDay) {
+    return { allowed: false, reason: "daily", message: `The demo used today's ${limits.claudeCallsPerDay} Claude calls, so try again after ${midnight.toISOString()} when the allowance resets.`, retryAt: midnight };
   }
   return { allowed: true };
 }

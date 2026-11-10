@@ -2,7 +2,7 @@ import { readPayPalWebhookId } from "@/lib/paypal/config";
 import { PayPalApiError } from "@/lib/paypal/errors";
 import { paypalRest } from "@/lib/paypal/rest/client";
 import { readWebhookTransmission, verifyWebhookSignature } from "@/lib/paypal/rest/webhooks";
-import { dispatchWebhookEvent } from "@/lib/paypal/webhooks/dispatch";
+import { dispatchWebhookEvent, followUpWebhookEvent } from "@/lib/paypal/webhooks/dispatch";
 import { webhookEventSchema } from "@/lib/paypal/webhooks/events";
 import { recordWebhookEvent, type WebhookOutcome } from "@/lib/paypal/webhooks/store";
 
@@ -80,5 +80,7 @@ export async function POST(request: Request): Promise<Response> {
     console.info("paypal webhook duplicate skipped", { eventId: event.data.id, type: event.data.event_type });
     return reply(200, { received: true, duplicate: true });
   }
+  // The dispute run reads PayPal and Claude, so it starts after the event commits and the answer goes back at once.
+  void followUpWebhookEvent(event.data);
   return reply(200, { received: true, duplicate: false, handled: outcome.handled });
 }

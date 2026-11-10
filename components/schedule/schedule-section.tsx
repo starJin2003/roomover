@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronDownIcon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/spinner";
 import { checkSlotMove, type ScheduleSlot, type ScheduleView } from "@/lib/domain/schedule";
@@ -22,6 +22,13 @@ const COMPACT_ROW_PX = 52;
 const SCROLLBAR_PX = 16;
 /** Below this width the name column and ticks slim down, as on a phone. */
 const COMPACT_BELOW_PX = 600;
+/**
+ * On desktop the schedule shares the column with the room and stops at 42
+ * percent of the screen. A screen under 880 px tall hides the room while the
+ * schedule is open, so there the schedule takes everything but its words,
+ * keys, and the page header, about 340 px.
+ */
+const DESKTOP_HEIGHT = "[--rv-schedule-height:min(var(--rv-schedule-rows),42dvh)] [@media(max-height:879px)]:[--rv-schedule-height:min(var(--rv-schedule-rows),calc(100dvh_-_340px))]";
 
 function Waiting({ height }: { height: number | string }) {
   return (
@@ -96,6 +103,8 @@ interface ScheduleSectionProps {
   planId?: string;
   /** Folds under the room behind one press, which keeps the room large on desktop. */
   collapsible?: boolean;
+  /** Tells the page when the folded schedule opens or closes, so a short screen can give it the room's space. */
+  onOpenChange?: (open: boolean) => void;
   onView?: (view: HandoffView) => void;
 }
 
@@ -105,7 +114,7 @@ interface ScheduleSectionProps {
  * The Bryntum Scheduler loads only once the section opens or scrolls near,
  * so it never slows the first paint.
  */
-export function ScheduleSection({ schedule, planId, collapsible = false, onView }: ScheduleSectionProps) {
+export function ScheduleSection({ schedule, planId, collapsible = false, onOpenChange, onView }: ScheduleSectionProps) {
   const [open, setOpen] = useState(false);
   const [near, setNear] = useState(false);
   const [width, setWidth] = useState(0);
@@ -131,8 +140,7 @@ export function ScheduleSection({ schedule, planId, collapsible = false, onView 
   const compact = width > 0 && width < COMPACT_BELOW_PX;
   const rows = schedule.resources.length;
   const natural = HEADER_PX + rows * (compact ? COMPACT_ROW_PX : ROW_PX) + SCROLLBAR_PX;
-  // On desktop the schedule shares the column with the room, so it stops growing at 42 percent of the screen.
-  const height = collapsible ? `min(${natural}px, 42dvh)` : `${natural}px`;
+  const height = collapsible ? "var(--rv-schedule-height)" : `${natural}px`;
   const movable = schedule.slots.some((slot) => slot.movable);
   const hint: Message | null = movable ? { text: `Drag a handoff to another time while ${schedule.buyerFirstName} is on campus, or use the arrow keys on one. Moving one changes no payment.`, tone: "hint" } : null;
   const shown = dragging ? null : (message ?? hint);
@@ -163,7 +171,7 @@ export function ScheduleSection({ schedule, planId, collapsible = false, onView 
   };
 
   const body: ReactNode = (
-    <div ref={frame} className="flex min-w-0 flex-col gap-3" data-schedule>
+    <div ref={frame} className={`flex min-w-0 flex-col gap-3 ${collapsible ? DESKTOP_HEIGHT : ""}`} style={{ "--rv-schedule-rows": `${natural}px` } as CSSProperties} data-schedule>
       <p className="text-sm text-flint">{schedule.summary}</p>
       <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
         <Legend schedule={schedule} />
@@ -208,7 +216,13 @@ export function ScheduleSection({ schedule, planId, collapsible = false, onView 
 
   if (collapsible) {
     return (
-      <details className="group min-w-0 shrink-0" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <details
+        className="group min-w-0 shrink-0"
+        onToggle={(event) => {
+          setOpen(event.currentTarget.open);
+          onOpenChange?.(event.currentTarget.open);
+        }}
+      >
         <summary
           onPointerEnter={warmUp}
           onFocus={warmUp}

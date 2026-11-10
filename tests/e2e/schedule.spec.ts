@@ -88,6 +88,19 @@ async function scrollTimeline(section: Locator, by: number): Promise<void> {
   await section.page().waitForTimeout(400);
 }
 
+/** A schedule row whose name cell sits wholly inside the schedule's visible rows, with no scrolling inside the schedule. */
+async function expectRowShown(section: Locator, name: string): Promise<void> {
+  const row = section.locator(".rv-who-name", { hasText: new RegExp(`^${name}`) }).first();
+  const body = section.locator(".rv-schedule .b-grid-body-container").first();
+  const [rowBox, bodyBox] = [await row.boundingBox(), await body.boundingBox()];
+  expect(rowBox, `${name}'s row`).not.toBeNull();
+  expect(bodyBox, "the schedule body").not.toBeNull();
+  if (rowBox === null || bodyBox === null) return;
+  expect(rowBox.y).toBeGreaterThanOrEqual(bodyBox.y - 1);
+  expect(rowBox.y + rowBox.height).toBeLessThanOrEqual(bodyBox.y + bodyBox.height + 1);
+  expect(await body.evaluate((element) => element.scrollTop)).toBe(0);
+}
+
 /** Drags Jun's slot along his row to a tick, taking a capture on the way when asked. */
 const junKey = (section: Locator) => section.locator('.b-sch-event-wrap[aria-label^="Handoff with Jun,"] .b-sch-event');
 const junWrap = (section: Locator) => section.locator('.b-sch-event-wrap[aria-label^="Handoff with Jun,"]');
@@ -141,8 +154,9 @@ test("the schedule shows each seller and Jordan, saves a valid drag, and snaps a
   const section = await openSchedule(page, desktop);
   expect(await page.evaluate("typeof globalThis.bryntum")).toBe("object");
 
-  await expect(section.locator(".rv-who-name")).toHaveText(desktop ? ["Jun Park", "Marcus Bell", "Ava Lindqvist", "Sofia Navarro", "Lea Moreau", "Jordan"] : ["Jun", "Marcus", "Ava", "Sofia", "Lea", "Jordan"]);
-  await expect(section.locator(".rv-who-detail")).toHaveText(["desk", "chair", "lamp", "clamp lamp", "bean bag", "moves in"]);
+  // Jordan's row leads, since every handoff is read against the move in.
+  await expect(section.locator(".rv-who-name")).toHaveText(desktop ? ["Jordan", "Jun Park", "Marcus Bell", "Ava Lindqvist", "Sofia Navarro", "Lea Moreau"] : ["Jordan", "Jun", "Marcus", "Ava", "Sofia", "Lea"]);
+  await expect(section.locator(".rv-who-detail")).toHaveText(["moves in", "desk", "chair", "lamp", "clamp lamp", "bean bag"]);
   const day = String.raw`\w{3}, \w{3} \d{1,2}`;
   const slots = section.getByRole("list", { name: "Handoff slots" }).getByRole("listitem");
   await expect(slots).toHaveText([
@@ -176,10 +190,24 @@ test("the schedule shows each seller and Jordan, saves a valid drag, and snaps a
   await page.screenshot({ path: `${SCREENSHOT_DIR}/schedule-gap-${width}.png`, scale: "css" });
   await expectAccessible(page);
   await expectFitsDesktops(page, SCREENSHOT_DIR, "handoff-schedule");
-  // At 1280 the whole gap still fits the frame.
+  // At 1440 by 900 the room keeps its place above the open schedule, label and all.
+  await expect(page.locator("[data-handoff-room]")).toBeVisible();
+  expect((await page.locator("[data-handoff-room]").boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(200);
+  await expectRowShown(section, "Jordan");
+  // At 1280 by 720 the room and its label step aside while the schedule is open, Jordan's row shows without scrolling the schedule, and the whole gap still fits.
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.waitForTimeout(600);
+  await expect(page.locator("[data-handoff-room]")).toBeHidden();
+  await expect(page.getByText(/^Next, desk from Jun$/)).toBeHidden();
+  await expectRowShown(section, "Jordan");
+  await expectRowShown(section, "Lea");
   expect(await sidewaysOverflow(section)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: `${SCREENSHOT_DIR}/layout-handoff-schedule-open-1280x720.png`, scale: "css" });
+  // Folding the schedule brings the room back.
+  await page.locator("summary", { hasText: /^Schedule$/ }).click();
+  await expect(page.locator("[data-handoff-room]")).toBeVisible();
+  await page.locator("summary", { hasText: /^Schedule$/ }).click();
+  await expect(section.locator(".rv-schedule .b-sch-event").first()).toBeVisible();
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(600);
 

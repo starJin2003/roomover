@@ -1,7 +1,6 @@
-import { betaZodTool } from "@anthropic-ai/sdk/helpers/beta/zod";
-import { ToolError } from "@anthropic-ai/sdk/lib/tools/ToolError";
 import { PayPalAgentToolkit } from "@paypal/agent-toolkit/bedrock";
 import { z } from "zod";
+import { TOOLKIT_READ_TOOLS, type ToolkitReadTool } from "@/lib/domain/agent-events";
 import { readPayPalCredentials, type PayPalCredentials } from "@/lib/paypal/config";
 
 /**
@@ -13,9 +12,9 @@ import { readPayPalCredentials, type PayPalCredentials } from "@/lib/paypal/conf
  * dispatcher runs any method name it is given, so this module checks the name
  * against the allowlist before anything reaches the toolkit.
  */
-export const PAYPAL_READ_TOOL_NAMES = ["get_order", "list_transactions", "get_dispute"] as const;
+export const PAYPAL_READ_TOOL_NAMES = TOOLKIT_READ_TOOLS;
 
-export type PayPalReadToolName = (typeof PAYPAL_READ_TOOL_NAMES)[number];
+export type PayPalReadToolName = ToolkitReadTool;
 
 export function isPayPalReadToolName(name: string): name is PayPalReadToolName {
   return (PAYPAL_READ_TOOL_NAMES as readonly string[]).includes(name);
@@ -97,34 +96,49 @@ const toolkitFailureSchema = z.union([
   z.object({ ok: z.literal(false), message: z.string() }),
 ]);
 
-async function runReadTool(toolkit: Toolkit, name: string, input: unknown): Promise<string> {
-  if (!isPayPalReadToolName(name)) {
-    throw new ToolError(`${name} is not an available PayPal tool.`);
+/** A lookup the toolkit could not answer, with PayPal's own message. */
+export class PayPalReadFailed extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PayPalReadFailed";
   }
-  const result = await toolkit.handleToolCall({ toolUseId: name, name, input });
+}
+
+async function runReadTool(toolkit: Toolkit, name: string, input: unknown): Promise<string> {
+  if (!isPayPalReadToolName(name)) throw new PayPalReadFailed(`${name} is not an available PayPal tool.`);
+  const parsed = READ_TOOLS[name].inputSchema.safeParse(input);
+  if (!parsed.success) throw new PayPalReadFailed(`${name} input is invalid. ${z.prettifyError(parsed.error)}`);
+  const result = await toolkit.handleToolCall({ toolUseId: name, name, input: parsed.data });
   const outer: unknown = JSON.parse(result.content[0]?.text ?? '""');
   const json = typeof outer === "string" ? outer : JSON.stringify(outer);
 
   const failure = toolkitFailureSchema.safeParse(JSON.parse(json));
   if (failure.success) {
     const message = "error" in failure.data ? failure.data.error.message : failure.data.message;
-    throw new ToolError(`PayPal lookup failed: ${message}`);
+    throw new PayPalReadFailed(`PayPal lookup failed: ${message}`);
   }
   return json;
 }
 
+/** Read only PayPal lookups by tool name, answered with PayPal's own JSON. */
+export interface PayPalReads {
+  /** Where the answers come from, which the activity panel names. */
+  readonly source: "agent_toolkit" | "recorded";
+  read(name: PayPalReadToolName, input: unknown): Promise<string>;
+}
+
+/** The tool descriptions agents see, keyed by the toolkit's own names. */
+export const PAYPAL_READ_DESCRIPTIONS: Readonly<Record<PayPalReadToolName, string>> = {
+  get_order: READ_TOOLS.get_order.description,
+  list_transactions: READ_TOOLS.list_transactions.description,
+  get_dispute: READ_TOOLS.get_dispute.description,
+};
+
 /**
- * Builds the tools for one agent run. The toolkit caches its own access token
- * with no refresh, so a fresh set per run keeps that token short lived.
+ * Lookups through the PayPal Agent Toolkit. The toolkit caches its own
+ * access token with no refresh, so each agent run builds a fresh set.
  */
-export function createPayPalReadTools(credentials: PayPalCredentials = readPayPalCredentials()) {
+export function toolkitReads(credentials: PayPalCredentials = readPayPalCredentials()): PayPalReads {
   const toolkit = createToolkit(credentials);
-  return PAYPAL_READ_TOOL_NAMES.map((name) =>
-    betaZodTool({
-      name,
-      description: READ_TOOLS[name].description,
-      inputSchema: READ_TOOLS[name].inputSchema,
-      run: (input) => runReadTool(toolkit, name, input),
-    }),
-  );
+  return { source: "agent_toolkit", read: (name, input) => runReadTool(toolkit, name, input) };
 }

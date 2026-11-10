@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { OfferFacts } from "@/lib/agents/seller/negotiate-prompt";
 import { furnitureTypeFor, nounFor } from "@/lib/domain/furniture";
 import type { TimeWindow } from "@/lib/domain/handoff";
-import { campusClock, formatSlot, overlapOf, SLOT_START_HOURS, slotFromWindow, slotsInside, windowDays, windowSlotOf, type WindowSlot } from "@/lib/domain/handoff-slots";
+import { campusClock, formatSlot, isSlotShape, overlapOf, SLOT_START_HOURS, slotFromWindow, slotInside, slotsInside, spreadSlot, windowDays, windowSlotOf, type HeldSlot, type WindowSlot } from "@/lib/domain/handoff-slots";
 import {
   advance,
   allocateBundle,
@@ -16,6 +16,7 @@ import {
   offerProblems,
   type CheckedReply,
   type NegotiableListing,
+  type NegotiationState,
   type Offer,
   type Terms,
 } from "@/lib/domain/negotiation";
@@ -170,10 +171,30 @@ function historyLines(log: readonly Offer[]): string[] {
   });
 }
 
-/** Slots near the student's, earliest first, for a seller agent that wants another time. */
-function slotChoices(window: TimeWindow, around: TimeWindow): TimeWindow[] {
+/** Offers waiting for a seller agent's answer, by seller, so parallel offers to different sellers see each other's slots. */
+const slotsInFlight = new WeakMap<BuyerContext, Map<string, TimeWindow>>();
+
+/** The slot each seller holds in this run: agreed terms, a counter waiting for the buyer agent, or an offer still out. */
+function heldSlots(context: BuyerContext): HeldSlot[] {
+  const held: HeldSlot[] = [];
+  for (const negotiation of new Set(context.negotiations.values())) {
+    const sellerId = context.catalog.get(negotiation.listingIds[0])?.sellerId;
+    const terms = negotiation.state.status === "agreed" ? negotiation.state.agreed : negotiation.state.status === "canceled" ? null : (negotiation.state.counter ?? negotiation.state.offer);
+    if (sellerId !== undefined && terms !== null) held.push({ sellerId, slot: terms.slot });
+  }
+  for (const [sellerId, slot] of slotsInFlight.get(context) ?? []) held.push({ sellerId, slot });
+  return held;
+}
+
+const SPREAD_NOTES = {
+  together: "Code kept this seller's items in the slot they already hold.",
+  spread: "Another seller holds that slot, so code moved the handoff to the nearest free one.",
+} as const;
+
+/** Slots near the student's that no other seller holds, earliest first, for a seller agent that wants another time. */
+function slotChoices(window: TimeWindow, around: TimeWindow, taken: readonly TimeWindow[]): TimeWindow[] {
   return slotsInside(window)
-    .filter((slot) => slot.startsAt.getTime() !== around.startsAt.getTime())
+    .filter((slot) => slot.startsAt.getTime() !== around.startsAt.getTime() && !taken.some((other) => other.startsAt.getTime() === slot.startsAt.getTime()))
     .sort((a, b) => Math.abs(a.startsAt.getTime() - around.startsAt.getTime()) - Math.abs(b.startsAt.getTime() - around.startsAt.getTime()))
     .slice(0, SLOT_CHOICES)
     .sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
@@ -229,7 +250,11 @@ async function negotiate(context: BuyerContext, ids: string[], listings: Catalog
   const negotiation = negotiationFor(context, ids);
   if (typeof negotiation === "string") return refusal([negotiation], ids);
   const window = slotWindow(context, listings);
-  const slot = window === null ? null : slotFromWindow(window, input.slot);
+  const sellerId = listings[0].sellerId;
+  const requested = window === null ? null : slotFromWindow(window, input.slot);
+  // Only a well formed slot inside the window moves. Anything else goes on to the checks that refuse it.
+  const spread = window !== null && requested !== null && isSlotShape(requested) && slotInside(requested, window) ? spreadSlot(requested, window, sellerId, heldSlots(context)) : null;
+  const slot = spread?.slot ?? requested;
   const terms: Terms = { priceCents: input.priceDollars * 100, slot: slot ?? { startsAt: new Date(0), endsAt: new Date(0) } };
   const problems = offerProblems({ listings: listings.map(negotiable), terms, state: negotiation.state, buyerWindow: window });
   if (slot === null && window !== null && problems.length === 0) problems.push("That day falls outside the handoff window.");
@@ -237,12 +262,35 @@ async function negotiate(context: BuyerContext, ids: string[], listings: Catalog
 
   const opened = advance(negotiation.state, { kind: "buyer_offer", terms });
   if (!opened.ok) return refusal([opened.problem], ids);
+  const inFlight = slotsInFlight.get(context) ?? new Map<string, TimeWindow>();
+  slotsInFlight.set(context, inFlight);
+  inFlight.set(sellerId, terms.slot);
+  try {
+    return await answered(context, port, { ids, listings, negotiation, window, terms, opened: opened.state, moved: spread?.moved ?? null });
+  } finally {
+    inFlight.delete(sellerId);
+  }
+}
+
+interface OpenedOffer {
+  ids: string[];
+  listings: CatalogListing[];
+  negotiation: LiveNegotiation;
+  window: TimeWindow;
+  terms: Terms;
+  opened: NegotiationState;
+  /** Why code moved the slot the buyer agent asked for, if it did. */
+  moved: "together" | "spread" | null;
+}
+
+async function answered(context: BuyerContext, port: NonNullable<BuyerContext["negotiator"]>, offer: OpenedOffer): Promise<NegotiationOutcome> {
+  const { ids, listings, negotiation, window, terms, moved } = offer;
   const seller = firstName(listings[0].sellerName);
-  const round = opened.state.round;
+  const round = offer.opened.round;
   const log = [...negotiation.log, entry(round, "buyer", "offer", terms, `Offer of ${usd(terms.priceCents)}.`, new Date(), ids)];
   const offerEvent: EventDraft = {
     tool: "make_offer",
-    summary: `Offered ${seller} ${usd(terms.priceCents)} for the ${nounList(listings)} with handoff ${formatSlot(terms.slot)}, round ${round} of ${NEGOTIATION_ROUND_LIMIT}.`,
+    summary: `Offered ${seller} ${usd(terms.priceCents)} for the ${nounList(listings)} with handoff ${formatSlot(terms.slot)}, round ${round} of ${NEGOTIATION_ROUND_LIMIT}.${moved === null ? "" : ` ${SPREAD_NOTES[moved]}`}`,
     detail: { listingIds: ids, priceCents: terms.priceCents, negotiation: { round, from: "buyer", action: "offer", priceCents: terms.priceCents, slot: formatSlot(terms.slot) } },
   };
 
@@ -255,7 +303,8 @@ async function negotiate(context: BuyerContext, ids: string[], listings: Catalog
     checked = { action: "accept", terms, heldByCode: "The offer met the asking price, so code accepted it." };
     message = "Accepted at the asking price.";
   } else {
-    const choices = slotChoices(window, terms.slot);
+    const taken = heldSlots(context).filter((entry) => entry.sellerId !== listings[0].sellerId).map((entry) => entry.slot);
+    const choices = slotChoices(window, terms.slot, taken);
     const facts: OfferFacts = {
       sellerFirstName: seller,
       items: listings.map((listing) => ({ title: listing.title, askingCents: listing.priceCents, floorCents: listing.floorPriceCents })),
@@ -282,8 +331,8 @@ async function negotiate(context: BuyerContext, ids: string[], listings: Catalog
   }
 
   const event = checked.action === "accept" ? ({ kind: "seller_accept" } as const) : checked.action === "counter" && checked.terms !== null ? ({ kind: "seller_counter", terms: checked.terms } as const) : ({ kind: "seller_decline" } as const);
-  const answered = advance(opened.state, event);
-  const state = answered.ok ? answered.state : opened.state;
+  const next = advance(offer.opened, event);
+  const state = next.ok ? next.state : offer.opened;
   const sellerEntry = entry(round, "seller", checked.action, checked.terms, message, new Date(), ids, checked.heldByCode);
   const shares = state.status === "agreed" && state.agreed !== null && ids.length > 1 ? allocateBundle(state.agreed.priceCents, listings.map(negotiable)) : null;
   const updated: LiveNegotiation = { listingIds: ids, state, log: [...log, sellerEntry], shares };
@@ -323,6 +372,7 @@ async function negotiate(context: BuyerContext, ids: string[], listings: Catalog
       ...(state.status === "agreed" ? { agreed: true } : {}),
       ...(checked.action === "counter" ? { next: "Accept or decline the counter with respond_to_offer, or make a new offer while rounds remain." } : {}),
       ...(checked.heldByCode && !failed ? { note: checked.heldByCode } : {}),
+      ...(moved === null ? {} : { slotNote: SPREAD_NOTES[moved] }),
     },
     events: [{ ...offerEvent }, answerEvent],
   };

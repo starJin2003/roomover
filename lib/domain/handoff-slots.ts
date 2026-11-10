@@ -187,3 +187,34 @@ export function windowSlotOf(window: TimeWindow, slot: TimeWindow): WindowSlot {
   const days = Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${first}T00:00:00Z`)) / 86_400_000);
   return { windowDay: days + 1, startHour: hour };
 }
+
+/** A slot one seller holds, agreed or still under offer. */
+export interface HeldSlot {
+  sellerId: string;
+  slot: TimeWindow;
+}
+
+export type SpreadSlot = { slot: TimeWindow; moved: null } | { slot: TimeWindow; moved: "together" | "spread" };
+
+/**
+ * The slot an offer goes out with, so the student meets one seller per two
+ * hour slot and each seller's items change hands together. A seller who
+ * already holds a slot inside the window keeps it. Otherwise the requested
+ * slot stands unless another seller holds it, and then the nearest free slot
+ * in the window takes its place, the later one on a tie. When every slot is
+ * taken the requested one stands, and the usual slot checks still run on
+ * whatever comes back.
+ */
+export function spreadSlot(requested: TimeWindow, window: TimeWindow, sellerId: string, held: readonly HeldSlot[]): SpreadSlot {
+  const same = (a: TimeWindow, b: TimeWindow) => a.startsAt.getTime() === b.startsAt.getTime();
+  const own = held.find((entry) => entry.sellerId === sellerId && isSlotShape(entry.slot) && slotInside(entry.slot, window));
+  if (own !== undefined) return same(own.slot, requested) ? { slot: requested, moved: null } : { slot: own.slot, moved: "together" };
+  const taken = held.filter((entry) => entry.sellerId !== sellerId);
+  const free = (slot: TimeWindow) => !taken.some((entry) => same(entry.slot, slot));
+  if (free(requested)) return { slot: requested, moved: null };
+  const distance = (slot: TimeWindow) => Math.abs(slot.startsAt.getTime() - requested.startsAt.getTime());
+  const nearest = slotsInside(window)
+    .filter(free)
+    .sort((a, b) => distance(a) - distance(b) || b.startsAt.getTime() - a.startsAt.getTime())[0];
+  return nearest === undefined ? { slot: requested, moved: null } : { slot: nearest, moved: "spread" };
+}

@@ -1,6 +1,6 @@
 import { and, eq, inArray, like, notExists, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { listingDrafts, listingPhotos, listings, orderItems, orders, payouts, plans } from "@/lib/db/schema";
+import { disputes, listingDrafts, listingPhotos, listings, orderItems, orders, payouts, plans } from "@/lib/db/schema";
 import { holdsMoney, MONEY_HELD_STATUSES } from "@/lib/domain/order-state";
 import { refundKey, voidKey } from "@/lib/paypal/idempotency";
 import { paypalSdk } from "@/lib/paypal/server-sdk/client";
@@ -19,7 +19,7 @@ export interface Removed {
  * Deletes everything an e2e session created in the shared database, so a
  * run leaves it as it found it. Money PayPal still holds for those orders is
  * released first, and listings they reserved or sold go back on sale.
- * Payouts are deleted before their orders, and plans cascade to their runs
+ * Payouts and disputes are deleted before their orders, and plans cascade to their runs
  * and activity, orders to their items, handoffs, and photos. Webhook events
  * stay, because PayPal sent them to the deployed route. Sandbox payouts
  * that already reached the sellers stay paid.
@@ -52,6 +52,7 @@ export async function removeSessionData(session: { id: string } | { prefix: stri
       const taken = (await tx.select({ id: orderItems.listingId }).from(orderItems).where(inArray(orderItems.orderId, orderIds))).map((row) => row.id);
       await tx.update(orderItems).set({ payoutItemId: null }).where(inArray(orderItems.orderId, orderIds));
       await tx.delete(payouts).where(inArray(payouts.orderId, orderIds));
+      await tx.delete(disputes).where(inArray(disputes.orderId, orderIds));
       // Orders first, then listings, the lock order the daily reseed uses.
       await tx.delete(orders).where(inArray(orders.id, orderIds));
       if (taken.length > 0) {

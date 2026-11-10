@@ -176,6 +176,14 @@ export const DISPUTE_STATUSES = [
 ] as const;
 export type DisputeStatus = (typeof DISPUTE_STATUSES)[number];
 
+/**
+ * Roomover's side of a dispute. `due` means PayPal waits for the seller's
+ * evidence, `sending` holds one submission at a time because the Disputes
+ * API takes no PayPal-Request-Id, and `failed` may be sent again.
+ */
+export const DISPUTE_EVIDENCE_STATES = ["not_due", "due", "sending", "sent", "failed"] as const;
+export type DisputeEvidenceState = (typeof DISPUTE_EVIDENCE_STATES)[number];
+
 /** The platform appears in the activity panel when it runs settlement and payouts. */
 export const AGENT_NAMES = ["buyer", "seller", "verifier", "platform"] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];

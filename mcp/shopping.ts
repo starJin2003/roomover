@@ -2,12 +2,13 @@ import { z } from "zod";
 import type { WindowCount } from "@/lib/agents/limits";
 import type { PresetWithRules } from "@/lib/db/plans";
 import type { AgentEventDetail } from "@/lib/domain/agent-events";
-import type { PaymentMode } from "@/lib/domain/enums";
+import type { HandoffMode, PaymentMode } from "@/lib/domain/enums";
 import { assistantName, decideMcpPlanLimit, previewPath } from "@/lib/domain/mcp";
 import { readPlanPrompt } from "@/lib/domain/plan-request";
 import { formatUsdShort } from "@/lib/format";
 import type { PlanView } from "@/lib/plan-view";
 import { absoluteUrl } from "@/lib/site";
+import { handoffPlace } from "./catalog";
 
 /**
  * plan_room and create_checkout. An outside assistant plans a room with the
@@ -58,6 +59,8 @@ const plannedItemSchema = z.object({
   askingPrice: z.string().nullable(),
   condition: z.string(),
   handoffSlot: z.string().nullable(),
+  /** Where the item changes hands, from the listing's handoff mode: in person, from campus storage, or left in the room. */
+  handoffPlace: z.string().nullable(),
   buyUrl: z.string().nullable(),
 });
 
@@ -98,9 +101,11 @@ export interface PlanRoomDeps {
   /** Waits for the run, handing on each activity sentence. */
   waitForRun(planId: string, runId: string, onSentence: (sentence: string) => void, signal: AbortSignal): Promise<"finished" | "timeout">;
   view(planId: string, preset: PresetWithRules): Promise<PlanView>;
+  /** Each listing's stored handoff mode. */
+  handoffModes(listingIds: readonly string[]): Promise<ReadonlyMap<string, HandoffMode>>;
 }
 
-function itemsOf(view: PlanView): PlanRoomOutput["items"] {
+function itemsOf(view: PlanView, modes: ReadonlyMap<string, HandoffMode>): PlanRoomOutput["items"] {
   return view.items.map((item) => ({
     title: item.title,
     kind: item.newFrom === undefined ? "used" : "new",
@@ -109,6 +114,7 @@ function itemsOf(view: PlanView): PlanRoomOutput["items"] {
     askingPrice: item.listPriceCents !== undefined && item.listPriceCents > item.priceCents ? formatUsdShort(item.listPriceCents) : null,
     condition: item.newFrom === undefined ? item.condition : "New",
     handoffSlot: item.slotLabel ?? null,
+    handoffPlace: item.layout.source === "listing" ? handoffPlace(modes.get(item.layout.listingId) ?? "direct", item.sellerName, view.roomLabel) : null,
     buyUrl: item.newFrom?.buyUrl ?? null,
   }));
 }
@@ -122,6 +128,13 @@ export function planSummary(view: PlanView): string {
   const usedWords = `${used.length} used ${used.length === 1 ? "item" : "items"} from ${sellers} ${sellers === 1 ? "student" : "students"} for ${formatUsdShort(view.usedCents)} through one PayPal approval`;
   const newWords = added === 0 ? "" : `, plus ${added} new ${added === 1 ? "item" : "items"} for ${formatUsdShort(view.newItemsCents)} the student buys from the retailer`;
   return `${view.roomLabel} has ${usedWords}${newWords}, ${formatUsdShort(view.totalCents)} of a ${formatUsdShort(view.budgetCents)} budget.`;
+}
+
+/** ", handed over in person by Ava, Mon, Nov 23, 10 AM to noon" for a used item, nothing for a new one. */
+function handoffLine(item: PlanRoomOutput["items"][number]): string {
+  if (item.handoffPlace === null) return "";
+  const place = item.handoffPlace.charAt(0).toLowerCase() + item.handoffPlace.slice(1);
+  return `, ${place}${item.handoffSlot === null ? "" : `, ${item.handoffSlot}`}`;
 }
 
 const savingsWords = (view: PlanView) =>
@@ -159,6 +172,7 @@ export async function planRoom(deps: PlanRoomDeps, caller: McpCaller, input: Pla
 
   const waited = await deps.waitForRun(plan.id, run.id, onProgress, signal);
   const view = await deps.view(plan.id, preset);
+  const modes = await deps.handoffModes(view.items.flatMap((item) => (item.layout.source === "listing" ? [item.layout.listingId] : [])));
   const previewUrl = absoluteUrl(deps.appUrl, previewPath(plan.id));
   const status = waited === "timeout" || view.run?.status === "running" ? "planning" : view.run?.status === "failed" ? "failed" : "ready";
   const summary =
@@ -177,7 +191,7 @@ export async function planRoom(deps: PlanRoomDeps, caller: McpCaller, input: Pla
     paypalTotal: formatUsdShort(view.usedCents),
     newItemsTotal: formatUsdShort(view.newItemsCents),
     savings: savingsWords(view),
-    items: itemsOf(view),
+    items: itemsOf(view, modes),
     previewUrl,
     nextStep: payable
       ? "Share previewUrl with the student so they can see the room. When they want it, call create_checkout with this planId for a PayPal approval link. Nothing is charged until the student approves in PayPal."
@@ -185,7 +199,7 @@ export async function planRoom(deps: PlanRoomDeps, caller: McpCaller, input: Pla
         ? "Share previewUrl with the student. Call create_checkout with this planId once the room is ready."
         : "Try plan_room again with a larger budget or different words.",
   };
-  const lines = data.items.map((item) => `- ${item.title}, ${item.kind === "new" ? `new from ${item.from}` : `from ${item.from}`}, ${item.price}${item.askingPrice === null ? "" : ` (asking ${item.askingPrice})`}`);
+  const lines = data.items.map((item) => `- ${item.title}, ${item.kind === "new" ? `new from ${item.from}` : `from ${item.from}`}, ${item.price}${item.askingPrice === null ? "" : ` (asking ${item.askingPrice})`}${handoffLine(item)}`);
   const text = [summary, data.savings, ...lines, `Preview: ${previewUrl}`, data.nextStep].filter((line): line is string => line !== null).join("\n");
   return { ok: true, data, text, record: { planId: plan.id, summary: `plan_room answered ${status} with ${data.items.length} items, ${data.paypalTotal} through PayPal.` } };
 }
@@ -220,8 +234,8 @@ export interface PreparedOrder {
 
 export interface CreateCheckoutDeps {
   appUrl: string;
-  /** The plan, only when this MCP session made it. */
-  ownPlan(planId: string, buyerSession: string): Promise<{ id: string; running: boolean; hasUsedItems: boolean } | null>;
+  /** The plan, only when this MCP session made it, with what PayPal holds once the student approved. */
+  ownPlan(planId: string, buyerSession: string): Promise<{ id: string; running: boolean; hasUsedItems: boolean; held: { totalCents: number; settled: boolean } | null } | null>;
   /** Prepares the plan's PayPal order through the same code as the PayPal button, or answers why not. */
   prepare(planId: string): Promise<{ ok: true; order: PreparedOrder } | { ok: false; message: string }>;
 }
@@ -235,6 +249,15 @@ const MODE_WORDS: Readonly<Record<PaymentMode, (total: string) => string>> = {
 export async function createCheckout(deps: CreateCheckoutDeps, caller: McpCaller, input: CreateCheckoutInput): Promise<ToolOutcome<CreateCheckoutOutput>> {
   const plan = await deps.ownPlan(input.planId, caller.buyerSession);
   if (plan === null) return refuse("No plan with that ID belongs to this MCP session. Call plan_room first and use the planId it returns.");
+  if (plan.held !== null) {
+    const total = formatUsdShort(plan.held.totalCents);
+    return refuse(
+      plan.held.settled
+        ? `The student already approved this room in PayPal and checked every item at handoff, so PayPal paid the sellers from the ${total}.`
+        : `The student already approved this room in PayPal, so PayPal holds ${total} until the handoff, which runs in the browser that approved it.`,
+      plan.id,
+    );
+  }
   if (plan.running) return refuse("The buyer agent is still working on this room. Call create_checkout again once plan_room reports it ready.", plan.id);
   if (!plan.hasUsedItems) return refuse("This room holds no used items, so there is nothing to pay for through PayPal.", plan.id);
 

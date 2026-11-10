@@ -1,8 +1,9 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { ActivityFeed } from "@/components/furnish/activity-feed";
-import { PaidPanel } from "@/components/furnish/paid-panel";
+import { HandoffLink, PaidPanel } from "@/components/furnish/paid-panel";
 import { UnderTheHoodLog } from "@/components/furnish/under-the-hood-log";
 import { usePlanStream } from "@/components/furnish/use-plan-stream";
 import { PayPalCheckout } from "@/components/paypal/paypal-checkout";
@@ -18,8 +19,12 @@ import type { ActivityEventView, PlanView } from "@/lib/plan-view";
 import type { PreviewNotice } from "@/lib/preview";
 import type { FurnishPreset } from "../../screen-data";
 
+/** Who holds the plan: nobody yet, the browser that approved its payment and is looking now, or another browser. */
+export type PreviewHolder = "open" | "this_browser" | "another_browser";
+
 interface PreviewScreenProps {
   paypalClientId: string;
+  holder: PreviewHolder;
   preset: FurnishPreset;
   initialPlan: PlanView;
   initialEvents: readonly ActivityEventView[];
@@ -70,7 +75,8 @@ function ItemList({ items }: { items: readonly RoomItemData[] }) {
  * and the PayPal button. The page follows the plan's activity while the
  * buyer agent still works, and nothing on it changes the room.
  */
-export function PreviewScreen({ paypalClientId, preset, initialPlan, initialEvents, assistant, buyerFirstName, notice }: PreviewScreenProps) {
+export function PreviewScreen({ paypalClientId, holder, preset, initialPlan, initialEvents, assistant, buyerFirstName, notice }: PreviewScreenProps) {
+  const router = useRouter();
   const [plan, setPlan] = useState<PlanView>(initialPlan);
   const [events, setEvents] = useState<readonly ActivityEventView[]>(initialEvents);
   const onPlan = useCallback((next: PlanView) => setPlan((current) => (current.id === next.id ? next : current)), []);
@@ -85,10 +91,30 @@ export function PreviewScreen({ paypalClientId, preset, initialPlan, initialEven
   const sellers = new Set(used.map((item) => item.sellerName)).size;
   const payable = !running && !paid && used.length > 0;
 
+  // Approving from this page claims the plan through the session cookie the answer set, so the server render picks up who holds it.
+  const onPaid = useCallback(
+    (next: PlanView) => {
+      setPlan(next);
+      router.refresh();
+    },
+    [router],
+  );
+
   const footer = paid ? (
-    <PaidPanel checkout={checkout} />
+    <div className="flex flex-col gap-4">
+      <PaidPanel checkout={checkout} />
+      {holder === "this_browser" ? (
+        <HandoffLink planId={plan.id} checkout={checkout} />
+      ) : (
+        holder === "another_browser" && (
+          <p data-preview-read-only className="text-sm text-flint">
+            {buyerFirstName} approved this payment in another browser, which runs the handoff.
+          </p>
+        )
+      )}
+    </div>
   ) : payable ? (
-    <PayPalCheckout clientId={paypalClientId} planId={plan.id} amountCents={plan.usedCents} disabledReason={null} onPaid={setPlan} />
+    <PayPalCheckout clientId={paypalClientId} planId={plan.id} amountCents={plan.usedCents} disabledReason={null} onPaid={onPaid} />
   ) : undefined;
 
   return (

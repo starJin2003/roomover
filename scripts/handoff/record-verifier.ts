@@ -70,7 +70,7 @@ async function main() {
   }));
   const existing = await readReplyRecording(OUT).catch((): ReplyRecording => ({ version: 1, photos: {} }));
   const photos = Object.fromEntries(Object.entries({ ...existing.photos, ...Object.fromEntries(recorded) }).sort(([a], [b]) => a.localeCompare(b)));
-  await writeFile(OUT, `${JSON.stringify({ version: 1, photos }, null, 1)}\n`);
+  await writeFile(OUT, `${JSON.stringify({ ...existing, photos }, null, 1)}\n`);
   console.log(`\n${jobs.length} photos, ${misses} misses, ${calls} Claude calls, ${inputTokens} input and ${outputTokens} output tokens. Fixture: ${OUT}`);
 }
 

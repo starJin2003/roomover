@@ -4,13 +4,14 @@ import { channel3Transport } from "@/lib/channel3/transport";
 import { prepareCheckout } from "@/lib/checkout/prepare";
 import { readConfig } from "@/lib/config";
 import { RUN_LIMITS, RunStopped } from "@/lib/agents/limits";
+import { MCP_LIMITS } from "@/lib/domain/mcp";
 import { loadRetailReferences } from "@/lib/db/channel3-searches";
 import { getDb, type Database } from "@/lib/db/client";
 import { loadNegotiations, saveNegotiations, type NegotiationRow } from "@/lib/db/negotiations";
 import { currentOrder, type OrderWithLines } from "@/lib/db/orders";
 import {
   addRunUsage,
-  claudeCallsToday,
+  dailyAllowanceSpent,
   finishRun,
   insertEvents,
   loadCatalog,
@@ -38,6 +39,9 @@ import { newProductPort, compareWithNew } from "./channel3-port";
 import { claudeMode, offerTransportsFor, transportFor } from "./claude";
 import { planTotalCents, type BuyerContext, type CatalogListing, type CheckoutPort, type EventDraft, type LiveNegotiation, type NegotiationPort, type NegotiationRecord } from "./context";
 import { runBuyerLoop } from "./loop";
+
+/** A live run stops before a call once the day's Claude calls are spent, and an MCP run also once MCP's share is. */
+const DAILY_CALLS = { total: RUN_LIMITS.claudeCallsPerDay, mcp: MCP_LIMITS.claudeCallsPerDay };
 
 /** Names the room for the student, such as Harbor Hall 214. */
 export function roomLabel(preset: Pick<PresetWithRules, "hallName" | "name">, roomNumber: string | null): string {
@@ -119,7 +123,7 @@ function checkoutPort(db: Database, plan: PlanRow): CheckoutPort {
   return {
     async prepare(layout) {
       try {
-        const prepared = await prepareCheckout({ db, sdk: paypalSdk(), appUrl: readConfig(["APP_URL"]).APP_URL, now: new Date() }, { id: plan.id, buyerId: plan.buyerId, sessionId: plan.sessionId, layout });
+        const prepared = await prepareCheckout({ db, sdk: paypalSdk(), appUrl: readConfig(["APP_URL"]).APP_URL, now: new Date() }, { id: plan.id, buyerId: plan.buyerId, mcpSessionId: plan.mcpSessionId, layout });
         return {
           ok: true,
           created: prepared.created,
@@ -188,11 +192,11 @@ function finishSentence(kind: AgentRunKind, context: BuyerContext, unchanged: bo
 }
 
 /** The seller agents for one run. Each answer's calls count against the day's allowance and land on the run. */
-async function negotiationPort(db: Database, plan: PlanRow, runId: string, mode: ClaudeMode): Promise<NegotiationPort> {
+async function negotiationPort(db: Database, plan: PlanRow, runId: string, mode: ClaudeMode, sessionId: string): Promise<NegotiationPort> {
   const transports = await offerTransportsFor();
   return {
     async answer(key, facts) {
-      if (transports.mode === "live" && (await claudeCallsToday(db, new Date())) >= RUN_LIMITS.claudeCallsPerDay) {
+      if (transports.mode === "live" && (await dailyAllowanceSpent(db, sessionId, DAILY_CALLS, new Date()))) {
         return { ok: false, error: "The demo used today's allowance of Claude calls.", usage: { calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, latencyMs: 0 };
       }
       const started = Date.now();
@@ -254,7 +258,7 @@ async function executeRun(db: Database, input: StartRunInput, run: RunRow, mode:
   const context: BuyerContext = {
     ...buildContext(plan, preset, catalog, stored),
     checkout: checkoutPort(db, plan),
-    negotiator: await negotiationPort(db, plan, run.id, mode),
+    negotiator: await negotiationPort(db, plan, run.id, mode, input.sessionId),
     channel3: newProductPort({ db, transport: channel3, sessionId: input.sessionId, now: () => new Date() }),
   };
   const meta = planMeta({ ...plan, status: "planning" }, preset);
@@ -287,7 +291,7 @@ async function executeRun(db: Database, input: StartRunInput, run: RunRow, mode:
       request: input.request ?? undefined,
       hooks: {
         async beforeCall() {
-          if (mode === "live" && (await claudeCallsToday(db, new Date())) >= RUN_LIMITS.claudeCallsPerDay) {
+          if (mode === "live" && (await dailyAllowanceSpent(db, input.sessionId, DAILY_CALLS, new Date()))) {
             throw new RunStopped("The demo used today's allowance of Claude calls. Items already placed stay in your room.");
           }
         },

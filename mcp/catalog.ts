@@ -65,11 +65,16 @@ export interface SearchScope {
 
 const firstName = (name: string) => name.split(" ")[0];
 
+/** Where an item changes hands, from the listing's handoff mode. */
+export function handoffPlace(mode: HandoffMode, sellerName: string, roomLabel: string | null): string {
+  if (mode === "same_room") return `Stays in ${roomLabel ?? "its room"} for the student moving in there`;
+  if (mode === "storage_hold") return `Waits in campus storage after ${firstName(sellerName)} moves out, ready to collect`;
+  return `Handed over in person by ${firstName(sellerName)}`;
+}
+
 function handoffWords(listing: CatalogListing, mode: HandoffMode, roomLabel: string | null): string {
   const window = listing.pickup === null ? "" : `, ${formatDayRange(listing.pickup.startsAt, listing.pickup.endsAt)}`;
-  if (mode === "same_room") return `Stays in ${roomLabel ?? "its room"} for the student moving in there${window}`;
-  if (mode === "storage_hold") return `Waits in campus storage after ${firstName(listing.sellerName)} moves out, ready to collect${window}`;
-  return `Handed over in person by ${firstName(listing.sellerName)}${window}`;
+  return `${handoffPlace(mode, listing.sellerName, roomLabel)}${window}`;
 }
 
 /** Whether the campus the assistant named is the demo campus, by its slug or its name. */

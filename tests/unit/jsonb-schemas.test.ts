@@ -203,15 +203,22 @@ describe("negotiation, handoff, and dispute JSONB", () => {
     expect(verificationReportSchema.safeParse({ ...report, verdict: "maybe" }).success).toBe(false);
   });
 
-  it("caps dispute notes at 2000 characters", () => {
+  it("caps dispute notes at 2000 characters and keeps the files PayPal accepts", () => {
     const bundle = {
-      notes: "Handoff photos match the listing.",
-      listingPhotos: ["/seed/listings/a.jpg"],
-      handoffPhotos: ["/uploads/a.jpg"],
-      comparisonSummary: "No new damage.",
+      kind: "item_description" as const,
+      evidenceType: "ITEM_DESCRIPTION",
+      notes: "The buyer photographed the chair at handoff and confirmed it at $30.",
+      verifierNote: "The buyer photographed the chair at handoff and confirmed it at $30.",
+      files: [
+        { name: "listing photo 1, chair.jpg", contentType: "image/jpeg" as const, bytes: 81_204, source: "listing_photo" as const },
+        { name: "handoff record.pdf", contentType: "application/pdf" as const, bytes: 3_120, source: "handoff_record" as const },
+      ],
+      skipped: [],
+      refundIds: [],
       timeline: [{ at: "2027-01-02T10:00:00-06:00", event: "Handoff verified" }],
     };
     expect(evidenceBundleSchema.parse(bundle)).toEqual(bundle);
     expect(evidenceBundleSchema.safeParse({ ...bundle, notes: "x".repeat(2001) }).success).toBe(false);
+    expect(evidenceBundleSchema.safeParse({ ...bundle, files: [{ ...bundle.files[0], contentType: "image/webp" }] }).success).toBe(false);
   });
 });

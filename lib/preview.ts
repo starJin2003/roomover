@@ -9,6 +9,8 @@ import type { ActivityEventView, PlanView } from "@/lib/plan-view";
  * The page behind a preview link: a plan an outside assistant made over
  * MCP, which the student looks at and approves in PayPal. Only plans an MCP
  * session made open this way, so a link never shows a browser's own room.
+ * Once a browser approves, the plan is its own, and every other visit reads
+ * the held payment without changing anything.
  */
 
 export interface PreviewData {
@@ -17,6 +19,9 @@ export interface PreviewData {
   /** Who planned the room, such as Claude, from the name the MCP client gave. */
   assistant: string;
   buyerFirstName: string;
+  /** The session that holds the plan now, which is the approving browser's once it claimed the plan. Never sent to the page. */
+  ownerSessionId: string | null;
+  claimed: boolean;
 }
 
 export type PreviewNotice = { tone: "info" | "error"; text: string };
@@ -41,5 +46,5 @@ export async function loadPreview(db: Database, planId: string): Promise<Preview
   const preset = (await loadPresetsWithRules(db)).find((candidate) => candidate.id === row.roomPresetId);
   if (preset === undefined) return null;
   const [plan, events] = await Promise.all([latestRun(db, planId).then((run) => loadPlanView(db, row, preset, run)), eventsAfter(db, planId, 0)]);
-  return { plan, events, assistant: plannerOf(events), buyerFirstName: row.buyerName.split(" ")[0] };
+  return { plan, events, assistant: plannerOf(events), buyerFirstName: row.buyerName.split(" ")[0], ownerSessionId: row.sessionId, claimed: row.claimedAt !== null };
 }

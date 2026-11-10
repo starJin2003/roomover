@@ -1,5 +1,6 @@
 import { loadPlanView, roomLabel } from "@/lib/agents/buyer/run";
 import type { Database } from "@/lib/db/client";
+import { disputesForOrder } from "@/lib/db/disputes";
 import { ensureHandoffs, loadHandoffOrder } from "@/lib/db/handoffs";
 import { latestRun, loadPresetsWithRules, loadSessionPlan, orderEventViews, type PlanRow, type PresetWithRules } from "@/lib/db/plans";
 import { canCheck } from "@/lib/domain/order-state";
@@ -30,7 +31,8 @@ export async function loadHandoffView(db: Database, plan: PlanRow, preset: Prese
   const label = roomLabel(preset, plan.roomNumber);
   if (canCheck(order.status) && (await ensureHandoffs(db, order, label))) order = await loadHandoffOrder(db, plan.id);
   if (order === null) return null;
-  return buildHandoffView({ order, roomLabel: label, buyerFirstName: firstNameOf(plan.buyerName), layout: layoutRefs(plan), events: await orderEventViews(db, order.id) });
+  const [events, disputes] = await Promise.all([orderEventViews(db, order.id), disputesForOrder(db, order.id)]);
+  return buildHandoffView({ order, roomLabel: label, buyerFirstName: firstNameOf(plan.buyerName), layout: layoutRefs(plan), events, disputes });
 }
 
 /** Everything the Handoff page renders, only for the session that owns the plan. */
