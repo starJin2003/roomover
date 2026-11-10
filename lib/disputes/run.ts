@@ -4,22 +4,23 @@ import { publish } from "@/lib/agents/bus";
 import { RUN_LIMITS } from "@/lib/agents/limits";
 import { roomLabel } from "@/lib/agents/buyer/run";
 import type { VerifierTransport } from "@/lib/agents/verifier/compare";
-import { writeDisputeNote, type DisputeNoteResult } from "@/lib/agents/verifier/dispute";
+import { writeDisputeNote, type DisputeNoteResult, type DisputeNoteUsage } from "@/lib/agents/verifier/dispute";
+import { writeInquiryMessage, type InquiryMessageResult } from "@/lib/agents/verifier/inquiry";
 import type { PayPalReads, PayPalReadToolName } from "@/lib/agents/tools/paypal-read";
-import { disputeRecordingKey } from "@/lib/agents/recording";
+import { disputeRecordingKey, inquiryRecordingKey } from "@/lib/agents/recording";
 import type { Database } from "@/lib/db/client";
-import { claimEvidence, disputedRecords, finishEvidence, loadDispute, recordDisputeUpdate, type DisputeRow } from "@/lib/db/disputes";
+import { claimEvidence, claimMessage, disputedRecords, finishEvidence, finishMessage, loadDispute, recordDisputeUpdate, type DisputeRow } from "@/lib/db/disputes";
 import { loadHandoffOrderById } from "@/lib/db/handoffs";
 import { claudeCallsToday, insertEvents, loadSessionPlan, orderEventViews, type Transaction } from "@/lib/db/plans";
 import { listings } from "@/lib/db/schema";
-import { decideEvidence, disputeWords, evidenceBundleSchema, type DisputeUpdateStep, type EvidenceBundle } from "@/lib/domain/dispute";
+import { composeInquiryMessage, decideEvidence, decideInquiryMessage, disputeWords, evidenceBundleSchema, type DisputeUpdateStep, type EvidenceBundle } from "@/lib/domain/dispute";
 import type { ClaudeMode } from "@/lib/domain/enums";
 import { layoutRefs, presetFor } from "@/lib/handoff/load";
 import { shortNoun } from "@/lib/handoff/words";
 import { PayPalApiError } from "@/lib/paypal/errors";
 import type { PayPalRestClient } from "@/lib/paypal/rest/client";
-import { paypalDisputeSchema, provideDisputeEvidence } from "@/lib/paypal/rest/disputes";
-import { codeNote, composeNotes, evidenceFiles, KIND_WORDS, noteFacts, recordPdf, timelineOf, type DisputeContext } from "./evidence";
+import { paypalDisputeSchema, provideDisputeEvidence, sendDisputeMessage } from "@/lib/paypal/rest/disputes";
+import { codeInquiryMessage, codeNote, composeNotes, evidenceFiles, KIND_WORDS, noteFacts, recordPdf, timelineOf, type DisputeContext } from "./evidence";
 import { disputeReport, type DisputeReport } from "./report";
 
 /**
@@ -89,6 +90,7 @@ async function storyFor(db: Db, row: DisputeRow): Promise<{ title: string; detai
     outcome: row.outcome,
     evidenceState: row.evidenceState,
     refundedCents: row.refundedCents,
+    messageSent: row.messageState === "sent",
   });
 }
 
@@ -151,10 +153,65 @@ async function contextFor(db: Database, row: DisputeRow): Promise<DisputeContext
   };
 }
 
-const usageDetail = (note: DisputeNoteResult, mode: ClaudeMode) =>
-  mode === "live" ? { claudeCalls: note.usage.calls, inputTokens: note.usage.inputTokens, outputTokens: note.usage.outputTokens, cacheReadTokens: note.usage.cacheReadTokens } : { claudeCalls: 0 };
+const usageDetail = (result: { usage: DisputeNoteUsage }, mode: ClaudeMode) =>
+  mode === "live" ? { claudeCalls: result.usage.calls, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens, cacheReadTokens: result.usage.cacheReadTokens } : { claudeCalls: 0 };
 
-export type DisputeRunOutcome = { kind: "not_ours" | "not_due" | "busy"; why: string } | { kind: "sent"; bundle: EvidenceBundle } | { kind: "failed"; why: string };
+export type DisputeRunOutcome =
+  | { kind: "not_ours" | "not_due" | "busy"; why: string }
+  | { kind: "messaged"; message: string }
+  | { kind: "sent"; bundle: EvidenceBundle }
+  | { kind: "failed"; why: string };
+
+/** A message run takes at most three calls, so it starts only while the day's allowance still covers them. */
+const MESSAGE_CALLS = 3;
+const SPENT_MESSAGE: InquiryMessageResult = { ok: false, error: "The day's Claude allowance is spent, so Roomover sent a message code wrote from the handoff record.", usage: { calls: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 } };
+
+type RunLine = { runId: string; planId: string | null; orderId: string | null };
+
+/**
+ * Roomover's one message to the buyer while the dispute is an inquiry.
+ * Code builds the facts from the handoff record, the verifier writes the
+ * wording under the note's checks, and code adds the line about escalation.
+ * Returns the message PayPal took, or null when none went out.
+ */
+async function sendInquiryMessage(deps: DisputeDeps, line: RunLine, row: DisputeRow, report: DisputeReport, context: DisputeContext): Promise<string | null> {
+  const { db } = deps;
+  const decision = decideInquiryMessage({ status: report.paypalStatus, stage: report.stage, canSendMessage: report.canSendMessage }, row.messageState);
+  if (!decision.due || !(await claimMessage(db, row.id))) return null;
+  const record = async (drafts: Parameters<typeof insertEvents>[1]["drafts"], agent: "verifier" | "platform") => {
+    const events = await insertEvents(db, { runId: line.runId, planId: line.planId, orderId: row.orderId ?? undefined, agent, drafts });
+    if (line.planId !== null) for (const event of events) publish(line.planId, { type: "event", event });
+  };
+  try {
+    const ref = { paypalDisputeId: row.paypalDisputeId, reason: report.reason ?? "OTHER", amountCents: report.amountCents, stage: report.stage };
+    const facts = noteFacts(context, ref);
+    const { mode, transport } = await deps.transportFor(inquiryRecordingKey(context.item?.listingId ?? context.order.items[0].listingId, ref.reason));
+    const spent = mode === "live" && (await claudeCallsToday(db, deps.now())) + MESSAGE_CALLS > RUN_LIMITS.claudeCallsPerDay;
+    const written = spent ? SPENT_MESSAGE : await writeInquiryMessage(transport, facts);
+    await record([{ tool: "write_inquiry_message", summary: written.ok ? `Wrote the message to the buyer for dispute ${row.paypalDisputeId}: "${written.message}"` : written.error, blocked: !written.ok, detail: usageDetail(written, mode) }], "verifier");
+    const message = composeInquiryMessage(written.ok ? written.message : codeInquiryMessage(facts));
+    await sendDisputeMessage(deps.rest, row.paypalDisputeId, message);
+    await finishMessage(db, row.id, { sent: true, message, at: deps.now() });
+    await record(
+      [
+        {
+          tool: "send_message",
+          summary: `Sent the buyer one message on dispute ${row.paypalDisputeId} through the Disputes API send-message call, ${message.length} characters.`,
+          sentence: `Roomover sent ${facts.buyerFirstName} the facts from the handoff record in PayPal.`,
+          paypal: { api: "Disputes", id: row.paypalDisputeId },
+          detail: { paypalIdKind: "dispute" },
+        },
+      ],
+      "platform",
+    );
+    return message;
+  } catch (error) {
+    const why = error instanceof PayPalApiError ? `PayPal refused the message (${error.status}, debug ID ${error.debugId ?? "none"}).` : error instanceof Error ? error.message.slice(0, 240) : "The message did not go out.";
+    await finishMessage(db, row.id, { sent: false, error: why });
+    await record([{ tool: "send_message", summary: `The message on dispute ${row.paypalDisputeId} did not go out. ${why}`, blocked: true, paypal: { api: "Disputes", id: row.paypalDisputeId }, detail: { paypalIdKind: "dispute" } }], "platform");
+    return null;
+  }
+}
 
 /** A note run takes at most five calls, so it starts only while the day's allowance still covers them. */
 const NOTE_CALLS = 5;
@@ -185,6 +242,7 @@ export async function runDisputeAgent(deps: DisputeDeps, paypalDisputeId: string
   };
 
   const context = await contextFor(db, row);
+  const message = context === null ? null : await sendInquiryMessage(deps, line, row, report, context);
   const refundIds = context === null ? [] : (context.item === null ? context.order.items : [context.item]).flatMap((entry) => (entry.paypalRefundId === null ? [] : [entry.paypalRefundId]));
   const decision = decideEvidence(
     { status: report.paypalStatus, stage: report.stage, reason: report.reason ?? "OTHER", requested: report.requested, canProvideEvidence: report.canProvideEvidence, refundIds },
@@ -192,6 +250,7 @@ export async function runDisputeAgent(deps: DisputeDeps, paypalDisputeId: string
   );
   if (!decision.due || context === null) {
     done();
+    if (message !== null) return { kind: "messaged", message };
     return { kind: "not_due", why: decision.due ? "Roomover could not load the order's records." : decision.why };
   }
   if (!(await claimEvidence(db, row.id, report.stage))) return { kind: "busy", why: "Another run holds this stage's submission." };

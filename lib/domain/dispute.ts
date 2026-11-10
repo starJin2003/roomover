@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { DisputeEvidenceState, DisputeStatus } from "./enums";
+import type { DisputeEvidenceState, DisputeMessageState, DisputeStatus } from "./enums";
 import { formatUsdShort } from "@/lib/format";
 
 /**
@@ -157,6 +157,47 @@ export function noteProblems(note: string, allowedCents: readonly number[]): str
   return unknown.length === 0 ? [] : [`The note names ${unknown.join(", ")}, which is not one of the amounts given (${allowedCents.map(formatUsdShort).join(", ")}). Use only those amounts or none.`];
 }
 
+/**
+ * Whether Roomover sends its one message to the buyer now. PayPal takes
+ * messages only in the inquiry stage and only while the dispute carries a
+ * send-message link. A message on its way or sent ends it, and one PayPal
+ * refused goes again on the dispute's next update.
+ */
+export function decideInquiryMessage(facts: { status: string; stage: string | null; canSendMessage: boolean }, state: DisputeMessageState | null): { due: true } | { due: false; why: string } {
+  if (state === "sent") return { due: false, why: "Roomover already sent its message for this dispute." };
+  if (state === "sending") return { due: false, why: "Roomover's message is already on its way to PayPal." };
+  if (facts.status === "RESOLVED") return { due: false, why: "The dispute is resolved." };
+  if (facts.stage !== "INQUIRY") return { due: false, why: "PayPal takes messages only while a dispute is an inquiry." };
+  if (!facts.canSendMessage) return { due: false, why: "PayPal offers no send-message link on the dispute right now." };
+  return { due: true };
+}
+
+/** The line code adds under the verifier's message, so the promise about escalation is always in code's words. */
+export const INQUIRY_CLOSING = "If the case is escalated, Roomover will send PayPal the listing photos, your handoff photos, and the handoff record.";
+
+/** The Disputes API limit on a message's text. */
+export const MESSAGE_LIMIT = 2000;
+
+export const inquiryMessageSchema = z.strictObject({
+  message: z.string().trim().min(40).max(NOTE_MAX).describe("Two to four short sentences to the buyer, in the second person, saying what Roomover's handoff record shows."),
+});
+
+const PROMISE = /\b(refund\w*|reimburs\w*|compensat\w*|offer\w*|money back|goodwill|accept\w*\s+(?:the|your)\s+(?:claim|dispute))\b/gi;
+
+/** Problems with a message to the buyer: an amount code did not give, or any offer, refund, or accepted claim. */
+export function messageProblems(message: string, allowedCents: readonly number[]): string[] {
+  const promises = [...new Set((message.match(PROMISE) ?? []).map((word) => word.toLowerCase()))];
+  return [
+    ...noteProblems(message, allowedCents),
+    ...(promises.length === 0 ? [] : [`The message says ${promises.map((word) => `"${word}"`).join(", ")}. State the record's facts only, with no offer, refund, or accepted claim.`]),
+  ];
+}
+
+/** The verifier's message, then code's closing line, inside PayPal's 2,000 characters. */
+export function composeInquiryMessage(body: string): string {
+  return `${body}\n\n${INQUIRY_CLOSING}`.slice(0, MESSAGE_LIMIT);
+}
+
 const EVIDENCE_SOURCES = ["listing_photo", "handoff_photo", "handoff_record"] as const;
 
 /** What Roomover sent PayPal for one dispute, kept with the dispute row. */
@@ -218,6 +259,8 @@ export interface DisputeStory {
   evidenceState: DisputeEvidenceState;
   /** What PayPal says the buyer got back, for a buyer win. */
   refundedCents: number | null;
+  /** Roomover sent the buyer its one message while the dispute was an inquiry. */
+  messageSent: boolean;
 }
 
 /** The status card's words: who opened what, and where it stands now. */
@@ -245,6 +288,7 @@ export function disputeWords(story: DisputeStory): { title: string; detail: stri
     case "failed":
       return { title, detail: "PayPal did not take the evidence yet. Roomover sends it again when PayPal next updates the dispute." };
     case "not_due":
+      if (story.messageSent) return { title, detail: `Roomover sent ${buyer} the facts from the handoff record in PayPal, and sends PayPal the photos and the record if the case is escalated.` };
       if (story.status === "waiting_for_buyer_response") return { title, detail: `PayPal is waiting for ${buyer}'s reply.` };
       if (story.status === "under_review") return { title, detail: "PayPal is reviewing it." };
       return { title, detail: "PayPal has not asked Roomover for evidence yet." };

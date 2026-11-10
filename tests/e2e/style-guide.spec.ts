@@ -84,6 +84,8 @@ test("sellers paid fills each row as its payout event arrives and ends on the fu
   await expect(paidRows.first()).toContainText("Jun Park");
   await page.clock.runFor(3_000);
   await expect(paidRows).toHaveCount(5);
+  // React renders the last row in real time after the clock stops, so the total's last frame needs one more step.
+  await page.clock.runFor(100);
   await expect(done.getByText("Paid with PayPal")).toHaveCount(5);
   await expect(done.getByText("$136", { exact: true })).toBeVisible();
   await expect(done.getByText("sent to 5 sellers")).toBeVisible();

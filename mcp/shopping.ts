@@ -3,7 +3,7 @@ import type { WindowCount } from "@/lib/agents/limits";
 import type { PresetWithRules } from "@/lib/db/plans";
 import type { AgentEventDetail } from "@/lib/domain/agent-events";
 import type { HandoffMode, PaymentMode } from "@/lib/domain/enums";
-import { assistantName, decideMcpPlanLimit, previewPath } from "@/lib/domain/mcp";
+import { assistantName, decideMcpPlanLimit, previewPath, type McpClient } from "@/lib/domain/mcp";
 import { readPlanPrompt } from "@/lib/domain/plan-request";
 import { formatUsdShort } from "@/lib/format";
 import type { PlanView } from "@/lib/plan-view";
@@ -24,8 +24,8 @@ export interface McpCaller {
   /** The demo buyer session this MCP session acts through, which owns its plans. */
   buyerSession: string;
   clientHash: string;
-  /** The name the MCP client gave for itself, such as claude-code. */
-  clientName: string | undefined;
+  /** The clientInfo the MCP client sent, and whether the session arrived from Anthropic's servers. */
+  client: McpClient;
 }
 
 /** What one tool call leaves in agent_events. */
@@ -157,8 +157,8 @@ export async function planRoom(deps: PlanRoomDeps, caller: McpCaller, input: Pla
 
   const plan = await deps.createPlan({ buyerSession: caller.buyerSession, preset, roomNumber: deps.roomNumberFor(preset), budgetCents: reading.budgetCents, prompt: reading.prompt });
   await deps.recordRequest(plan.id, {
-    summary: `plan_room for ${plan.roomLabel} with "${reading.prompt}" from MCP client ${caller.clientName ?? "unnamed"}.`,
-    sentence: `${assistantName(caller.clientName)} asked Roomover over MCP to furnish ${plan.roomLabel} for “${reading.prompt}”`,
+    summary: `plan_room for ${plan.roomLabel} with "${reading.prompt}" from MCP client ${caller.client.name ?? "unnamed"}.`,
+    sentence: `${assistantName(caller.client.name, caller.client.fromAnthropic)} asked Roomover over MCP to furnish ${plan.roomLabel} for “${reading.prompt}”`,
   }, caller);
   let run: StartedRun;
   try {
@@ -292,7 +292,7 @@ export async function createCheckout(deps: CreateCheckoutDeps, caller: McpCaller
     record: {
       planId: plan.id,
       summary: `create_checkout ${order.created ? "created" : "reused"} PayPal order ${order.paypalOrderId} for ${total} and returned its approval link.`,
-      sentence: `${assistantName(caller.clientName)} asked for a PayPal approval link for ${total} over MCP. Nothing is charged until you approve in PayPal.`,
+      sentence: `${assistantName(caller.client.name, caller.client.fromAnthropic)} asked for a PayPal approval link for ${total} over MCP. Nothing is charged until you approve in PayPal.`,
       paypal: { api: "Orders v2", id: order.paypalOrderId },
       detail: { totalCents: order.totalCents, paypalIdKind: "order" },
     },

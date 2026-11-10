@@ -22,6 +22,8 @@ export interface McpSessionSetup {
   /** The keyed buyer session an MCP session acts through. */
   buyerSessionFor(mcpSessionId: string): string;
   clientHash: string;
+  /** Whether the initialize request came from Anthropic's outbound ranges, as Claude app connectors do. */
+  fromAnthropic: boolean;
   /** Hosts the endpoint answers for, which stops DNS rebinding from a browser. */
   allowedHosts: string[];
   now?: () => number;
@@ -86,7 +88,7 @@ export async function handleMcpRequest(request: Request, setup: McpSessionSetup)
     openSessions().delete(id);
   };
   // Each session's MCP lines share one run ID, so its calls read as one conversation in agent_events.
-  const server = buildMcpServer(setup.deps, { buyerSession: setup.buyerSessionFor(id), clientHash: setup.clientHash, logRunId: randomUUID() });
+  const server = buildMcpServer(setup.deps, { buyerSession: setup.buyerSessionFor(id), clientHash: setup.clientHash, fromAnthropic: setup.fromAnthropic, logRunId: randomUUID() });
   await server.connect(transport);
   return transport.handleRequest(request, { parsedBody: body });
 }

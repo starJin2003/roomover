@@ -14,6 +14,7 @@ import { SHELL_COLUMNS } from "@/components/site/screen-frame";
 import { Panel } from "@/components/ui/panel";
 import { Spinner } from "@/components/ui/spinner";
 import { BUYER_STEPS, StepStrip } from "@/components/ui/step-strip";
+import { assistantInSentence } from "@/lib/domain/mcp";
 import { formatUsdShort } from "@/lib/format";
 import type { ActivityEventView, PlanView } from "@/lib/plan-view";
 import type { PreviewNotice } from "@/lib/preview";
@@ -33,8 +34,6 @@ interface PreviewScreenProps {
   notice: PreviewNotice | null;
 }
 
-/** "An outside assistant" reads as "an outside assistant" inside a sentence. Names keep their capital. */
-const lowerStart = (name: string) => name.replace(/^An /, "an ");
 
 const PAID_STATUSES: ReadonlySet<string> = new Set(["authorized", "capture_pending", "captured", "settling", "settled", "releasing"]);
 
@@ -173,7 +172,7 @@ export function PreviewScreen({ paypalClientId, holder, preset, initialPlan, ini
               )}
             </div>
           )}
-          {!running && plan.items.length === 0 && <p className="text-base">Nothing fit this room within the budget. Ask {lowerStart(assistant)} to plan it again with a larger budget.</p>}
+          {!running && plan.items.length === 0 && <p className="text-base">Nothing fit this room within the budget. Ask {assistantInSentence(assistant)} to plan it again with a larger budget.</p>}
           <section aria-labelledby="preview-activity" className="flex flex-col gap-3">
             <h2 id="preview-activity" className="text-sm font-semibold">
               What the agents did

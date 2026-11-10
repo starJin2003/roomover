@@ -20,11 +20,14 @@ const failed = (message: string): CallToolResult => ({ content: [{ type: "text",
  * agent_events with the tool, the client, and how long it took, so the
  * plan's Under the hood shows what came in over MCP.
  */
-export function buildMcpServer(deps: McpDeps, session: { buyerSession: string; clientHash: string; logRunId: string }): McpServer {
+export function buildMcpServer(deps: McpDeps, session: { buyerSession: string; clientHash: string; fromAnthropic: boolean; logRunId: string }): McpServer {
   const planRoomDeps = deps.planRoom(session.logRunId);
   const checkoutDeps = deps.createCheckout();
   const server = new McpServer({ name: "roomover", title: "Roomover", version: "1.0.0" }, { capabilities: { tools: {} }, instructions: MCP_INSTRUCTIONS });
-  const caller = (): McpCaller => ({ buyerSession: session.buyerSession, clientHash: session.clientHash, clientName: server.server.getClientVersion()?.name });
+  const caller = (): McpCaller => {
+    const info = server.server.getClientVersion();
+    return { buyerSession: session.buyerSession, clientHash: session.clientHash, client: { name: info?.name, version: info?.version, fromAnthropic: session.fromAnthropic } };
+  };
 
   const run = async <T extends Record<string, unknown>>(tool: McpToolName, work: (who: McpCaller) => Promise<ToolOutcome<T>>): Promise<CallToolResult> => {
     const who = caller();
@@ -39,7 +42,7 @@ export function buildMcpServer(deps: McpDeps, session: { buyerSession: string; c
     } finally {
       const record: McpRecord = outcome?.record ?? { planId: null, summary: `${tool} failed with an unexpected error.` };
       await deps
-        .recordCall(session.logRunId, record, { tool, client: who.clientName ?? "unnamed", latencyMs: Date.now() - started, blocked: outcome?.ok !== true })
+        .recordCall(session.logRunId, record, { tool, client: who.client, latencyMs: Date.now() - started, blocked: outcome?.ok !== true })
         .catch((error: unknown) => console.error("mcp: could not record a tool call", { tool, error: error instanceof Error ? error.name : "unknown" }));
     }
   };

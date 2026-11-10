@@ -1,12 +1,19 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { writeDisputeNote, type DisputeNoteFacts } from "@/lib/agents/verifier/dispute";
+import { writeInquiryMessage } from "@/lib/agents/verifier/inquiry";
+import { codeInquiryMessage } from "@/lib/disputes/evidence";
 import type { VerifierRequest } from "@/lib/agents/verifier/compare";
 import { textPdf } from "@/lib/disputes/pdf";
 import { disputeReport, reportIsComplete } from "@/lib/disputes/report";
 import {
   checkEvidenceFiles,
+  composeInquiryMessage,
   decideEvidence,
+  decideInquiryMessage,
+  INQUIRY_CLOSING,
+  inquiryMessageSchema,
+  messageProblems,
   DISPUTE_REASONS,
   disputeNoteSchema,
   disputeStatusFrom,
@@ -136,7 +143,7 @@ describe("the verifier's note", () => {
     const result = await writeDisputeNote(transport, facts, read);
     expect(result).toMatchObject({ ok: true, note, reads: ["get_dispute", "get_order", "list_transactions"], usage: { calls: 2 } });
     expect(read.mock.calls.map(([name]) => name)).toEqual(["get_dispute", "get_order", "list_transactions"]);
-    expect(String(requests[0].messages[0].content)).toContain("Amounts the note may name: $35, $30.");
+    expect(String(requests[0].messages[0].content)).toContain("Amounts you may name: $35, $30.");
   });
 
   it("refuses a note before the order is read and a note with an amount code did not give, with one retry", async () => {
@@ -152,6 +159,63 @@ describe("the verifier's note", () => {
     const read = vi.fn(async (name: string) => JSON.stringify({ name }));
     expect(await writeDisputeNote(transport, facts, read)).toMatchObject({ ok: true });
     expect(read.mock.calls.map(([name]) => name)).toEqual(["get_order"]);
+  });
+});
+
+describe("the inquiry message", () => {
+  const inquiry = { status: "WAITING_FOR_SELLER_RESPONSE", stage: "INQUIRY", canSendMessage: true };
+  const text = "Your handoff photo of the mesh desk chair shows a small new tear in the seat, which Roomover's photo comparison also found. You kept the chair at handoff and paid $30 of the agreed $35.";
+  const facts: DisputeNoteFacts = {
+    buyerFirstName: "Jordan",
+    sellerFirstName: "Marcus",
+    itemTitle: "Black mesh back rolling desk chair",
+    reason: "MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED",
+    disputedCents: 3_000,
+    askingCents: 3_500,
+    agreedCents: 3_500,
+    paidCents: 3_000,
+    handoff: "The chair was handed over in person in Harbor Hall 214, and Jordan photographed it there.",
+    finding: "The verifier found a new 3 cm tear in Jordan's handoff photo. Jordan kept the chair at handoff and paid $30 of $35.",
+  };
+  const reply = (content: unknown[]): BetaMessage => ({ id: "msg", type: "message", role: "assistant", model: "claude-sonnet-5-5", content, stop_reason: "tool_use", stop_sequence: null, usage: { input_tokens: 700, output_tokens: 90, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } }) as unknown as BetaMessage;
+  const write = (id: string, message: string) => ({ type: "tool_use", id, name: "write_inquiry_message", input: { message } });
+  const scripted = (replies: BetaMessage[]) => ({ send: async () => replies.shift() as BetaMessage });
+
+  it("goes once per dispute, only in the inquiry stage, and only with PayPal's send-message link", () => {
+    expect(decideInquiryMessage(inquiry, null)).toEqual({ due: true });
+    expect(decideInquiryMessage(inquiry, "failed")).toEqual({ due: true });
+    expect(decideInquiryMessage(inquiry, "sent")).toEqual({ due: false, why: "Roomover already sent its message for this dispute." });
+    expect(decideInquiryMessage(inquiry, "sending")).toMatchObject({ due: false });
+    expect(decideInquiryMessage({ ...inquiry, stage: "CHARGEBACK" }, null)).toEqual({ due: false, why: "PayPal takes messages only while a dispute is an inquiry." });
+    expect(decideInquiryMessage({ ...inquiry, status: "RESOLVED" }, null)).toMatchObject({ due: false });
+    expect(decideInquiryMessage({ ...inquiry, canSendMessage: false }, null)).toEqual({ due: false, why: "PayPal offers no send-message link on the dispute right now." });
+  });
+
+  it("holds no offer, no refund, no accepted claim, and only amounts code gave", () => {
+    expect(inquiryMessageSchema.safeParse({ message: text }).success).toBe(true);
+    expect(inquiryMessageSchema.safeParse({ message: "Too short." }).success).toBe(false);
+    expect(messageProblems(text, [3_500, 3_000])).toEqual([]);
+    expect(messageProblems(`${text} Roomover can offer you a partial refund.`, [3_500, 3_000])).toEqual(['The message says "offer", "refund". State the record\'s facts only, with no offer, refund, or accepted claim.']);
+    expect(messageProblems("We accept your claim and will send $40 back to you right away, as promised.", [3_500, 3_000])).toHaveLength(2);
+    expect(messageProblems(codeInquiryMessage(facts), [3_500, 3_000])).toEqual([]);
+  });
+
+  it("ends with code's line about escalation, inside PayPal's 2,000 characters", () => {
+    expect(composeInquiryMessage(text)).toBe(`${text}\n\n${INQUIRY_CLOSING}`);
+    expect(INQUIRY_CLOSING).toBe("If the case is escalated, Roomover will send PayPal the listing photos, your handoff photos, and the handoff record.");
+    expect(composeInquiryMessage("x".repeat(2_500))).toHaveLength(2_000);
+  });
+
+  it("takes the verifier's wording once it passes, and retries a message that offers a refund once", async () => {
+    expect(await writeInquiryMessage(scripted([reply([write("a", text)])]), facts)).toMatchObject({ ok: true, message: text, usage: { calls: 1 } });
+    const offer = `${text} Roomover would like to offer a refund of $5.`;
+    expect(await writeInquiryMessage(scripted([reply([write("a", offer)]), reply([write("b", text)])]), facts)).toMatchObject({ ok: true, message: text, usage: { calls: 2 } });
+    expect(await writeInquiryMessage(scripted([reply([write("a", offer)]), reply([write("b", offer)])]), facts)).toMatchObject({ ok: false, usage: { calls: 2 } });
+  });
+
+  it("refuses any tool but the message", async () => {
+    const result = await writeInquiryMessage(scripted([reply([{ type: "tool_use", id: "a", name: "accept_claim", input: {} }]), reply([write("b", text)])]), facts);
+    expect(result).toMatchObject({ ok: true, message: text });
   });
 });
 
@@ -191,17 +255,19 @@ describe("dispute state", () => {
       links: [{ href: "https://api-m.sandbox.paypal.com/v1/customer/disputes/PP-D-27803/provide-evidence", rel: "provide_evidence", method: "POST" }],
     });
     expect(reportIsComplete(resource)).toBe(true);
-    expect(disputeReport(resource)).toMatchObject({ status: "waiting_for_seller_response", stage: "INQUIRY", amountCents: 3_000, captureIds: ["8YE464155G502411H"], requested: ["PROOF_OF_DELIVERY_SIGNATURE"], canProvideEvidence: true });
+    expect(disputeReport(resource)).toMatchObject({ status: "waiting_for_seller_response", stage: "INQUIRY", amountCents: 3_000, captureIds: ["8YE464155G502411H"], requested: ["PROOF_OF_DELIVERY_SIGNATURE"], canProvideEvidence: true, canSendMessage: false });
+    expect(disputeReport({ ...resource, links: [{ href: "https://api-m.sandbox.paypal.com/v1/customer/disputes/PP-D-27803/send-message", rel: "send_message", method: "POST" }] }).canSendMessage).toBe(true);
     expect(reportIsComplete({ dispute_id: "PP-D-27803" })).toBe(false);
     expect(webhookResourceId({ id: "WH-1", event_type: "CUSTOMER.DISPUTE.CREATED", create_time: "2026-11-09T20:05:00Z", resource: { dispute_id: "PP-D-27803" } })).toBe("PP-D-27803");
   });
 
   it("says where a dispute stands in plain words", () => {
-    const story = { buyerFirstName: "Jordan", sellerFirstName: "Marcus", noun: "chair", status: "waiting_for_seller_response" as const, outcome: null, evidenceState: "sent" as const, refundedCents: null };
+    const story = { buyerFirstName: "Jordan", sellerFirstName: "Marcus", noun: "chair", status: "waiting_for_seller_response" as const, outcome: null, evidenceState: "sent" as const, refundedCents: null, messageSent: false };
     expect(disputeWords(story)).toEqual({ title: "Jordan opened a dispute about the chair.", detail: "Roomover sent PayPal the photos and the handoff record." });
     expect(disputeWords({ ...story, evidenceState: "not_due", status: "waiting_for_buyer_response" }).detail).toBe("PayPal is waiting for Jordan's reply.");
     expect(disputeWords({ ...story, status: "resolved", outcome: "RESOLVED_BUYER_FAVOUR", refundedCents: 3_000 })).toEqual({ title: "PayPal refunded Jordan $30 for the chair.", detail: "Marcus keeps the payout, and Roomover covers the refund." });
     expect(disputeWords({ ...story, status: "resolved", outcome: "RESOLVED_SELLER_FAVOUR" }).title).toBe("PayPal closed the dispute about the chair in Marcus's favor.");
+    expect(disputeWords({ ...story, evidenceState: "not_due", status: "waiting_for_seller_response", messageSent: true }).detail).toBe("Roomover sent Jordan the facts from the handoff record in PayPal, and sends PayPal the photos and the record if the case is escalated.");
   });
 });
 

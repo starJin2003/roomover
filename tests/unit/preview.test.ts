@@ -32,10 +32,13 @@ describe("the preview page", () => {
   it("names who planned the room from the first line that came over MCP", () => {
     expect(plannerOf([event(1, {}), event(2, { mcp: { tool: "plan_room", client: "claude-code" } }), event(3, { mcp: { tool: "create_checkout", client: "other" } })])).toBe("Claude Code");
     expect(plannerOf([event(1, {})])).toBe("An outside assistant");
+    expect(plannerOf([event(1, { mcp: { tool: "plan_room", client: "claude-code", fromAnthropic: true } })])).toBe("Claude");
   });
 
   it("stores the MCP tool and client on an activity line and refuses tools the server does not have", () => {
     expect(agentEventDetailSchema.parse({ mcp: { tool: "plan_room", client: "claude-code" }, latencyMs: 31_200 })).toEqual({ mcp: { tool: "plan_room", client: "claude-code" }, latencyMs: 31_200 });
     expect(agentEventDetailSchema.safeParse({ mcp: { tool: "delete_everything", client: "x" } }).success).toBe(false);
+    const full = { mcp: { tool: "create_checkout", client: "claude-code", clientVersion: "2.1.274", fromAnthropic: false } };
+    expect(agentEventDetailSchema.parse(full)).toEqual(full);
   });
 });

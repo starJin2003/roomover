@@ -14,8 +14,8 @@ const recordedMessage = z.looseObject({ type: z.literal("message"), content: z.a
 export const replyRecordingSchema = z.strictObject({
   version: z.literal(1),
   photos: z.record(z.string().regex(/^[0-9a-f]{64}$/), z.array(recordedMessage).min(1).max(2)),
-  /** The verifier's dispute runs, keyed by the disputed listing and PayPal's reason, in call order. */
-  disputes: z.record(z.string().regex(/^[0-9a-f-]{36}:[A-Z_]+$/), z.array(recordedMessage).min(1).max(5)).optional(),
+  /** The verifier's dispute runs, keyed by the disputed listing and PayPal's reason, and the inquiry message under the same key plus `:inquiry`, in call order. */
+  disputes: z.record(z.string().regex(/^[0-9a-f-]{36}:[A-Z_]+(?::inquiry)?$/), z.array(recordedMessage).min(1).max(5)).optional(),
 });
 
 export type ReplyRecording = z.infer<typeof replyRecordingSchema>;
@@ -40,6 +40,9 @@ export async function replayReplies(path: string, photoSha256: string, agent: st
 
 /** The key a dispute run is recorded under: the disputed listing and PayPal's reason, which stay the same on any day. */
 export const disputeRecordingKey = (listingId: string, reason: string) => `${listingId}:${reason}`;
+
+/** The key the verifier's inquiry message is recorded under, beside the same dispute's note. */
+export const inquiryRecordingKey = (listingId: string, reason: string) => `${disputeRecordingKey(listingId, reason)}:inquiry`;
 
 /** The recorded replies of one dispute run. A run with no recording fails, so tests never fall through to the API. */
 export async function replayDisputeReplies(path: string, key: string): Promise<(call: number) => Promise<BetaMessage>> {

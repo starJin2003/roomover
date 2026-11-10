@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DOCUMENT_NAME, EVIDENCE_LIMITS, type EvidenceContentType } from "@/lib/domain/dispute";
+import { DOCUMENT_NAME, EVIDENCE_LIMITS, MESSAGE_LIMIT, type EvidenceContentType } from "@/lib/domain/dispute";
 import type { PayPalRestClient } from "@/lib/paypal/rest/client";
 
 /**
@@ -113,6 +113,22 @@ export function provideDisputeEvidence(rest: PayPalRestClient, disputeId: string
     method: "POST",
     path: `/v1/customer/disputes/${encodeURIComponent(disputeId)}/provide-evidence`,
     body: { kind: "multipart", form },
+    schema: z.object({ links: z.array(linkSchema).default([]) }),
+  });
+}
+
+/**
+ * Sends the other party a message on a dispute. PayPal takes it only while
+ * the dispute is an inquiry and carries a send-message link, with the text in
+ * a JSON body. Like provide-evidence, the call takes no PayPal-Request-Id, so
+ * the caller's dispute row keeps a message from going twice.
+ */
+export function sendDisputeMessage(rest: PayPalRestClient, disputeId: string, message: string): Promise<{ links: z.infer<typeof linkSchema>[] }> {
+  if (message.trim().length === 0 || message.length > MESSAGE_LIMIT) throw new RangeError(`A dispute message must be 1 to ${MESSAGE_LIMIT} characters.`);
+  return rest.request({
+    method: "POST",
+    path: `/v1/customer/disputes/${encodeURIComponent(disputeId)}/send-message`,
+    body: { kind: "json", value: { message } },
     schema: z.object({ links: z.array(linkSchema).default([]) }),
   });
 }

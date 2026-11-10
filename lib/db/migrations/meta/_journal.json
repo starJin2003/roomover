@@ -50,6 +50,13 @@
       "when": 1794257548681,
       "tag": "0006_dispute_refunds",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794275085267,
+      "tag": "0007_dispute_inquiry_message",
+      "breakpoints": true
     }
   ]
 }

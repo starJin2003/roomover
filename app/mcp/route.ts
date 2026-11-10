@@ -1,7 +1,8 @@
 import { connection, type NextRequest } from "next/server";
 import { readConfig } from "@/lib/config";
 import { clientHashFrom } from "@/lib/http";
-import { mcpBuyerSession } from "@/lib/session";
+import { isAnthropicAddress } from "@/lib/domain/mcp";
+import { clientAddress, mcpBuyerSession } from "@/lib/session";
 import { liveMcpDeps } from "@/mcp/deps";
 import { handleMcpRequest } from "@/mcp/sessions";
 
@@ -22,6 +23,7 @@ async function handle(request: NextRequest): Promise<Response> {
     deps: liveMcpDeps(),
     buyerSessionFor: (id) => mcpBuyerSession(id, SESSION_SECRET),
     clientHash: clientHashFrom(request),
+    fromAnthropic: isAnthropicAddress(clientAddress(request.headers)),
     allowedHosts: allowedHosts(APP_URL),
   });
 }

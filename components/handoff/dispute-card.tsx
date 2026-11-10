@@ -25,8 +25,10 @@ export function DisputeHelp() {
 
 /**
  * One dispute in plain words, outlined in Brick because it needs the
- * student's eye but moves no money here. Under the hood adds the PayPal
- * dispute ID, each Agent Toolkit read, and the evidence Roomover sent.
+ * student's eye but moves no money here. A message Roomover sent the buyer
+ * in the inquiry stage shows in full. Under the hood adds the PayPal dispute
+ * ID, each Agent Toolkit read, the message call, and the evidence Roomover
+ * sent.
  */
 export function DisputeCard({ dispute, events }: { dispute: DisputeView; events: readonly ActivityEventView[] }) {
   const underTheHood = useUnderTheHood();
@@ -34,6 +36,7 @@ export function DisputeCard({ dispute, events }: { dispute: DisputeView; events:
   const runs = new Set(events.filter((event) => event.paypal?.id === dispute.paypalDisputeId).map((event) => event.runId));
   const reads = events.filter((event) => event.detail.toolkit !== undefined && runs.has(event.runId));
   const submissions = events.filter((event) => event.tool === "provide_evidence" && event.paypal?.id === dispute.paypalDisputeId);
+  const messages = events.filter((event) => event.tool === "send_message" && event.paypal?.id === dispute.paypalDisputeId);
   return (
     <section
       data-dispute={dispute.paypalDisputeId}
@@ -46,6 +49,11 @@ export function DisputeCard({ dispute, events }: { dispute: DisputeView; events:
         <p className="text-base font-semibold text-pretty">{dispute.title}</p>
         <p className="col-start-2 text-sm text-pretty">{dispute.detail}</p>
       </div>
+      {dispute.message !== null && (
+        <figure data-dispute-message aria-label="Message Roomover sent in PayPal" className="ml-[22px]">
+          <blockquote className="border-l-2 border-stone pl-3 text-sm whitespace-pre-line text-pretty">{dispute.message.text}</blockquote>
+        </figure>
+      )}
       {underTheHood && (
         <dl data-dispute-details className="flex flex-col gap-1.5 border-t border-hair pt-3 text-xs">
           <div className="flex flex-wrap gap-x-2">
@@ -62,6 +70,14 @@ export function DisputeCard({ dispute, events }: { dispute: DisputeView; events:
                 <code className="mono">{event.detail.toolkit?.tool}</code> <span className="mono">{event.paypal?.id}</span>
                 {event.detail.toolkit?.ok === false ? ", failed" : ""}
                 {event.detail.toolkit?.source === "recorded" ? ", recorded" : ""}, {timeLabel(event.at)}
+              </dd>
+            </div>
+          ))}
+          {messages.map((event) => (
+            <div key={event.seq} data-message-call className="flex flex-wrap gap-x-2">
+              <dt className="font-medium">Disputes API send-message</dt>
+              <dd>
+                {event.blocked ? "did not go out" : `${dispute.message?.text.length ?? 0} characters to the buyer`}, {timeLabel(event.at)}
               </dd>
             </div>
           ))}

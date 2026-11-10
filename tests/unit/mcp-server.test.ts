@@ -28,9 +28,9 @@ function fakeDeps(calls: Call[] = []): McpDeps {
   };
 }
 
-async function connected(deps: McpDeps): Promise<Client> {
+async function connected(deps: McpDeps, fromAnthropic = false): Promise<Client> {
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  const server = buildMcpServer(deps, { buyerSession: "mcp-abcdefghijklmnopqrst", clientHash: "hash", logRunId: "11111111-1111-4111-8111-111111111111" });
+  const server = buildMcpServer(deps, { buyerSession: "mcp-abcdefghijklmnopqrst", clientHash: "hash", fromAnthropic, logRunId: "11111111-1111-4111-8111-111111111111" });
   await server.connect(serverSide);
   const client = new Client({ name: "claude-code", version: "2.1.0" });
   await client.connect(clientSide);
@@ -59,8 +59,15 @@ describe("the Roomover MCP server", () => {
     expect(runId).toBe("11111111-1111-4111-8111-111111111111");
     expect(record.planId).toBeNull();
     expect(record.summary).toMatch(/^search_listings for desk found \d+\.$/);
-    expect(meta).toMatchObject({ tool: "search_listings", client: "claude-code", blocked: false });
+    expect(meta).toMatchObject({ tool: "search_listings", client: { name: "claude-code", version: "2.1.0", fromAnthropic: false }, blocked: false });
     expect(meta.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("marks a session that arrived from Anthropic's servers, as the Claude app's connector does", async () => {
+    const calls: Call[] = [];
+    const client = await connected(fakeDeps(calls), true);
+    await client.callTool({ name: "get_room_presets", arguments: {} });
+    expect(calls[0][2].client).toEqual({ name: "claude-code", version: "2.1.0", fromAnthropic: true });
   });
 
   it("answers a refusal as a tool error and records it as blocked", async () => {
@@ -106,7 +113,7 @@ async function message(response: Response): Promise<Record<string, unknown>> {
 }
 
 describe("MCP sessions over streamable HTTP", () => {
-  const setup = (clientHash = "net-a") => ({ deps: fakeDeps(), buyerSessionFor: (id: string) => `mcp-${id.replace(/-/g, "").slice(0, 20)}`, clientHash, allowedHosts: ["localhost:3100"] });
+  const setup = (clientHash = "net-a") => ({ deps: fakeDeps(), buyerSessionFor: (id: string) => `mcp-${id.replace(/-/g, "").slice(0, 20)}`, clientHash, fromAnthropic: false, allowedHosts: ["localhost:3100"] });
 
   afterEach(async () => {
     for (const session of openSessions().values()) await session.transport.close();

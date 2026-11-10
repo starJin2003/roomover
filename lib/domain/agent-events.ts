@@ -64,8 +64,15 @@ export const agentEventDetailSchema = z.strictObject({
   toolkit: z.strictObject({ tool: z.enum(TOOLKIT_READ_TOOLS), source: z.enum(["agent_toolkit", "recorded"]), ok: z.boolean() }).optional(),
   /** Evidence Roomover sent PayPal for a dispute. */
   evidence: z.strictObject({ evidenceType: z.string().min(1), files: z.number().int().nonnegative(), skipped: z.number().int().nonnegative(), bytes: z.number().int().nonnegative() }).optional(),
-  /** A step an outside assistant asked for over MCP, with the client's own name for itself. */
-  mcp: z.strictObject({ tool: z.enum(MCP_TOOL_NAMES), client: z.string().min(1).max(80) }).optional(),
+  /** A step an outside assistant asked for over MCP, with the name and version its clientInfo reported and whether it arrived from Anthropic's servers. */
+  mcp: z
+    .strictObject({
+      tool: z.enum(MCP_TOOL_NAMES),
+      client: z.string().min(1).max(80),
+      clientVersion: z.string().min(1).max(80).optional(),
+      fromAnthropic: z.boolean().optional(),
+    })
+    .optional(),
   /** A new item placed from Channel3, which the student buys from the retailer. */
   newProduct: z.strictObject({ productId: z.string().min(1), retailer: z.string().min(1), buyUrl: z.url() }).optional(),
 });

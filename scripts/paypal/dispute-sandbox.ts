@@ -2,16 +2,18 @@
  * Drives a real sandbox dispute through Roomover's dispute path. PayPal sends
  * dispute webhooks to the deployed app only, so this runs the same code from
  * a laptop: the verifier agent reads the dispute, the order, and the
- * transaction through the PayPal Agent Toolkit, writes its note, and the
- * evidence goes out through the Disputes API. The sandbox only calls move a
- * dispute along the way a PayPal agent would.
+ * transaction through the PayPal Agent Toolkit. While the dispute is an
+ * inquiry it writes Roomover's one message to the buyer, and once PayPal
+ * asks for evidence it writes the note that goes out with the evidence
+ * through the Disputes API. The sandbox only calls move a dispute along the
+ * way a PayPal agent would.
  *
  *   pnpm paypal:dispute list
  *   pnpm paypal:dispute run <dispute-id> [--record]
  *   pnpm paypal:dispute require-evidence <dispute-id>
  *   pnpm paypal:dispute adjudicate <dispute-id> seller|buyer
  *
- * `--record` saves the verifier's replies to the test recording and the
+ * `--record` saves the verifier's replies, under one key per task, to the test recording and the
  * toolkit's transaction answer to the sandbox recording, which the end to
  * end test replays.
  */
@@ -57,9 +59,9 @@ function capturingReads(reads: PayPalReads, kept: Map<string, string>): PayPalRe
 async function run(disputeId: string, record: boolean): Promise<void> {
   const { DATABASE_URL, ANTHROPIC_API_KEY } = readConfig(["DATABASE_URL", "ANTHROPIC_API_KEY"]);
   const pool = createPool(DATABASE_URL, 2);
-  const replies: BetaMessage[] = [];
+  // A run asks for one transport per verifier task, the inquiry message or the evidence note, each under its own key.
+  const recorded = new Map<string, BetaMessage[]>();
   const kept = new Map<string, string>();
-  let recordedKey: string | null = null;
   try {
     const live = liveVerifierTransport(ANTHROPIC_API_KEY);
     const outcome = await runDisputeAgent(
@@ -68,7 +70,8 @@ async function run(disputeId: string, record: boolean): Promise<void> {
         rest: paypalRest(),
         reads: capturingReads(toolkitReads(), kept),
         async transportFor(key) {
-          recordedKey = key;
+          const replies: BetaMessage[] = [];
+          recorded.set(key, replies);
           return { mode: "live", transport: { send: async (request, call) => { const reply = await live.send(request, call); replies.push(reply); return reply; } } };
         },
         now: () => new Date(),
@@ -76,12 +79,14 @@ async function run(disputeId: string, record: boolean): Promise<void> {
       disputeId,
     );
     console.log(JSON.stringify(outcome.kind === "sent" ? { kind: outcome.kind, evidenceType: outcome.bundle.evidenceType, files: outcome.bundle.files, skipped: outcome.bundle.skipped, notes: outcome.bundle.notes } : outcome, null, 1));
+    const replies = [...recorded.values()].flat();
     console.log(`Toolkit reads: ${[...kept.keys()].join(", ") || "none"}. Claude calls: ${replies.length}, input ${replies.reduce((sum, reply) => sum + reply.usage.input_tokens, 0)}, output ${replies.reduce((sum, reply) => sum + reply.usage.output_tokens, 0)}, cache read ${replies.reduce((sum, reply) => sum + (reply.usage.cache_read_input_tokens ?? 0), 0)}.`);
-    if (record && recordedKey !== null && replies.length > 0) {
+    const keys = [...recorded.entries()].filter(([, entries]) => entries.length > 0);
+    if (record && keys.length > 0) {
       // The file is checked by reading it, then rewritten from its raw JSON, so the photo recordings keep their exact bytes.
       await readReplyRecording(VERIFIER_RECORDING);
       const existing = JSON.parse(await readFile(VERIFIER_RECORDING, "utf8")) as ReplyRecording;
-      const disputes = { ...existing.disputes, [recordedKey]: replies };
+      const disputes = { ...existing.disputes, ...Object.fromEntries(keys) };
       await writeFile(VERIFIER_RECORDING, `${JSON.stringify({ ...existing, disputes }, null, 1)}\n`);
       const transactions = kept.get("list_transactions");
       if (transactions !== undefined) {
@@ -89,7 +94,7 @@ async function run(disputeId: string, record: boolean): Promise<void> {
         sandbox.templates.transactionSearch = JSON.parse(transactions);
         await writeFile(SANDBOX_RECORDING, `${JSON.stringify(sandbox, null, 1)}\n`);
       }
-      console.log(`Recorded the run under ${recordedKey}.`);
+      console.log(`Recorded the run under ${keys.map(([key]) => key).join(" and ")}.`);
     }
   } finally {
     await pool.end();

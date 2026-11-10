@@ -4,6 +4,7 @@ import { ActivityLog, type ActivityEntry } from "@/components/activity/activity-
 import { useUnderTheHood } from "@/components/paypal/under-the-hood";
 import { Details } from "@/components/ui/details";
 import type { PayPalIdKind } from "@/lib/domain/agent-events";
+import { assistantInSentence, assistantName } from "@/lib/domain/mcp";
 import type { ActivityEventView } from "@/lib/plan-view";
 
 /** How many everyday sentences the panel keeps in view. */
@@ -76,7 +77,7 @@ export function ActivityFeed({ events, shown = SENTENCES_SHOWN }: { events: read
                 {event.detail.mcp !== undefined && (
                   <span data-via-mcp className="text-ink">
                     {" "}
-                    via MCP from {event.detail.mcp.client}
+                    via MCP from {assistantInSentence(assistantName(event.detail.mcp.client, event.detail.mcp.fromAnthropic))} ({[event.detail.mcp.client, event.detail.mcp.clientVersion].filter(Boolean).join(" ")})
                   </span>
                 )}
               </span>

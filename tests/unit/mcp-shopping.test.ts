@@ -5,7 +5,7 @@ import type { PlanView } from "@/lib/plan-view";
 import { createCheckout, createCheckoutInput, planRoom, planRoomInput, planSummary, type CreateCheckoutDeps, type McpCaller, type PlanRoomDeps, type PreparedOrder } from "@/mcp/shopping";
 
 const PLAN_ID = "5b1d1b8e-3f5a-4c1e-9d2a-6f1b2c3d4e5f";
-const caller: McpCaller = { buyerSession: "mcp-abcdefghijklmnopqrst", clientHash: "hash", clientName: "claude-code" };
+const caller: McpCaller = { buyerSession: "mcp-abcdefghijklmnopqrst", clientHash: "hash", client: { name: "claude-code", version: "2.1.274", fromAnthropic: false } };
 const harbor = { id: "preset-harbor", slug: "harbor-hall-double", name: "Harbor Hall double", hallName: "Harbor Hall" } as PresetWithRules;
 
 const item = (title: string, sellerName: string, priceCents: number, extra: Partial<RoomItemData> = {}): RoomItemData =>
@@ -168,6 +168,12 @@ describe("create_checkout", () => {
     expect(outcome.data.whatHappens).toBe("After the student approves, PayPal holds $107 and charges each item when the student checks it at handoff. Sellers are paid out then. Nothing moves until the student approves in PayPal.");
     expect(outcome.record).toMatchObject({ planId: PLAN_ID, paypal: { api: "Orders v2", id: "7YY18853U0064211D" } });
     expect(outcome.record.sentence).toBe("Claude Code asked for a PayPal approval link for $107 over MCP. Nothing is charged until you approve in PayPal.");
+  });
+
+  it("calls the Claude app Claude although its connector reports claude-code", async () => {
+    const app: McpCaller = { ...caller, client: { name: "claude-code", version: undefined, fromAnthropic: true } };
+    const outcome = await createCheckout(checkoutDeps(), app, createCheckoutInput.parse({ planId: PLAN_ID }));
+    expect(outcome.ok && outcome.record.sentence).toBe("Claude asked for a PayPal approval link for $107 over MCP. Nothing is charged until you approve in PayPal.");
   });
 
   it("finds only this session's plans", async () => {

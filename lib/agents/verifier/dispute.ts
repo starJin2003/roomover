@@ -85,7 +85,7 @@ export function disputeMessage(facts: DisputeNoteFacts): string {
     `Asking price ${formatUsdShort(facts.askingCents)}, agreed price ${formatUsdShort(facts.agreedCents)}, paid at handoff ${formatUsdShort(facts.paidCents)}.`,
     `Handoff: ${facts.handoff}`,
     `Finding and confirmation: ${facts.finding}`,
-    `Amounts the note may name: ${amounts}.`,
+    `Amounts you may name: ${amounts}.`,
   ].join("\n");
 }
 

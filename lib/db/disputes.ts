@@ -1,6 +1,6 @@
-import { and, asc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { disputeUpdateStep, evidenceStateOnReport, type DisputeUpdateStep, type EvidenceBundle } from "@/lib/domain/dispute";
-import type { DisputeEvidenceState, DisputeStatus } from "@/lib/domain/enums";
+import type { DisputeEvidenceState, DisputeMessageState, DisputeStatus } from "@/lib/domain/enums";
 import type { Database } from "./client";
 import type { Transaction } from "./plans";
 import { disputes, orderItems, orders } from "./schema";
@@ -26,6 +26,9 @@ export interface DisputeRow {
   evidenceStage: string | null;
   evidenceSubmittedAt: Date | null;
   evidenceError: string | null;
+  messageState: DisputeMessageState | null;
+  message: string | null;
+  messageSentAt: Date | null;
   createdAt: Date;
 }
 
@@ -48,6 +51,9 @@ const columns = {
   evidenceStage: disputes.evidenceStage,
   evidenceSubmittedAt: disputes.evidenceSubmittedAt,
   evidenceError: disputes.evidenceError,
+  messageState: disputes.messageState,
+  message: disputes.message,
+  messageSentAt: disputes.messageSentAt,
   createdAt: disputes.createdAt,
 };
 
@@ -177,4 +183,25 @@ export async function finishEvidence(db: Executor, disputeId: string, outcome: {
         : { evidenceState: "failed", evidenceError: outcome.error },
     )
     .where(and(eq(disputes.id, disputeId), eq(disputes.evidenceState, "sending")));
+}
+
+/**
+ * Takes the one message for this dispute. Send-message takes no
+ * PayPal-Request-Id either, so only the caller that moves the row to sending
+ * may call it, and a message PayPal refused may be taken again.
+ */
+export async function claimMessage(db: Executor, disputeId: string): Promise<boolean> {
+  const claimed = await db
+    .update(disputes)
+    .set({ messageState: "sending", messageError: null })
+    .where(and(eq(disputes.id, disputeId), or(isNull(disputes.messageState), eq(disputes.messageState, "failed"))))
+    .returning({ id: disputes.id });
+  return claimed.length === 1;
+}
+
+export async function finishMessage(db: Executor, disputeId: string, outcome: { sent: true; message: string; at: Date } | { sent: false; error: string }): Promise<void> {
+  await db
+    .update(disputes)
+    .set(outcome.sent ? { messageState: "sent", message: outcome.message, messageSentAt: outcome.at, messageError: null } : { messageState: "failed", messageError: outcome.error })
+    .where(and(eq(disputes.id, disputeId), eq(disputes.messageState, "sending")));
 }

@@ -1,10 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
-import { and, asc, eq } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
+import { and, asc, eq, gte } from "drizzle-orm";
 import type { Page } from "@playwright/test";
 import { readConfig } from "@/lib/config";
 import { getDb } from "@/lib/db/client";
 import { agentEvents, orders, plans } from "@/lib/db/schema";
+import { assistantName } from "@/lib/domain/mcp";
 import { mcpBuyerSession } from "@/lib/session";
 import { captureFullHeight, expectFitsDesktops } from "./support/layout";
 import { removeSessionData } from "./support/remove-session";
@@ -108,6 +110,7 @@ test("an outside assistant plans a room over MCP and the student approves it fro
 
     const logged = await getDb().select({ tool: agentEvents.tool, detail: agentEvents.detail }).from(agentEvents).where(eq(agentEvents.planId, plan.planId)).orderBy(asc(agentEvents.seq));
     expect(logged.filter((event) => event.detail.mcp !== undefined).map((event) => event.tool)).toEqual(["mcp_plan_room", "mcp_plan_room", "mcp_create_checkout"]);
+    expect(logged.find((event) => event.tool === "mcp_create_checkout")?.detail.mcp).toEqual({ tool: "create_checkout", client: "roomover-e2e", clientVersion: "1.0.0", fromAnthropic: false });
 
     // The preview link, as the student opens it.
     await page.goto(`/p/${plan.planId}`);
@@ -143,7 +146,7 @@ test("an outside assistant plans a room over MCP and the student approves it fro
     expect(text(status)).toBe(`The student already approved this room in PayPal, so PayPal holds ${plan.paypalTotal} until the handoff, which runs in the browser that approved it.`);
     await expect(page.getByRole("link", { name: "Go to handoff" })).toBeVisible();
     await page.getByRole("switch", { name: "Under the hood" }).click();
-    await expect(page.locator("[data-via-mcp]").first()).toHaveText(/via MCP from roomover-e2e/);
+    await expect(page.locator("[data-via-mcp]").first()).toHaveText(/via MCP from an outside assistant \(roomover-e2e 1\.0\.0\)/);
     await expect(page.locator("[data-room]")).toHaveAttribute("data-ready", "true", { timeout: 30_000 });
     await page.waitForTimeout(1200);
     await captureFullHeight(page, `${SCREENSHOT_DIR}/mcp-held-${width}.png`);
@@ -178,6 +181,28 @@ test("an outside assistant plans a room over MCP and the student approves it fro
     await other.client.close();
     await removeSessionData({ id: buyerSession });
   }
+});
+
+test("names a session from Anthropic's servers Claude although its connector reports claude-code, and keeps the raw clientInfo", async ({ baseURL }) => {
+  const version = `e2e-${randomBytes(4).toString("hex")}`;
+  const started = new Date(Date.now() - 1_000);
+  // The Claude app's connector reaches /mcp from Anthropic's published range, and Claude Code from the user's own address.
+  for (const address of ["160.79.104.10", "73.22.140.8"]) {
+    const client = new Client({ name: "claude-code", version });
+    const transport = new StreamableHTTPClientTransport(new URL("/mcp", baseURL), { requestInit: { headers: { "x-forwarded-for": address } } });
+    await client.connect(transport);
+    const presets = await client.callTool({ name: "get_room_presets", arguments: {} });
+    expect(presets.isError ?? false).toBe(false);
+    await transport.terminateSession();
+    await client.close();
+  }
+  const lines = await getDb().select({ detail: agentEvents.detail }).from(agentEvents).where(and(eq(agentEvents.tool, "mcp_get_room_presets"), gte(agentEvents.createdAt, started))).orderBy(asc(agentEvents.seq));
+  const mine = lines.map((line) => line.detail.mcp).filter((mcp) => mcp?.clientVersion === version);
+  expect(mine).toEqual([
+    { tool: "get_room_presets", client: "claude-code", clientVersion: version, fromAnthropic: true },
+    { tool: "get_room_presets", client: "claude-code", clientVersion: version, fromAnthropic: false },
+  ]);
+  expect(mine.map((mcp) => assistantName(mcp?.client, mcp?.fromAnthropic))).toEqual(["Claude", "Claude Code"]);
 });
 
 test("a preview link opens only plans an outside assistant made", async ({ page }) => {

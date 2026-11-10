@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAppTokenSource, type FetchLike } from "@/lib/paypal/rest/app-token";
 import { createPayPalRestClient } from "@/lib/paypal/rest/client";
-import { provideDisputeEvidence } from "@/lib/paypal/rest/disputes";
+import { provideDisputeEvidence, sendDisputeMessage } from "@/lib/paypal/rest/disputes";
 import { exchangeAuthorizationCode, getUserInfo, loginWithPayPalUrl } from "@/lib/paypal/rest/identity";
 import { createPayoutBatch, getPayoutBatch, type PayoutItemInput } from "@/lib/paypal/rest/payouts";
 import { createWebhook, resendWebhookEvent } from "@/lib/paypal/rest/webhooks";
@@ -132,6 +132,19 @@ describe("Disputes", () => {
     expect(() =>
       provideDisputeEvidence(rest, "PP-D-1", { ...evidence, files: [{ ...evidence.files[0], filename: "a/b.png" }] }),
     ).toThrow(RangeError);
+  });
+
+  it("sends a dispute message as JSON with no idempotency key, and refuses an empty or overlong one", async () => {
+    const { rest, apiCall } = restAnswering({ links: [{ href: "https://api-m.sandbox.paypal.com/v1/customer/disputes/PP-D-27803", rel: "self", method: "GET" }] });
+    const answer = await sendDisputeMessage(rest, "PP-D-27803", "Your handoff photo shows the chair as listed.");
+    const call = apiCall();
+    expect(call?.url).toBe("https://api-m.sandbox.paypal.com/v1/customer/disputes/PP-D-27803/send-message");
+    expect(call?.init.method).toBe("POST");
+    expect(header(call, "PayPal-Request-Id")).toBeNull();
+    expect(JSON.parse(String(call?.init.body))).toEqual({ message: "Your handoff photo shows the chair as listed." });
+    expect(answer.links).toHaveLength(1);
+    expect(() => sendDisputeMessage(rest, "PP-D-1", " ")).toThrow(RangeError);
+    expect(() => sendDisputeMessage(rest, "PP-D-1", "x".repeat(2_001))).toThrow(RangeError);
   });
 });
 

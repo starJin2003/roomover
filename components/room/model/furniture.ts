@@ -257,10 +257,25 @@ const drawerUnit: Builder = ({ width: w, depth: d, height: h }, tones) => {
   return parts;
 };
 
+/** Heights of a woven basket's colored bands, as shares of its height. */
+const BASKET_BANDS = [
+  [0.2, 0.32],
+  [0.48, 0.6],
+  [0.76, 0.86],
+] as const;
+
+/**
+ * A woven basket in one color with three bands of a second. A set's swatches
+ * list each basket's two colors in turn, so the second of two baskets with
+ * four swatches wears the third and fourth.
+ */
 const basket: Builder = ({ width: w, height: h }, tones, piece) => {
   const radius = w / 2;
   const wall = 16;
-  return [
+  const body = tones[(piece * 2) % tones.length];
+  const band = tones[(piece * 2 + 1) % tones.length];
+  const outer = (y: number) => radius * 0.92 + (radius * 0.08 * (y - 8)) / (h - 18);
+  const parts: Part[] = [
     lathe(
       [
         [0, 0],
@@ -273,9 +288,22 @@ const basket: Builder = ({ width: w, height: h }, tones, piece) => {
         [0, wall + 10],
       ],
       [0, 0, 0],
-      fabric(tones[piece % tones.length]),
+      fabric(body),
     ),
   ];
+  if (band === body) return parts;
+  for (const [from, to] of BASKET_BANDS) {
+    const [low, high] = [h * from, h * to];
+    const ring = [
+      [outer(low) + 1.5, low],
+      [outer(high) + 1.5, high],
+      [outer(high) - wall / 2, high],
+      [outer(low) - wall / 2, low],
+      [outer(low) + 1.5, low],
+    ] as const;
+    parts.push(lathe(ring, [0, 0, 0], fabric(band)));
+  }
+  return parts;
 };
 
 const tote: Builder = ({ width: w, depth: d, height: h }, tones) => [

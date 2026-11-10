@@ -22,6 +22,8 @@ export interface DisputeReport {
   listingIds: string[];
   requested: string[];
   canProvideEvidence: boolean;
+  /** The dispute carries a send-message link, which PayPal offers while it is an inquiry. */
+  canSendMessage: boolean;
 }
 
 const cents = (money: { currency_code: string; value: string } | undefined) => (money === undefined || money.currency_code !== CURRENCY ? null : decimalToCents(money.value));
@@ -44,6 +46,7 @@ export function disputeReport(dispute: PayPalDispute): DisputeReport {
     listingIds: (dispute.disputed_transactions ?? []).flatMap((transaction) => (transaction.items ?? []).flatMap((item) => (item.item_id === undefined ? [] : [item.item_id]))),
     requested: (dispute.evidences ?? []).flatMap((evidence) => (evidence.source === "REQUESTED_FROM_SELLER" && evidence.evidence_type !== undefined ? [evidence.evidence_type] : [])),
     canProvideEvidence: (dispute.links ?? []).some((link) => link.rel === "provide_evidence" || link.rel === "provide-evidence"),
+    canSendMessage: (dispute.links ?? []).some((link) => link.rel === "send_message" || link.rel === "send-message"),
   };
 }
 

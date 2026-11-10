@@ -11,7 +11,7 @@ import { countMcpPlans, createPlan, insertEvents, latestRun, loadCatalog, loadLi
 import { plans } from "@/lib/db/schema";
 import { DEMO_BUYER_ID, DEMO_ROOM } from "@/lib/demo";
 import { CheckoutRefused } from "@/lib/domain/checkout";
-import { MCP_LIMITS, type McpToolName } from "@/lib/domain/mcp";
+import { MCP_LIMITS, mcpClientDetail, type McpClient, type McpToolName } from "@/lib/domain/mcp";
 import { holdsMoney } from "@/lib/domain/order-state";
 import { PayPalApiError } from "@/lib/paypal/errors";
 import { paypalSdk } from "@/lib/paypal/server-sdk/client";
@@ -27,7 +27,7 @@ export interface McpDeps {
   demoRoom(presets: readonly PresetWithRules[]): { presetSlug: string; label: string; student: string };
   planRoom(logRunId: string): PlanRoomDeps;
   createCheckout(): CreateCheckoutDeps;
-  recordCall(logRunId: string, record: McpRecord, meta: { tool: McpToolName; client: string; latencyMs: number; blocked: boolean }): Promise<void>;
+  recordCall(logRunId: string, record: McpRecord, meta: { tool: McpToolName; client: McpClient; latencyMs: number; blocked: boolean }): Promise<void>;
 }
 
 const POLL_MS = 2_000;
@@ -115,7 +115,7 @@ export function liveMcpDeps(): McpDeps {
             runId: logRunId,
             planId,
             agent: "platform",
-            drafts: [{ tool: "mcp_plan_room", summary: record.summary, sentence: record.sentence, detail: { ...record.detail, mcp: { tool: "plan_room", client: caller.clientName ?? "unnamed" } } }],
+            drafts: [{ tool: "mcp_plan_room", summary: record.summary, sentence: record.sentence, detail: { ...record.detail, mcp: { tool: "plan_room", ...mcpClientDetail(caller.client) } } }],
           });
           for (const event of events) publish(planId, { type: "event", event });
         },
@@ -195,7 +195,7 @@ export function liveMcpDeps(): McpDeps {
             summary: record.summary,
             sentence: record.sentence,
             blocked: meta.blocked,
-            detail: { ...record.detail, mcp: { tool: meta.tool, client: meta.client.slice(0, 80) }, latencyMs: meta.latencyMs },
+            detail: { ...record.detail, mcp: { tool: meta.tool, ...mcpClientDetail(meta.client) }, latencyMs: meta.latencyMs },
             paypal: record.paypal,
           },
         ],

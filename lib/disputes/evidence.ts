@@ -110,6 +110,11 @@ export function codeNote(facts: DisputeNoteFacts): string {
   return `${facts.buyerFirstName} bought ${facts.itemTitle} from ${facts.sellerFirstName} on Roomover for ${formatUsdShort(facts.agreedCents)}. ${facts.handoff} ${facts.finding}`.slice(0, 700);
 }
 
+/** The message code sends the buyer when the verifier gives no valid one, from the same facts. */
+export function codeInquiryMessage(facts: DisputeNoteFacts): string {
+  return `This is what Roomover's handoff record shows for ${facts.itemTitle} from ${facts.sellerFirstName}. ${facts.handoff} ${facts.finding} The agreed price was ${formatUsdShort(facts.agreedCents)}.`.slice(0, 700);
+}
+
 /** The verifier's note, then one line code writes about what is attached, inside PayPal's 2,000 characters. */
 export function composeNotes(note: string, files: number): string {
   const attached = `Attached: ${files} ${files === 1 ? "file" : "files"} from Roomover's records, with the buyer's handoff photos, the listing photos, and a handoff record PDF that lists the PayPal IDs and the timeline.`;

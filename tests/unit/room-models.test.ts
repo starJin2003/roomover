@@ -5,7 +5,7 @@ import { buildFixture } from "@/components/room/model/fixtures";
 import { buildFurniture } from "@/components/room/model/furniture";
 import { modelExtent } from "@/components/room/model/parts";
 import { buildShell, roomView } from "@/components/room/model/shell";
-import { tonesForColor } from "@/components/room/model/tones";
+import { itemTones, roomPaint, tonesForColor } from "@/components/room/model/tones";
 import { seedRoomPresets } from "@/scripts/seed/halls";
 import { seedListings } from "@/scripts/seed/listings";
 
@@ -40,6 +40,27 @@ describe("furniture models", () => {
     expect(comforter.min[1]).toBeLessThan(-200);
     const pillows = buildFurniture("pillows", { width: 510, depth: 660, height: 150 }, 3, ["paper"], { width: 914, length: 2032 });
     expect(pillows).toHaveLength(3);
+  });
+});
+
+describe("woven baskets", () => {
+  const listing = seedListings("2026-11-08").find((entry) => entry.title === "Two woven grass baskets");
+
+  it("dresses each basket in its own colors from the photo, pink with teal bands and green with orange bands", () => {
+    if (listing?.colors === undefined) throw new Error("The seed lost the woven baskets or their colors.");
+    const colors = listing.colors;
+    const size = { width: listing.widthMm, depth: listing.depthMm, height: listing.heightMm };
+    const parts = buildFurniture("basket", size, 2, itemTones(colors, listing.color));
+    const paint = (name: string) => roomPaint(colors.find((swatch) => swatch.name === name)?.hex ?? "#000000");
+    const tonesOf = (left: boolean) => new Set(parts.filter((part) => part.at[0] < 0 === left).map((part) => part.look.tone));
+
+    expect(tonesOf(true)).toEqual(new Set([paint("pink"), paint("teal")]));
+    expect(tonesOf(false)).toEqual(new Set([paint("green"), paint("orange")]));
+  });
+
+  it("keeps a one color basket plain", () => {
+    const parts = buildFurniture("basket", { width: 400, depth: 400, height: 300 }, 1, ["sand"]);
+    expect(parts).toHaveLength(1);
   });
 });
 

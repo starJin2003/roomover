@@ -70,13 +70,65 @@ export function planClaimStep(plan: { mcpSessionId: string | null; claimedAt: Da
   return moneyHeld ? "claim" : "not_held";
 }
 
-/** What the activity panel calls the assistant, from the name its MCP client reports. */
-export function assistantName(clientName: string | undefined): string {
+/**
+ * The MCP client as Roomover records it: the name and version from its
+ * clientInfo, and whether the session arrived from Anthropic's servers.
+ */
+export interface McpClient {
+  name: string | undefined;
+  version: string | undefined;
+  fromAnthropic: boolean;
+}
+
+/**
+ * Anthropic's outbound ranges, which Claude app connectors call MCP servers
+ * from (https://platform.claude.com/docs/en/api/ip-addresses). Claude Code
+ * connects from the user's own machine.
+ */
+const ANTHROPIC_OUTBOUND = [
+  ["160.79.104.0", 21],
+  ["153.61.208.0", 20],
+] as const;
+
+const ipv4Number = (address: string): number | null => {
+  const parts = address.split(".");
+  if (parts.length !== 4 || !parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) return null;
+  return parts.reduce((total, part) => total * 256 + Number(part), 0);
+};
+
+/** Whether a client address falls in Anthropic's outbound ranges. IPv4 only, as Anthropic publishes them. */
+export function isAnthropicAddress(address: string): boolean {
+  const value = ipv4Number(address.replace(/^::ffff:/, ""));
+  if (value === null) return false;
+  return ANTHROPIC_OUTBOUND.some(([base, bits]) => {
+    const size = 2 ** (32 - bits);
+    const start = ipv4Number(base) ?? 0;
+    return value >= start && value < start + size;
+  });
+}
+
+/**
+ * What the activity panel calls the assistant. The Claude app's connectors
+ * report the clientInfo name claude-code, the same name Claude Code reports,
+ * so a session from Anthropic's servers is the Claude app whatever its name.
+ */
+export function assistantName(clientName: string | undefined, fromAnthropic = false): string {
+  if (fromAnthropic) return "Claude";
   if (clientName === undefined) return "An outside assistant";
   if (/claude[-_ ]?code/i.test(clientName)) return "Claude Code";
   if (/claude|anthropic/i.test(clientName)) return "Claude";
   if (/inspector/i.test(clientName)) return "MCP Inspector";
   return "An outside assistant";
+}
+
+/** "An outside assistant" reads as "an outside assistant" inside a sentence. Names keep their capital. */
+export const assistantInSentence = (name: string) => name.replace(/^An /, "an ");
+
+/** The client fields an MCP line keeps in agent_events, with the clientInfo name and version as the client sent them. */
+export function mcpClientDetail(client: McpClient): { client: string; clientVersion?: string; fromAnthropic: boolean } {
+  const name = client.name?.trim().slice(0, 80);
+  const version = client.version?.trim().slice(0, 80);
+  return { client: name === undefined || name === "" ? "unnamed" : name, ...(version === undefined || version === "" ? {} : { clientVersion: version }), fromAnthropic: client.fromAnthropic };
 }
 
 /** The page a student opens to see a plan and approve it. */

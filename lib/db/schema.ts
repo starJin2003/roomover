@@ -23,6 +23,7 @@ import {
   AGENT_RUN_STATUSES,
   CLAUDE_MODES,
   DISPUTE_EVIDENCE_STATES,
+  DISPUTE_MESSAGE_STATES,
   DISPUTE_STATUSES,
   HANDOFF_DECISIONS,
   HANDOFF_MODES,
@@ -74,6 +75,7 @@ export const payoutStatus = pgEnum("payout_status", PAYOUT_STATUSES);
 export const payoutItemStatus = pgEnum("payout_item_status", PAYOUT_ITEM_STATUSES);
 export const disputeStatus = pgEnum("dispute_status", DISPUTE_STATUSES);
 export const disputeEvidenceState = pgEnum("dispute_evidence_state", DISPUTE_EVIDENCE_STATES);
+export const disputeMessageState = pgEnum("dispute_message_state", DISPUTE_MESSAGE_STATES);
 export const agentName = pgEnum("agent_name", AGENT_NAMES);
 export const agentRunKind = pgEnum("agent_run_kind", AGENT_RUN_KINDS);
 export const agentRunStatus = pgEnum("agent_run_status", AGENT_RUN_STATUSES);
@@ -678,6 +680,11 @@ export const disputes = pgTable(
     evidenceStage: text("evidence_stage"),
     evidenceSubmittedAt: at("evidence_submitted_at"),
     evidenceError: text("evidence_error"),
+    /** Roomover's one message to the buyer in the inquiry stage, which no run sends twice. */
+    messageState: disputeMessageState("message_state"),
+    message: text("message"),
+    messageSentAt: at("message_sent_at"),
+    messageError: text("message_error"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -686,6 +693,7 @@ export const disputes = pgTable(
     check("disputes_amount_check", sql`${t.amountCents} is null or ${t.amountCents} > 0`),
     check("disputes_evidence_check", sql`${t.evidenceState} <> 'sent' or (${t.evidenceSubmittedAt} is not null and ${t.evidenceStage} is not null)`),
     check("disputes_refunded_check", sql`${t.refundedCents} is null or ${t.refundedCents} >= 0`),
+    check("disputes_message_check", sql`${t.messageState} is distinct from 'sent' or (${t.message} is not null and ${t.messageSentAt} is not null)`),
   ],
 );
 

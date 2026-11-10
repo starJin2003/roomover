@@ -184,6 +184,10 @@ export type DisputeStatus = (typeof DISPUTE_STATUSES)[number];
 export const DISPUTE_EVIDENCE_STATES = ["not_due", "due", "sending", "sent", "failed"] as const;
 export type DisputeEvidenceState = (typeof DISPUTE_EVIDENCE_STATES)[number];
 
+/** Roomover's one message to the buyer while a dispute is an inquiry: taken by one run, then sent or refused. */
+export const DISPUTE_MESSAGE_STATES = ["sending", "sent", "failed"] as const;
+export type DisputeMessageState = (typeof DISPUTE_MESSAGE_STATES)[number];
+
 /** The platform appears in the activity panel when it runs settlement and payouts. */
 export const AGENT_NAMES = ["buyer", "seller", "verifier", "platform"] as const;
 export type AgentName = (typeof AGENT_NAMES)[number];

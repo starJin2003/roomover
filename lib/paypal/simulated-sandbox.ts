@@ -264,14 +264,28 @@ export function createSimulatedSandbox(templates: SandboxTemplates, now: () => D
   function disputeJson(dispute: Json): Json {
     const id = String(dispute.dispute_id);
     const links: Json[] = [{ href: `${API}/v1/customer/disputes/${id}`, rel: "self", method: "GET" }];
-    if (dispute.status === "WAITING_FOR_SELLER_RESPONSE") links.push({ href: `${API}/v1/customer/disputes/${id}/provide-evidence`, rel: "provide_evidence", method: "POST" });
+    // Like the real sandbox, an inquiry takes messages and evidence goes in only after escalation.
+    if (dispute.status === "WAITING_FOR_SELLER_RESPONSE" && dispute.dispute_life_cycle_stage !== "INQUIRY") links.push({ href: `${API}/v1/customer/disputes/${id}/provide-evidence`, rel: "provide_evidence", method: "POST" });
+    if (dispute.dispute_life_cycle_stage === "INQUIRY" && dispute.status !== "RESOLVED") links.push({ href: `${API}/v1/customer/disputes/${id}/send-message`, rel: "send_message", method: "POST" });
     return { ...dispute, links };
+  }
+
+  /** PayPal posts a message to the other party only while the dispute is an inquiry. */
+  function sendMessage(id: string, request: Json): SimulatedResponse {
+    const dispute = disputes.get(id);
+    if (dispute === undefined) return problem(404, "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID");
+    const message = typeof request.message === "string" ? request.message : "";
+    if (message.length === 0 || message.length > 2000) return problem(400, "INVALID_REQUEST", "INVALID_STRING_LENGTH");
+    if (dispute.dispute_life_cycle_stage !== "INQUIRY" || dispute.status === "RESOLVED") return problem(422, "UNPROCESSABLE_ENTITY", "NOT_AUTHORIZED_TO_SEND_MESSAGE");
+    const messages = Array.isArray(dispute.messages) ? dispute.messages : [];
+    disputes.set(id, { ...dispute, messages: [...messages, { posted_by: "SELLER", time_posted: at(now()), content: message }] });
+    return json(200, { links: [{ href: `${API}/v1/customer/disputes/${id}`, rel: "self", method: "GET" }] });
   }
 
   function provideEvidence(id: string): SimulatedResponse {
     const dispute = disputes.get(id);
     if (dispute === undefined) return problem(404, "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID");
-    if (dispute.status !== "WAITING_FOR_SELLER_RESPONSE") return problem(422, "UNPROCESSABLE_ENTITY", "NOT_AUTHORIZED_TO_PROVIDE_EVIDENCE");
+    if (dispute.status !== "WAITING_FOR_SELLER_RESPONSE" || dispute.dispute_life_cycle_stage === "INQUIRY") return problem(422, "UNPROCESSABLE_ENTITY", "NOT_AUTHORIZED_TO_PROVIDE_EVIDENCE");
     disputes.set(id, { ...dispute, status: "UNDER_REVIEW", update_time: at(now()) });
     return json(200, { links: [{ href: `${API}/v1/customer/disputes/${id}`, rel: "self", method: "GET" }] });
   }
@@ -324,6 +338,7 @@ export function createSimulatedSandbox(templates: SandboxTemplates, now: () => D
       return dispute === undefined ? problem(404, "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID") : json(200, disputeJson(dispute));
     }
     if (request.method === "POST" && parts[2] === "disputes" && parts[4] === "provide-evidence") return provideEvidence(parts[3]);
+    if (request.method === "POST" && parts[2] === "disputes" && parts[4] === "send-message") return sendMessage(parts[3], body());
     if (key === "GET v1/reporting/transactions") return searchTransactions(new URLSearchParams(request.query ?? ""));
     if (request.method === "GET" && parts[1] === "payments" && parts[2] === "payouts" && parts.length === 4) return readPayout(parts[3]);
     return problem(404, "RESOURCE_NOT_FOUND", "UNKNOWN_ENDPOINT");

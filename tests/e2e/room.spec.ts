@@ -22,6 +22,18 @@ async function openFurnishRoom(page: Page) {
   return room;
 }
 
+/** Hue in degrees and HSL saturation of one pixel. */
+function hueOf([r, g, b]: [number, number, number]): { hue: number; saturation: number } {
+  const [red, green, blue] = [r / 255, g / 255, b / 255];
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const delta = max - min;
+  if (delta === 0) return { hue: 0, saturation: 0 };
+  const lightness = (max + min) / 2;
+  const sector = max === red ? ((green - blue) / delta) % 6 : max === green ? (blue - red) / delta + 2 : (red - green) / delta + 4;
+  return { hue: (sector * 60 + 360) % 360, saturation: delta / (1 - Math.abs(2 * lightness - 1)) };
+}
+
 const listKeys = (page: Page) => page.locator("[data-room] ol [data-item]").evaluateAll((rows) => rows.map((row) => row.getAttribute("data-item")));
 
 test("Harbor Hall 214 draws on the table color and its list mirrors the room", async ({ page }) => {
@@ -114,5 +126,42 @@ test("the presets page renders every preset with all 24 seed listings and passes
   const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
   const blocking = axe.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");
   expect(blocking.map((violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(", ")}`)).toEqual([]);
+  expect(problems).toEqual([]);
+});
+
+test("the woven baskets wear their photo's colors, pink with teal on one and green with orange on the other", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1440", "At 390 px the room draws the baskets too small to sample their colors apart from the floor.");
+  const problems = watchConsole(page);
+  await page.goto("/style-guide/rooms");
+  await page.getByRole("group", { name: "Room preset" }).getByRole("button").nth(2).click();
+  const room = page.locator('[data-room="breakwater-apartments-bedroom"]');
+  await expect(room).toHaveAttribute("data-ready", "true", { timeout: 30_000 });
+  const frame = room.locator("[data-room-box]");
+  const row = page.locator('[data-item="sofia-woven-baskets"]');
+
+  // The tag sits centered 12 px above the baskets' top, which finds them on screen.
+  await row.focus();
+  const tag = room.locator("[data-room-tag]");
+  await expect(tag).toContainText("Two woven grass baskets");
+  const [box, label] = await Promise.all([frame.boundingBox(), tag.boundingBox()]);
+  if (box === null || label === null) throw new Error("The room or its tag has no box.");
+  await row.blur();
+  await expect(tag).toBeHidden();
+  await page.waitForTimeout(300);
+
+  const shot = decodePng(await frame.screenshot({ scale: "css" }));
+  const x = Math.round(label.x + label.width / 2 - box.x);
+  const y = Math.round(label.y + label.height + 12 - box.y);
+  const counts = { pink: 0, teal: 0, green: 0, orange: 0 };
+  for (let py = Math.max(0, y); py < Math.min(shot.height, y + 110); py++) {
+    for (let px = Math.max(0, x - 120); px < Math.min(shot.width, x + 120); px++) {
+      const { hue, saturation } = hueOf(shot.pixel(px, py));
+      if (saturation > 0.2 && (hue >= 330 || hue <= 10)) counts.pink += 1;
+      else if (saturation > 0.06 && hue >= 170 && hue <= 220) counts.teal += 1;
+      else if (saturation > 0.06 && hue >= 70 && hue <= 130) counts.green += 1;
+      else if (saturation > 0.25 && hue >= 20 && hue <= 45) counts.orange += 1;
+    }
+  }
+  for (const color of ["pink", "teal", "green", "orange"] as const) expect(counts[color], `${color} pixels near the baskets, ${JSON.stringify(counts)}`).toBeGreaterThan(40);
   expect(problems).toEqual([]);
 });

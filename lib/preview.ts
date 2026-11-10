@@ -37,7 +37,8 @@ export function previewNotice(code: string | undefined): PreviewNotice | null {
 
 /** The assistant that asked, read from the plan's first MCP line. */
 export function plannerOf(events: readonly ActivityEventView[]): string {
-  return assistantName(events.find((event) => event.detail.mcp !== undefined)?.detail.mcp?.client);
+  const mcp = events.find((event) => event.detail.mcp !== undefined)?.detail.mcp;
+  return assistantName(mcp?.client, mcp?.fromAnthropic);
 }
 
 export async function loadPreview(db: Database, planId: string): Promise<PreviewData | null> {

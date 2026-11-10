@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkoutReturnUrls } from "@/lib/checkout/prepare";
 import { decideMcpRunLimit, RUN_LIMITS } from "@/lib/agents/limits";
-import { assistantName, decideMcpPlanLimit, decideMcpSessionOpen, isMcpSession, MCP_LIMITS, planClaimStep } from "@/lib/domain/mcp";
+import { assistantName, decideMcpPlanLimit, decideMcpSessionOpen, isAnthropicAddress, isMcpSession, MCP_LIMITS, mcpClientDetail, planClaimStep } from "@/lib/domain/mcp";
 import { mcpBuyerSession } from "@/lib/session";
 import { absoluteUrl } from "@/lib/site";
 
@@ -101,6 +101,32 @@ describe("assistant names", () => {
     expect(assistantName("mcp-inspector")).toBe("MCP Inspector");
     expect(assistantName("roomover-e2e")).toBe("An outside assistant");
     expect(assistantName(undefined)).toBe("An outside assistant");
+  });
+
+  it("names a session from Anthropic's servers Claude, since the Claude app's connector reports claude-code", () => {
+    expect(assistantName("claude-code", true)).toBe("Claude");
+    expect(assistantName("claude-code", false)).toBe("Claude Code");
+    expect(assistantName(undefined, true)).toBe("Claude");
+  });
+
+  it("knows Anthropic's published outbound ranges and nothing next to them", () => {
+    expect(isAnthropicAddress("160.79.104.0")).toBe(true);
+    expect(isAnthropicAddress("160.79.111.255")).toBe(true);
+    expect(isAnthropicAddress("160.79.112.0")).toBe(false);
+    expect(isAnthropicAddress("153.61.208.9")).toBe(true);
+    expect(isAnthropicAddress("153.61.223.255")).toBe(true);
+    expect(isAnthropicAddress("153.61.224.1")).toBe(false);
+    expect(isAnthropicAddress("::ffff:160.79.105.7")).toBe(true);
+    expect(isAnthropicAddress("73.22.140.8")).toBe(false);
+    expect(isAnthropicAddress("2607:6bc0::1")).toBe(false);
+    expect(isAnthropicAddress("unknown")).toBe(false);
+    expect(isAnthropicAddress("160.79.104.256")).toBe(false);
+  });
+
+  it("keeps the raw clientInfo name and version on an activity line", () => {
+    expect(mcpClientDetail({ name: "claude-code", version: "2.1.274", fromAnthropic: false })).toEqual({ client: "claude-code", clientVersion: "2.1.274", fromAnthropic: false });
+    expect(mcpClientDetail({ name: undefined, version: "", fromAnthropic: true })).toEqual({ client: "unnamed", fromAnthropic: true });
+    expect(mcpClientDetail({ name: "x".repeat(120), version: undefined, fromAnthropic: false }).client).toHaveLength(80);
   });
 });
 

@@ -70,6 +70,8 @@ export interface DisputeView {
   reason: string | null;
   evidenceState: DisputeEvidenceState;
   evidence: { evidenceType: string; files: number; submittedAt: string } | null;
+  /** Roomover's one message to the buyer in the inquiry stage, once PayPal took it. */
+  message: { text: string; sentAt: string } | null;
   title: string;
   detail: string;
 }
@@ -167,6 +169,7 @@ function disputeViews(rows: readonly DisputeRow[], items: readonly HandoffItemVi
       outcome: row.outcome,
       evidenceState: row.evidenceState,
       refundedCents: row.refundedCents,
+      messageSent: row.messageState === "sent",
     });
     return {
       paypalDisputeId: row.paypalDisputeId,
@@ -177,6 +180,7 @@ function disputeViews(rows: readonly DisputeRow[], items: readonly HandoffItemVi
       reason: row.reason,
       evidenceState: row.evidenceState,
       evidence: row.evidence === null || row.evidenceSubmittedAt === null ? null : { evidenceType: row.evidence.evidenceType, files: row.evidence.files.length, submittedAt: row.evidenceSubmittedAt.toISOString() },
+      message: row.messageState === "sent" && row.message !== null && row.messageSentAt !== null ? { text: row.message, sentAt: row.messageSentAt.toISOString() } : null,
       ...words,
     };
   });

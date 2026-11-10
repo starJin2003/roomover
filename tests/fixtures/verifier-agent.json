@@ -1613,6 +1613,62 @@
     },
     "diagnostics": null
    }
+  ],
+  "31b666cb-bd18-577f-b931-e4483075db04:MERCHANDISE_OR_SERVICE_NOT_AS_DESCRIBED:inquiry": [
+   {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011CgtRKzSsMtdkccj8kiu9x",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_01XWVCYT7MNVC2txBT4tRgLA",
+      "name": "write_inquiry_message",
+      "input": {
+       "message": "Roomover's handoff record for the mesh back rolling desk chair shows that the agreed price was $35. Our photo comparison found a new 3 cm tear in the photo you took of the chair at handoff. The record also shows that you chose to keep the chair at handoff and paid $30 of the $35."
+      },
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 311,
+     "cache_creation_input_tokens": 744,
+     "cache_read_input_tokens": 0,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 744,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 311,
+       "output_tokens": 147,
+       "cache_read_input_tokens": 0,
+       "cache_creation_input_tokens": 744,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 744,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 147,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   }
   ]
  }
 }
