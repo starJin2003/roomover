@@ -2,11 +2,11 @@
 
 Turning move-out season into move-in opportunities.
 
-Roomover is a campus marketplace that passes furniture and dorm essentials from students who move out at the end of a term to the students who move in next. AI agents built on Anthropic's Claude models furnish the arriving student's room in 3D and negotiate with each seller's agent. One approval in PayPal pays every seller, PayPal holds the money until a photo check at handoff, and PayPal Payouts then pays each seller their share.
+Roomover is a campus marketplace that passes furniture and dorm essentials from students who move out at the end of a term to the students who move in next, even when the two never share a day on campus. AI agents built on Anthropic's Claude models furnish the arriving student's room in 3D and negotiate with each seller's agent, and PayPal holds the student's one payment through a photo check at handoff before PayPal Payouts pays every seller.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/stack-dark.png">
-  <img alt="Roomover architecture" src="docs/stack-light.png">
+  <img alt="Roomover architecture. Students use the browser, where three.js draws the 3D room from server sent events, the Bryntum schedule reads slots from Next.js and posts slot moves back, and the PayPal JS SDK buttons call Next.js for checkout and send the buyer's approval to PayPal. The Claude app or any MCP client reaches the MCP server, which runs inside the Next.js service on Render. Next.js calls Channel3 search, the Claude Messages API, and PayPal through REST, the Server SDK, and webhooks, and stores everything in Render Postgres. Two Render cron jobs write to Postgres, and the release job voids, refunds, and settles through PayPal." src="docs/stack-light.png">
 </picture>
 
 ## Links
@@ -17,6 +17,7 @@ Roomover is a campus marketplace that passes furniture and dorm essentials from 
 | Demo video (YouTube) | **VIDEO LINK GOES HERE AFTER UPLOAD** |
 | Fastest path for judges | [Four steps](#fastest-path-for-judges) |
 | Test accounts for judges | [Test accounts](#test-accounts-for-judges) |
+| Proof on the PayPal sandbox | [Real sandbox IDs](#real-sandbox-ids) |
 | Model Context Protocol (MCP) server for AI assistants | `https://roomover.onrender.com/mcp` |
 
 ## The problem
@@ -37,7 +38,7 @@ xychart-beta
     bar [16.2, 44, 250]
 ```
 
-Campus resale apps already exist, and they all depend on the buyer and the seller meeting in person to swap the item and the money. The student who leaves in May and the student who arrives in late summer are never on campus at the same time, so most of this supply never reaches its next owner. Roomover closes that gap with PayPal. The arriving student pays when the plan is ready, PayPal holds the money across the gap, and each seller gets paid only after the item passes a photo check at handoff.
+Campus resale apps already exist, and they all depend on the buyer and the seller meeting in person to swap the item and the money. The student who leaves in May and the student who arrives in late summer are never on campus at the same time, so most of this supply never reaches its next owner. Roomover bridges that gap with PayPal. The arriving student pays once when the room is planned, PayPal holds the money across the gap, and each seller gets paid after the item passes a photo check at handoff.
 
 ### How Roomover differs
 
@@ -49,9 +50,9 @@ Campus resale apps already exist, and they all depend on the buyer and the selle
 
 ## How it works
 
-Roomover runs three flows at the fictional Lakeshore University, whose rooms follow the sizes of real residence hall rooms. Ava is leaving and sells her things. Jordan is arriving at Harbor Hall 214 with a $150 budget. Ava, Jun, Marcus, Sofia, and Lea list 24 items between them.
+Roomover runs three flows at the fictional Lakeshore University, whose rooms follow the sizes of real residence hall rooms. Ava, Jun, Marcus, Sofia, and Lea are leaving and list 24 items between them. Jordan is arriving at Harbor Hall 214 with a $150 budget.
 
-Two real runs appear below. The recorded Harbor Hall plan is the cart the buyer agent negotiated for "$150, cozy, I study late", 6 items from 4 students for $107. The handoff demo plan is a fixed cart from all five sellers that a script builds for the handoff tests and the video, with $144 charged and $139 paid out after one torn chair. A judge's own handoff pays every seller in the cart the agent built.
+The video and the Furnish images follow the Harbor Hall plan that the buyer agent negotiated for "$150, cozy, I study late", which holds 6 items from 4 students for $107. The handoff GIF and the schedule image show the handoff demo plan. A script builds this fixed cart from all five sellers for the handoff tests, and its real sandbox run charged $144 and paid out $139 after one torn chair. A judge's own handoff pays every seller in the cart the agent built.
 
 ### 1. Sell: a leaving student lists an item from one photo
 
@@ -79,11 +80,11 @@ sequenceDiagram
     Ava->>R: Confirm the price and the floor, then list
 ```
 
-### 2. Furnish: the room fills itself, and one PayPal approval pays every seller in the cart
+### 2. Furnish: the room fills itself, and one PayPal approval covers the whole cart
 
 <img alt="Harbor Hall 214 fills item by item while the panel reports each seller agent's counteroffer." src="docs/furnish.gif" width="900">
 
-Jordan types "$150, cozy, I study late". The buyer agent reads the room size and the hall rules, searches the listings, and negotiates with each seller's agent over price and handoff slot. Every item it places lands in the 3D room as it goes, streamed to the browser over server sent events (SSE). When no used item fits a need, Channel3 supplies a new product that fits the size and the budget. The recorded Harbor Hall plan ends with 6 items from 4 students for $107, $260.97 less than the cheapest comparable new items on Channel3.
+Jordan types "$150, cozy, I study late". The buyer agent reads the room size and the hall rules, searches the listings, and places each item while code checks the fit, the rules, and the budget. Every placed item lands in the 3D room as it goes, streamed to the browser over server sent events (SSE). The agent then offers each seller's agent a price and a handoff slot, the seller agents answer in parallel, and code holds every answer between the seller's floor and the asking price. When no used item fits a need, Channel3 supplies a new product that fits the size and the budget. The Harbor Hall plan ends at $107, and Channel3's cheapest comparable new items would cost $260.97 more. The GIF runs on recorded answers, where yellow buttons stand in for PayPal's, and the hosted demo renders PayPal's own JavaScript software development kit (SDK) v6 buttons.
 
 <img alt="The ready room with a navy PayPal card that says PayPal holds your $107 until handoff." src="docs/paypal-hold.png" width="900">
 
@@ -98,24 +99,32 @@ sequenceDiagram
     participant P as PayPal
     J->>R: "$150, cozy, I study late"
     R->>B: Room size, hall rules, budget
-    B->>R: search_listings and check_fit
-    B->>S: make_offer with a price and a handoff slot
-    S-->>B: answer_offer, which code clamps to the seller's floor
-    B->>R: place_item
+    B->>R: search_listings, then place_item
+    R->>R: Check the fit, the hall rules, and the budget
     R-->>J: The item lands in the 3D room over SSE
-    B->>C3: search_new_products for a gap
+    B->>R: make_offer with a price and a handoff slot
+    R->>S: The offer, to each seller's agent in parallel
+    S-->>R: answer_offer
+    R->>R: Hold each answer between the floor and the asking price
+    R-->>B: Accepted, countered, or declined
+    B->>R: respond_to_offer on each counter
+    opt No used item fits a need
+        B->>R: search_new_products
+        R->>C3: Text search filtered by price and size
+    end
     B->>R: create_checkout
     R->>P: Orders v2 create with PayPal-Request-Id
+    R->>C3: Price comparable new items for the savings line
     J->>P: Approve with PayPal or Pay Later
-    R->>P: Authorize the order
-    P-->>R: Webhook confirms the authorization
+    R->>P: Authorize the order, or capture it when a handoff is past 29 days
+    P-->>R: Webhook confirms the authorization or the capture
 ```
 
 ### 3. Handoff: a photo check per item, then PayPal pays every seller
 
 <img alt="The handoff demo plan. The verifier finds a new 3 cm tear in Marcus's chair, Jordan pays $30 of $35, and each seller's payout arrives one by one." src="docs/handoff.gif" width="900">
 
-At handoff, Jordan photographs each item. The verifier agent compares the photo with the listing photos, and code turns its finding into an amount. In the handoff demo plan, Marcus's mesh desk chair shows a new 3 cm tear, so Jordan pays $30 of the $35. After the last item, Roomover captures each kept item from the authorization and sends one payout batch to every seller in the cart, $139 to the five sellers of the demo plan. A dispute opened later in PayPal comes back to the verifier, which answers with the handoff record.
+At handoff, Jordan photographs each item. The verifier agent compares the photo with the listing photos, and the money policy in code turns its finding into an amount. In the handoff demo plan, Marcus's mesh desk chair shows a new 3 cm tear, so Jordan pays $30 of the $35. After the last item, settlement captures each kept item from the authorization and sends one PayPal Payouts batch with an item for each seller in the cart. The demo plan's run paid $139 to its five sellers this way. A dispute the buyer opens later in PayPal comes back to the verifier agent, and Roomover answers with one message in the inquiry stage and with evidence after escalation.
 
 ```mermaid
 sequenceDiagram
@@ -126,40 +135,60 @@ sequenceDiagram
     participant P as PayPal
     loop Each item
         J->>R: Handoff photo
-        R->>V: compare_photos against the listing photos
-        V-->>R: Finding, for example a new 3 cm tear
+        R->>V: Handoff photo and the listing photos
+        V-->>R: compare_photos finding, for example a new 3 cm tear
         R->>R: Money policy sets the amount, $30 of $35
         J->>R: Confirm, pay $30
     end
-    R->>P: Payments v2 capture per item, final_capture on the last
+    R->>P: Payments v2 capture per kept item, final_capture on the last
     R->>P: Payouts batch with one item per seller
     P-->>R: Webhooks for captures and payout items
-    R-->>J: One payout to every seller in the cart
+    R-->>J: Each seller's payout appears as PayPal reports it
     opt The buyer opens a dispute
-        P-->>R: CUSTOMER.DISPUTE.CREATED webhook
-        R->>P: Agent Toolkit reads the dispute, the order, and the transaction
-        R->>P: Inquiry stage, one send-message with the handoff facts
-        R->>P: After escalation, provide-evidence with photos and the handoff record
+        P-->>R: CUSTOMER.DISPUTE.CREATED or UPDATED webhook
+        R->>P: Agent Toolkit get_dispute
+        opt Inquiry stage with a send_message link
+            R->>V: Facts code built from the order and the handoff
+            V-->>R: write_inquiry_message
+            R->>P: send-message, once per dispute
+        end
+        opt Code finds evidence due after escalation
+            R->>V: Facts and three reads bound to this dispute
+            V->>R: get_dispute, get_order, list_transactions
+            R->>P: Agent Toolkit reads
+            V-->>R: write_dispute_note
+            R->>P: provide-evidence with photos and the handoff record PDF
+        end
     end
 ```
 
-The schedule on the Handoff screen shows each seller's move out window, Jordan's move in, and the handoff slot each pair of agents agreed on. Students can drag a slot to another time that both windows allow.
+The [schedule](#bryntum) on the Handoff screen shows each seller's move out window, Jordan's move in, and the handoff slot each pair of agents agreed on, and a student can drag a slot to another time both windows allow.
 
 ## PayPal integration
 
-PayPal runs the whole money path, from the seller's login to the dispute after handoff, through PayPal's REST APIs and software development kits (SDKs). Every money moving call runs in Roomover's own code with amounts computed in code. Every money moving write (order create, authorize, capture, void, reauthorize, refund, and payout) sends a `PayPal-Request-Id` built from Roomover's own record IDs, such as `rmv.capture.<order item>.<attempt>`. In settlement and the hourly release, a retry after a timeout or an unreadable answer sends the same key, so PayPal replays its first answer, and a retry after PayPal refused the write sends the record's next attempt. A declined approval cancels the order, so the student's next checkout starts a new order with keys of its own. The two dispute calls, provide-evidence and send-message, take no key, so a conditional update on the dispute row lets each one go out once.
+PayPal runs the money path from the seller's login through the dispute after handoff. Roomover's server code calls the PayPal Server SDK for TypeScript, PayPal's REST APIs, and the PayPal Agent Toolkit, and the browser renders the PayPal JavaScript SDK v6 buttons. Code computes every amount. Every money moving write (order create, authorize, capture, void, reauthorize, refund, and payout) sends a `PayPal-Request-Id` built from Roomover's own record IDs, such as `rmv.capture.<order item>.<attempt>`.
 
 | Capability | PayPal product | Where Roomover uses it | Files | Proof from the sandbox |
 | --- | --- | --- | --- | --- |
 | Seller onboarding | Log in with PayPal | Identity and the email payouts go to | `lib/paypal/rest/identity.ts`, `lib/sell/login.ts`, `app/api/auth/paypal/` | Seller 1 signs in on the hosted Sell screen |
 | Checkout | Orders v2 and JavaScript SDK v6 buttons | One approval for a cart from several sellers, authorized or captured on approval | `lib/paypal/server-sdk/orders.ts`, `lib/checkout/prepare.ts`, `lib/checkout/approve.ts`, `components/paypal/paypal-checkout.tsx` | Order `4BJ62082TS2591355` for $144 (handoff demo plan) |
 | Pay in installments | Pay Later (Pay in 4) | The Pay Later button and message at checkout | `components/paypal/paypal-checkout.tsx`, `components/paypal/sdk-v6.ts` | The $107 cart shows 4 payments of $26.75 |
-| Hold and settle | Orders v2 authorize at approval, then Payments v2 capture, partial capture, void, reauthorize, and refund | Per item settlement after the photo check | `lib/paypal/server-sdk/payments.ts`, `lib/handoff/settle.ts`, `lib/domain/settlement.ts`, `lib/handoff/release.ts` | Authorization `87S91919A36663839` with five captures for $139. In capture mode, capture `4LF69479JL425463Y` and refund `3Y551341LC337200B` |
+| Hold and settle | Orders v2 authorize or capture at approval, then Payments v2 capture, partial capture, void, reauthorize, and refund | Per item settlement after the photo check | `lib/paypal/server-sdk/payments.ts`, `lib/handoff/settle.ts`, `lib/domain/settlement.ts`, `lib/handoff/release.ts` | Authorization `87S91919A36663839` with five captures for $139. In capture mode, capture `4LF69479JL425463Y` and refund `3Y551341LC337200B` |
 | Seller payouts | Payouts (batch) | One batch per settlement | `lib/paypal/rest/payouts.ts`, `lib/handoff/payouts.ts`, `lib/domain/payout-state.ts` | Batch `D65SGN757KMKA`, $139 to 5 sellers |
 | Disputes | Disputes API | The inquiry message and the evidence the verifier assembles | `lib/paypal/rest/disputes.ts`, `lib/disputes/run.ts`, `lib/disputes/evidence.ts` | Dispute `PP-R-ACE-10197629`, resolved in the seller's favor |
 | Events | Webhooks with signature verification | Drive the state machines and the activity panel | `app/api/paypal/webhooks/route.ts`, `lib/paypal/rest/webhooks.ts`, `lib/paypal/webhooks/dispatch.ts` | Events `WH-3L121548ED733810T-55R95869ET117181H` and `WH-60G77830PR553712K-7TE52535X23651306` |
 | Agent tools | PayPal Agent Toolkit (TypeScript) | Read only lookups inside the verifier's dispute run | `lib/agents/tools/paypal-read.ts`, `lib/disputes/deps.ts` | `get_dispute`, `get_order`, and `list_transactions` on the dispute above |
 | Reporting | Transaction Search through the Agent Toolkit's `list_transactions` | The verifier reads the disputed transaction in its dispute run | `lib/agents/tools/paypal-read.ts`, `lib/disputes/deps.ts` | Seller transaction `8YE464155G502411H` |
+
+In settlement and the hourly release, PayPal's answer decides whether a retry reuses the key.
+
+| PayPal's answer to a keyed write | What Roomover does next |
+| --- | --- |
+| No answer, a 5xx, or a 429 | Sends the same key once more right away and keeps it for the next try, so PayPal replays its first answer if the write landed |
+| A 408, a 409, or a 2xx body Roomover cannot read | Keeps the key for the next try |
+| A 400, 401, 403, 404, or 422, or a capture that comes back `DECLINED` or `FAILED` | Moves the record to its next attempt, so the next try sends a new key |
+
+A declined approval cancels the order, so the student's next checkout starts a new order with keys of its own. The two dispute calls, `provide-evidence` and `send-message`, take no key, so a conditional update on the dispute row lets each one go out once.
 
 ### Payment mode
 
@@ -169,13 +198,14 @@ flowchart LR
     B -- yes --> C[AUTHORIZE and hold]
     B -- no --> D[CAPTURE now]
     C --> E[Photo check at handoff]
-    D --> E
-    E --> F[Capture kept items, final_capture on the last]
-    E --> G[Void or refund what the student turned down]
-    F --> H[One Payouts batch to every seller]
+    D --> F[Photo check at handoff]
+    E --> G[Capture kept items, final_capture on the last. Void when nothing is kept]
+    F --> H[Refund turned down items and price cuts]
+    G --> I[One Payouts batch to every seller]
+    H --> I
 ```
 
-An authorization lasts 29 days, so Roomover uses `AUTHORIZE` when every handoff in the order ends within 29 days of checkout and `CAPTURE` otherwise. A storage handoff months away captures at checkout and refunds any item the student turns down. Settlement captures each kept item with `final_capture` on the last one and voids the authorization only when nothing is kept. It reauthorizes at most once, and only from day 4 of an authorization, after PayPal's 3 day honor period. Reauthorization is implemented and unit tested, and no sandbox run has reached day 4, so no reauthorization ID exists. For US buyers, PayPal's [Pay Later overview](https://developer.paypal.com/pay-later/overview) lists Pay in 4 for purchases from $10 to $2,000 and Pay Monthly from $49 to $10,000.
+An authorization lasts 29 days, so Roomover uses `AUTHORIZE` when every handoff in the order ends within 29 days of checkout and `CAPTURE` otherwise. A storage handoff months away captures at checkout and refunds any item the student turns down. Settlement reauthorizes at most once, and only from day 4 of an authorization, after PayPal's 3 day honor period. Reauthorization is implemented and unit tested, and no sandbox run has reached day 4, so no reauthorization ID exists. For US buyers, PayPal's [Pay Later overview](https://developer.paypal.com/pay-later/overview) lists Pay in 4 for purchases from $10 to $2,000 and Pay Monthly from $49 to $10,000.
 
 ### Real sandbox IDs
 
@@ -184,8 +214,8 @@ Every ID below came from a real sandbox response.
 | Run | IDs |
 | --- | --- |
 | Handoff demo plan on Render, settled by webhook | Order `4BJ62082TS2591355`, authorization `87S91919A36663839`, payout batch `D65SGN757KMKA` for $139 |
-| Handoff demo plan on video, with the torn chair at $30 of $35 | Order `78E19905K1239093D`, authorization `49F41736WL517390H`, payout batch `SMBUWTGSLQG9J` |
-| Capture mode, a storage cart handed off in April 2027 with one item turned down | Order `4NJ97274JR406582M` for $73, capture `4LF69479JL425463Y`, refund `3Y551341LC337200B` of $10 for Ava's drawer tower, payout batch `8XRP3TRPXKKGG` of $63 to Ava and Marcus |
+| Handoff demo plan run locally, with the torn chair at $30 of $35 | Order `78E19905K1239093D`, authorization `49F41736WL517390H`, payout batch `SMBUWTGSLQG9J` |
+| Capture mode, a storage cart with April 2027 handoff slots and one item turned down | Order `4NJ97274JR406582M` for $73, capture `4LF69479JL425463Y`, refund `3Y551341LC337200B` of $10 for Ava's drawer tower, payout batch `8XRP3TRPXKKGG` of $63 to Ava and Marcus |
 | Real dispute on the chair | `PP-R-ACE-10197629`, evidence of 3 documents in the chargeback stage, resolved `RESOLVED_SELLER_FAVOUR` |
 | The Claude app over MCP | Plan `ef094b22-8462-45b8-8806-2c8f05b8b1f5`, $95 for 5 used items from 4 students, order `2V83399493834153N` |
 | Claude Code over MCP, approved from the preview link | Order `5YK1548532769840E`, authorization `66J9960711469954E` |
@@ -206,7 +236,7 @@ Every agent runs on `claude-sonnet-5-5` through the Claude Messages API with too
 | Seller agent | The leaving student | `describe_listing` with Channel3's candidates, `answer_offer` in negotiation | The price cap at 70 percent of new, and every answer held between the floor and the asking price. An answer that would sell under the floor becomes a counter at the asking price |
 | Verifier agent | Neither student | `compare_photos`, `write_dispute_note`, `write_inquiry_message`, and the Agent Toolkit's `get_dispute`, `get_order`, `list_transactions` | The money policy turns a finding into an amount. The note and the message may name only amounts code gave, and the message may not offer a refund or accept a claim |
 
-Negotiation runs through structured offers with a price, a handoff slot, and up to four listings in a bundle, for at most 3 rounds. The seller agents answer in parallel, and every offer and answer appears in the activity panel.
+Negotiation runs through structured offers with a price, a handoff slot, and up to four listings from one seller in a bundle, for at most 3 rounds. The seller agents answer in parallel, and every offer and answer appears in the activity panel.
 
 ### Guardrails
 
@@ -215,7 +245,7 @@ Negotiation runs through structured offers with a price, a handoff slot, and up 
 - Code parses every model output with the zod schema library for TypeScript, and an invalid answer gets one retry with the validation error. After a second invalid answer, the buyer agent, the Sell photo read, and the handoff photo check each show a failure the student can retry. An offer answer becomes a decline that code writes, and the dispute note and the inquiry message fall back to text that code writes.
 - The verifier cannot accept a dispute claim, offer a refund, or move money. Code checks its dispute note for any amount code did not give, and its inquiry message for those amounts and for any offer, refund, or accepted claim.
 - A seller's floor stays between the seller and code. No search result, activity line, MCP answer, or page shows it, and code puts a seller agent sentence that hints at it in its own words.
-- The demo caps its own use at 6 runs per browser and 15 per network an hour, and 400 Claude calls a day. When a web Furnish run would pass a cap, the room replays the recorded Harbor Hall run, and PayPal and everything after it stay live. Sell gives each photo at most 2 seller agent calls and each browser 20 photos a day, and every limit keys on the address Cloudflare reports in front of Render.
+- The demo caps its own use at 6 runs per browser and 15 per network an hour, and 400 Claude calls a day. Sell gives each photo at most 2 seller agent calls and each browser 20 photos a day. Every limit keys on the client address that Render's Cloudflare proxy writes.
 
 ### PayPal Agent Toolkit, read only
 
@@ -223,7 +253,7 @@ The verifier's dispute run reads the dispute, the PayPal order, and the disputed
 
 ### MCP server for outside assistants
 
-Roomover exposes a Model Context Protocol (MCP) server over streamable HTTP at `https://roomover.onrender.com/mcp`, so a general assistant can shop on a student's behalf.
+The MCP server at `https://roomover.onrender.com/mcp` speaks streamable HTTP, so a general assistant can shop on a student's behalf.
 
 | MCP tool | What it does |
 | --- | --- |
@@ -243,7 +273,7 @@ Roomover exposes a Model Context Protocol (MCP) server over streamable HTTP at `
 
 The first browser that approves the payment from a preview link takes the plan over for the handoff, and other browsers see the plan read only. The activity panel names the client from the `clientInfo` it sends. A session that arrives from Anthropic's published outbound addresses is the Claude app, since its connector reports the same `claude-code` name as Claude Code.
 
-Connect an assistant
+#### Connect an assistant
 
 1. **Claude app** (web or desktop, Pro or Max). Open Customize, then Connectors, then Add, then Add custom connector. Name it Roomover, paste `https://roomover.onrender.com/mcp`, choose no sign in, and press Add. In a new chat, turn Roomover on in the tools menu and send this request. "I am Jordan, moving into Harbor Hall 214 at Lakeshore University. Use Roomover to plan my room for "$150, cozy, I study late" and give me the PayPal link to approve it."
 2. **Claude Code**. Run `claude mcp add --transport http roomover https://roomover.onrender.com/mcp`, then send the same request.
@@ -267,21 +297,19 @@ Searches are cached by photo and by query, so a repeated demo run spends no cred
 
 ### Render
 
-Render is the cloud platform that runs the hosted demo.
+Render is the cloud platform that runs the hosted demo, and the blueprint in `render.yaml` declares every service below. Each secret's value lives only in the Render dashboard, and a push to `main` deploys.
 
 | Piece | What it runs |
 | --- | --- |
 | Web service `roomover` | The Next.js app, the agents, and the MCP server, Starter plan in Ohio, health check at `/api/health` that reports the deployed commit |
 | Postgres `roomover-db` | Every record, reached over the private network |
 | Pre-deploy command | `npm run db:migrate` applies new migrations before each deploy goes live |
-| Cron job `roomover-release` | Hourly, it voids demo holds that never reached a handoff, carries on settlements that stopped, and puts listings back on sale |
-| Cron job `roomover-reseed` | Daily, it moves the demo listing windows to the current campus day |
-
-The blueprint in `render.yaml` declares every service and keeps each secret's value in the Render dashboard. A push to `main` deploys.
+| Cron job `roomover-release` | Hourly. Voids or refunds demo holds that never reached a handoff, carries on settlements that stopped, and puts listings back on sale |
+| Cron job `roomover-reseed` | Daily. Moves the demo listing windows to the current campus day |
 
 ### Bryntum
 
-Bryntum makes JavaScript scheduling components, and its Scheduler draws the handoff schedule with each seller's move out window, the storage wait, Jordan's move in, and the agreed slots as keys a student can drag or move from the keyboard. The server checks every move against both windows and the authorization. Roomover runs the 45 day trial the hackathon offers participants, which shows a "Trial Version" watermark. The scheduler loads only when the schedule opens (`components/schedule/`).
+Bryntum makes JavaScript scheduling components, and its Scheduler draws the handoff schedule with each seller's move out window, the storage wait, Jordan's move in, and the agreed slots as keys a student can drag or move from the keyboard. The schedule reads its rows from the handoff view that Next.js serves, and each slot move posts to the handoff's slots route, where the server checks it against both windows and the authorization before it moves the handoff. Roomover runs the 45 day trial the hackathon offers participants, and the scheduler loads only when the schedule opens (`components/schedule/`).
 
 <img alt="The Handoff screen with the schedule open on the whole gap. Each seller's move out bar, the storage waits for Sofia and Lea, Jordan's move in, and five handoff slots as dark keys, under Bryntum's Trial Version watermark." src="docs/handoff-schedule.png" width="900">
 
@@ -307,14 +335,14 @@ The table below lists five lookups where the plugin changed the code.
 | Question | What the plugin showed | Change | File |
 | --- | --- | --- | --- |
 | Which PayPal APIs does the Server SDK cover? | Controllers for Orders, Payments, Transaction Search, OAuth with client credentials only, Subscriptions, and Vault | Payouts, Disputes, Webhooks, and Log in with PayPal run over REST | `lib/paypal/rest/` |
-| Can retries stay on for writes that carry a `PayPal-Request-Id`? | The retry interceptor retries every thrown error, and a stubbed 422 went out 3 times | Retries off, with a test that asserts one request per 422 | `lib/paypal/server-sdk/client.ts` |
-| What do timeout and retries default to? | A timeout of 0, so a call could wait forever | An explicit 20 second timeout | `lib/paypal/server-sdk/client.ts` |
+| Can retries stay on for writes that carry a `PayPal-Request-Id`, and what do timeouts default to? | The retry interceptor retries every thrown error, so a stubbed 422 went out 3 times, and the default timeout of 0 lets a call wait forever | SDK retries off with a test that asserts one request per 422, and an explicit 20 second timeout | `lib/paypal/server-sdk/client.ts` |
+| Which failures does the SDK throw, and what does a 409 mean for a keyed write? | Only non 2xx answers throw `ApiError`, and the capture error table documents 409 only as a conflict while processing the request | A 400, 401, 403, 404, or 422 moves the record to its next key, and a timeout, 5xx, 408, 409, or 429 keeps it | `lib/paypal/retry.ts` |
 | How does `final_capture` behave on an authorization? | `finalCapture` true closes the authorization | Only the last kept item sends `finalCapture` true | `lib/handoff/settle.ts` |
 | How long can an unapproved order wait? | 6 hours from creation to redirect the payer | A prepared order is reused for at most 5 hours, inside the 6 hour key retention for Orders | `lib/checkout/prepare.ts` |
 
 ## Architecture and data model
 
-One Next.js service on Render serves the pages, the API routes, the agents, the MCP server, and the PayPal webhook route. Domain logic lives in framework independent TypeScript modules, with state machines for orders, items, handoffs, payouts, and disputes, each covered by unit tests. Agent steps stream to the browser over server sent events (SSE).
+One Next.js service on Render serves the pages, the API routes, the agents, the MCP server, and the PayPal webhook route, and two cron jobs run the hourly release and the daily reseed. Domain logic lives in framework independent TypeScript modules with unit tests, among them the order and payout item state machines, the negotiation rounds, the settlement steps, and the money policy.
 
 | Folder | What it holds |
 | --- | --- |
@@ -322,9 +350,12 @@ One Next.js service on Render serves the pages, the API routes, the agents, the 
 | `components/` | The interface, the 3D room built with three.js and React Three Fiber, the schedule, and the PayPal buttons |
 | `lib/agents/` | The buyer, seller, and verifier agents, their prompts, and their tools |
 | `lib/paypal/` | The Server SDK wrappers, the REST clients, webhooks, and idempotency keys |
+| `lib/checkout/` | Order preparation, approval, and the checkout webhooks |
+| `lib/handoff/` | Photo checks, settlement, payouts, the release, and slot moves |
+| `lib/sell/` | The Sell flow from the PayPal login to the listing |
+| `lib/disputes/` | The dispute run, the evidence bundle, and the handoff record PDF |
 | `lib/channel3/` | Product identification and search |
 | `lib/domain/` | State machines, pricing, fit checks, money policy, and money math in integer cents |
-| `lib/disputes/` | The dispute run, the evidence bundle, and the handoff record PDF |
 | `lib/db/` | The Drizzle ORM schema and migrations |
 | `mcp/` | The MCP server and its four tools |
 | `scripts/` | Seed data, sandbox setup, and recorded runs |
@@ -343,7 +374,7 @@ erDiagram
     payouts ||--o{ payout_items : pays
     orders ||--o{ disputes : "disputed in"
     plans ||--o{ agent_runs : "planned by"
-    agent_runs ||--o{ agent_events : logs
+    plans ||--o{ agent_events : logs
     listings {
         uuid seller_id
         int price_cents
@@ -370,6 +401,7 @@ erDiagram
         text message_state
     }
     agent_events {
+        uuid run_id
         text agent
         text tool
         text summary
@@ -439,7 +471,7 @@ The hosted demo needs no sign up. Furnish runs as the demo student Jordan Ellis,
 
 1. Open [Furnish](https://roomover.onrender.com/furnish), keep Harbor Hall 214 and "$150, cozy, I study late", and press Plan my room. The room fills in about 30 seconds.
 2. Press the PayPal button, sign in as the judge buyer below, and approve.
-3. Press Go to handoff, then for each item press Use a sample photo and confirm the amount.
+3. Press Go to handoff, then for each item press Use a sample photo and confirm the amount. An item that also offers Sample with a new tear shows how the verifier and the money policy price new damage.
 4. Sellers paid fills with each seller's payout as PayPal reports it.
 
 | Account | Email | Password | What it lets a judge try |
@@ -453,20 +485,18 @@ A paid demo order that never reaches a handoff is released within about 3 hours,
 ## Limitations and next steps
 
 - **Marketplace onboarding.** Holding funds between a buyer and a seller in production requires PayPal's marketplace onboarding. The demo runs entirely in the sandbox, collects into the platform's account, and pays sellers out with Payouts.
-- **No Venmo payouts.** The sandbox refuses Venmo payouts (debug ID `f271928c32152`), so every seller is paid to their PayPal email.
-- **Sellers are paid by email.** Sandbox userinfo returns no payer ID, so payouts go to the email from Log in with PayPal.
-- **Fees.** The platform absorbs PayPal's capture and payout fees, and each seller receives the full agreed price.
-- **Bryntum watermark.** The schedule runs on Bryntum's 45 day trial and shows its "Trial Version" watermark.
-- **Estimated floor sizes.** The double and the single room presets use estimated floor sizes. The apartment bedroom uses measured ones.
+- **Sellers are paid by email, never by Venmo.** Sandbox userinfo returns no payer ID, so payouts go to the email from Log in with PayPal, and the sandbox refuses Venmo payouts (debug ID `f271928c32152`).
+- **Fees and revenue.** The platform absorbs PayPal's capture and payout fees, and each seller receives the full agreed price. A small service fee on each order, or a partnership with a campus that pays for move out reuse, would fund Roomover. Neither is built in the demo.
 - **A buyer win does not recover the seller's payout.** In the demo the platform absorbs the refund. In production, Roomover would hold a reserve from each payout through the dispute window or offset the amount against the seller's next payout.
+- **A spent Claude budget replays a recorded run.** When the demo's daily Claude calls or an hourly limit would refuse a Furnish run, the room replays the recorded Harbor Hall run, and PayPal and everything after it stay live.
 - **MCP sessions live in memory.** The web service runs one instance, so a deploy or a restart ends open sessions and the client starts a new one.
+- **Bryntum watermark.** The schedule runs on Bryntum's 45 day trial and shows its "Trial Version" watermark.
+- **One campus, partly estimated.** Room presets cover one campus. The double and the single use estimated floor sizes, and the apartment bedroom uses measured ones.
 - **A new campus starts with no supply.** The launch path is a partnership with each university's move out reuse program and residence life office.
 - **The verifier's result is advisory.** The student confirms every decision at handoff, and disputes go through PayPal.
-- **A spent Claude budget replays a recorded run.** When the demo's daily Claude calls or an hourly limit would refuse a Furnish run, the room replays the recorded Harbor Hall run, and PayPal and everything after it stay live.
-- **How Roomover would earn money.** A small service fee on each order, or a partnership with a campus that pays for move out reuse, would fund it. Neither is built in the demo, where the platform absorbs PayPal's fees.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
 
-The listing and handoff photos are CC0 public domain works, credited in [`public/seed/listings/CREDITS.md`](public/seed/listings/CREDITS.md) and [`public/handoff-samples/CREDITS.md`](public/handoff-samples/CREDITS.md). The studio lighting is the CC0 "Studio Small 08" high dynamic range (HDR) image from Poly Haven, and the Recursive typeface is used under the SIL Open Font License. The PayPal monogram is a trademark of PayPal, Inc., shown only where PayPal processes a payment, under PayPal's brand guidelines.
+The listing, handoff, and Sell sample photos are CC0 public domain works, credited in [`public/seed/listings/CREDITS.md`](public/seed/listings/CREDITS.md), [`public/handoff-samples/CREDITS.md`](public/handoff-samples/CREDITS.md), and [`public/sell-samples/CREDITS.md`](public/sell-samples/CREDITS.md). The studio lighting is the CC0 "Studio Small 08" high dynamic range (HDR) image from Poly Haven, and the Recursive typeface is used under the SIL Open Font License. The PayPal monogram is a trademark of PayPal, Inc., shown only where PayPal processes a payment, under PayPal's brand guidelines.
