@@ -141,15 +141,44 @@ describe("MCP sessions over streamable HTTP", () => {
     expect(response.status).toBe(403);
   });
 
-  it("lets one network open more than the old 30 sessions, caps the demo at 300, and closes idle ones", async () => {
+  it("lets one network open more than the old 30 sessions, makes room in a full table by closing the session idle longest, and closes idle ones", async () => {
     for (let index = 0; index < 31; index += 1) expect((await handleMcpRequest(post(initialize), setup("anthropic-cloud"))).status).toBe(200);
-    const stale = Date.now() - 31 * 60 * 1000;
-    for (let index = openSessions().size; index < 300; index += 1) openSessions().set(`filler-${index}`, { transport: { close: async () => undefined } as never, lastActive: Date.now() });
+    const closed: string[] = [];
+    const filler = (id: string, lastActive: number, inFlight = 0) => ({ transport: { close: async () => void closed.push(id) } as never, lastActive, inFlight });
+    for (let index = openSessions().size; index < 300; index += 1) openSessions().set(`filler-${index}`, filler(`filler-${index}`, Date.now()));
+    // The longest idle session is answering plan_room, so the next one goes.
+    openSessions().set("busy-oldest", filler("busy-oldest", Date.now() - 20 * 60 * 1000, 1));
+    openSessions().set("idle-oldest", filler("idle-oldest", Date.now() - 10 * 60 * 1000));
+    openSessions().delete("filler-299");
+    openSessions().delete("filler-298");
+    expect(openSessions().size).toBe(300);
+
+    const opened = await handleMcpRequest(post(initialize), setup("net-other"));
+    expect(opened.status).toBe(200);
+    expect(closed).toEqual(["idle-oldest"]);
+    expect(openSessions().has("busy-oldest")).toBe(true);
+    expect(openSessions().size).toBe(300);
+
+    for (const session of openSessions().values()) session.inFlight = 1;
     const refused = await handleMcpRequest(post(initialize), setup("net-other"));
     expect(refused.status).toBe(503);
-    expect(((await message(refused)).error as { message: string }).message).toBe("Roomover has 300 MCP sessions open, the most the demo allows, so try again in a few minutes once idle ones close.");
+    expect(((await message(refused)).error as { message: string }).message).toBe("Roomover has 300 MCP sessions open and every one is answering a request, so try again in a few minutes.");
+
+    const stale = Date.now() - 31 * 60 * 1000;
     for (const session of openSessions().values()) session.lastActive = stale;
     closeIdleSessions(Date.now());
     expect(openSessions().size).toBe(0);
+  });
+
+  it("counts a request as in flight until its answer stream ends", async () => {
+    const opened = await handleMcpRequest(post(initialize), setup());
+    const id = opened.headers.get("mcp-session-id") ?? "";
+    await message(opened);
+    const headers = { "mcp-session-id": id, "mcp-protocol-version": "2025-11-25" };
+    await handleMcpRequest(post({ jsonrpc: "2.0", method: "notifications/initialized" }, headers), setup());
+    const listed = await handleMcpRequest(post({ jsonrpc: "2.0", id: 2, method: "tools/list" }, headers), setup());
+    expect(openSessions().get(id)?.inFlight).toBe(1);
+    await message(listed);
+    expect(openSessions().get(id)?.inFlight).toBe(0);
   });
 });

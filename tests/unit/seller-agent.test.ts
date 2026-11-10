@@ -79,6 +79,13 @@ describe("describeListing", () => {
     expect(JSON.stringify(retry)).toContain('"is_error":true');
   });
 
+  it("skips the retry when the photo has one call left", async () => {
+    const transport = scripted([reply([call({ ...verdict, matchedCandidate: 3 })]), reply([call(verdict, "toolu_2")])]);
+    const result = await describeListing(transport, photo, [{ candidate: cart, photo }], 1);
+    expect(result).toMatchObject({ ok: false, error: SELLER_FAILED, usage: { calls: 1 } });
+    expect(transport.requests).toHaveLength(1);
+  });
+
   it("ends with a visible failure after a second invalid answer, and with a refusal sentence on a refusal", async () => {
     const twice = await describeListing(scripted([reply([call({ ...verdict, priceDollars: -1 })]), reply([{ type: "text", text: "Here you go" }])]), photo, []);
     expect(twice).toEqual({ ok: false, error: SELLER_FAILED, usage: { calls: 2, inputTokens: 18_000, outputTokens: 800 } });

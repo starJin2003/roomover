@@ -1,6 +1,6 @@
 import { publish } from "@/lib/agents/bus";
 import type { Database } from "@/lib/db/client";
-import { applyPayoutBatchStatus, applyPayoutItemStatus, hasOrderEvent, insertHandoffEvents, insertPayout, loadHandoffOrderById, lockOrderPayout, recordPayoutBatch, relistSeededListings, sellerAccounts, type HandoffOrder, type PayoutChange } from "@/lib/db/handoffs";
+import { applyPayoutBatchStatus, applyPayoutItemStatus, hasOrderEvent, insertHandoffEvents, insertPayout, loadHandoffOrderById, lockOrderPayout, nextPayoutAttempt, recordPayoutBatch, relistSeededListings, sellerAccounts, type HandoffOrder, type PayoutChange } from "@/lib/db/handoffs";
 import type { Transaction } from "@/lib/db/plans";
 import { payoutRecipient } from "@/lib/domain/payout-recipient";
 import { batchStatusFromPayPal, itemStatusFromPayPal } from "@/lib/domain/payout-state";
@@ -9,7 +9,7 @@ import { formatUsdShort } from "@/lib/format";
 import { payoutKey } from "@/lib/paypal/idempotency";
 import type { PayPalRestClient } from "@/lib/paypal/rest/client";
 import { createPayoutBatch, getPayoutBatch } from "@/lib/paypal/rest/payouts";
-import { retryTransient } from "@/lib/paypal/retry";
+import { keyedWrite } from "@/lib/paypal/retry";
 
 export interface PayoutDeps {
   db: Database;
@@ -21,10 +21,10 @@ const EMAIL_SUBJECT = "You got paid for your Roomover sale";
 const EMAIL_MESSAGE = "The student who bought from you checked the item at handoff, and Roomover sent your share through PayPal.";
 
 /**
- * Pays every seller who kept money in one Payouts batch. The order's
- * payout key is both the PayPal-Request-Id and the sender_batch_id, so a
- * retry after a lost answer gets PayPal's first answer back and pays nobody
- * twice.
+ * Pays every seller who kept money in one Payouts batch. The payout's key
+ * is both the PayPal-Request-Id and the sender_batch_id, so a retry after a
+ * lost answer gets PayPal's first answer back and pays nobody twice. A batch
+ * PayPal refused takes the next attempt and a new key.
  */
 export async function sendPayout(deps: PayoutDeps, order: HandoffOrder, roomLabel: string): Promise<void> {
   const lines = payoutLines(order.items.map((item) => ({ orderItemId: item.orderItemId, sellerId: item.sellerId, payCents: item.handoff?.payCents ?? 0 })));
@@ -34,7 +34,7 @@ export async function sendPayout(deps: PayoutDeps, order: HandoffOrder, roomLabe
     const accounts = await sellerAccounts(deps.db, lines.map((line) => line.sellerId));
     await insertPayout(deps.db, {
       orderId: order.id,
-      senderBatchId: payoutKey(order.id, order.attempt),
+      senderBatchId: payoutKey(order.id, 1),
       lines: lines.map((line) => {
         const account = accounts.get(line.sellerId);
         const recipient = account === undefined ? null : payoutRecipient(account);
@@ -49,23 +49,25 @@ export async function sendPayout(deps: PayoutDeps, order: HandoffOrder, roomLabe
 
   const titles = new Map<string, string[]>();
   for (const item of current.items) if ((item.handoff?.payCents ?? 0) > 0) titles.set(item.sellerId, [...(titles.get(item.sellerId) ?? []), item.title]);
-  const created = await retryTransient(() =>
-    createPayoutBatch(
-      deps.rest,
-      {
-        emailSubject: EMAIL_SUBJECT,
-        emailMessage: EMAIL_MESSAGE,
-        items: payout.items.map((item) => ({
-          senderItemId: item.senderItemId,
-          amountCents: item.amountCents,
-          recipientType: item.recipientType,
-          receiver: item.receiver,
-          wallet: item.wallet === "venmo" ? "VENMO" : "PAYPAL",
-          note: `Roomover payment for ${(titles.get(item.sellerId) ?? ["your item"]).join(", ")}, handed off in ${roomLabel}.`,
-        })),
-      },
-      payout.senderBatchId,
-    ),
+  const created = await keyedWrite(
+    () =>
+      createPayoutBatch(
+        deps.rest,
+        {
+          emailSubject: EMAIL_SUBJECT,
+          emailMessage: EMAIL_MESSAGE,
+          items: payout.items.map((item) => ({
+            senderItemId: item.senderItemId,
+            amountCents: item.amountCents,
+            recipientType: item.recipientType,
+            receiver: item.receiver,
+            wallet: item.wallet === "venmo" ? "VENMO" : "PAYPAL",
+            note: `Roomover payment for ${(titles.get(item.sellerId) ?? ["your item"]).join(", ")}, handed off in ${roomLabel}.`,
+          })),
+        },
+        payout.senderBatchId,
+      ),
+    () => nextPayoutAttempt(deps.db, payout.id, payout.attempt, payoutKey(order.id, payout.attempt + 1)),
   );
   const batchId = created.batch_header.payout_batch_id;
   await recordPayoutBatch(deps.db, payout.id, batchId);

@@ -8,6 +8,8 @@ import {
   insertHandoffEvents,
   loadHandoffOrder,
   loadHandoffOrderById,
+  nextItemAttempt,
+  nextOrderAttempt,
   recordItemCapture,
   recordItemRefund,
   recordReauthorization,
@@ -20,7 +22,7 @@ import { formatUsdShort } from "@/lib/format";
 import { PayPalApiError } from "@/lib/paypal/errors";
 import { captureKey, reauthorizeKey, refundKey, voidKey } from "@/lib/paypal/idempotency";
 import type { PayPalRestClient } from "@/lib/paypal/rest/client";
-import { issueOf, retryTransient } from "@/lib/paypal/retry";
+import { issueOf, keyedWrite } from "@/lib/paypal/retry";
 import type { PayPalSdk } from "@/lib/paypal/server-sdk/client";
 import { captureAuthorization, reauthorizeAuthorization, refundCapture, voidAuthorization } from "@/lib/paypal/server-sdk/payments";
 import { HandoffRefused } from "./check";
@@ -60,7 +62,12 @@ async function runStep(deps: SettleDeps, order: HandoffOrder, step: SettlementSt
   switch (step.kind) {
     case "reauthorize": {
       if (authorization === null) throw new SettlementStopped(STOPPED);
-      const answer = paymentSchema.parse(await retryTransient(() => reauthorizeAuthorization(sdk, authorization, { amountCents: step.amountCents }, reauthorizeKey(order.id, order.attempt))));
+      const answer = paymentSchema.parse(
+        await keyedWrite(
+          () => reauthorizeAuthorization(sdk, authorization, { amountCents: step.amountCents }, reauthorizeKey(order.id, order.attempt)),
+          () => nextOrderAttempt(db, order.id, order.attempt),
+        ),
+      );
       await recordReauthorization(db, order.id, answer.id, deps.now());
       await insertHandoffEvents(db, order, "platform", [
         {
@@ -76,9 +83,14 @@ async function runStep(deps: SettleDeps, order: HandoffOrder, step: SettlementSt
     case "capture": {
       if (authorization === null || item === undefined) throw new SettlementStopped(STOPPED);
       const answer = paymentSchema.parse(
-        await retryTransient(() => captureAuthorization(sdk, authorization, { amountCents: step.amountCents, finalCapture: step.finalCapture }, captureKey(item.orderItemId, item.attempt))),
+        await keyedWrite(
+          () => captureAuthorization(sdk, authorization, { amountCents: step.amountCents, finalCapture: step.finalCapture }, captureKey(item.orderItemId, item.attempt)),
+          () => nextItemAttempt(db, item.orderItemId, item.attempt),
+        ),
       );
       if (answer.status !== "COMPLETED" && answer.status !== "PENDING") {
+        // A declined capture is PayPal's answer to this key, so the next try needs a new one.
+        await nextItemAttempt(db, item.orderItemId, item.attempt);
         const words = wordsOf(item, layout);
         throw new SettlementStopped(`PayPal declined the charge for ${words.sellerFirstName}'s ${words.noun}. Nothing else was charged. Press Try again.`);
       }
@@ -95,7 +107,10 @@ async function runStep(deps: SettleDeps, order: HandoffOrder, step: SettlementSt
     }
     case "void": {
       if (authorization === null) throw new SettlementStopped(STOPPED);
-      await retryTransient(() => voidAuthorization(sdk, authorization, voidKey(order.id, order.attempt)));
+      await keyedWrite(
+        () => voidAuthorization(sdk, authorization, voidKey(order.id, order.attempt)),
+        () => nextOrderAttempt(db, order.id, order.attempt),
+      );
       await recordVoided(db, order.id, deps.now());
       await insertHandoffEvents(db, order, "platform", [
         {
@@ -111,7 +126,12 @@ async function runStep(deps: SettleDeps, order: HandoffOrder, step: SettlementSt
     case "refund": {
       if (order.paypalCaptureId === null || item === undefined) throw new SettlementStopped(STOPPED);
       const captureId = order.paypalCaptureId;
-      const answer = paymentSchema.parse(await retryTransient(() => refundCapture(sdk, captureId, { amountCents: step.amountCents }, refundKey(item.orderItemId, item.attempt))));
+      const answer = paymentSchema.parse(
+        await keyedWrite(
+          () => refundCapture(sdk, captureId, { amountCents: step.amountCents }, refundKey(item.orderItemId, item.attempt)),
+          () => nextItemAttempt(db, item.orderItemId, item.attempt),
+        ),
+      );
       await recordItemRefund(db, { orderItemId: item.orderItemId, refundId: answer.id, amountCents: item.amountCents, payCents: item.amountCents - step.amountCents });
       await insertHandoffEvents(db, order, "platform", [
         {

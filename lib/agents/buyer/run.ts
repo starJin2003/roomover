@@ -1,6 +1,6 @@
 import { publish } from "@/lib/agents/bus";
 import { answerOffer } from "@/lib/agents/seller/negotiate";
-import { channel3Transport } from "@/lib/channel3/transport";
+import { channel3Transport, replayChannel3Transport } from "@/lib/channel3/transport";
 import { prepareCheckout } from "@/lib/checkout/prepare";
 import { readConfig } from "@/lib/config";
 import { RUN_LIMITS, RunStopped } from "@/lib/agents/limits";
@@ -39,6 +39,7 @@ import { newProductPort, compareWithNew } from "./channel3-port";
 import { claudeMode, offerTransportsFor, transportFor } from "./claude";
 import { planTotalCents, type BuyerContext, type CatalogListing, type CheckoutPort, type EventDraft, type LiveNegotiation, type NegotiationPort, type NegotiationRecord } from "./context";
 import { runBuyerLoop } from "./loop";
+import { RECORDED_RUN, REPLAY_SENTENCE } from "./recorded";
 
 /** A live run stops before a call once the day's Claude calls are spent, and an MCP run also once MCP's share is. */
 const DAILY_CALLS = { total: RUN_LIMITS.claudeCallsPerDay, mcp: MCP_LIMITS.claudeCallsPerDay };
@@ -192,8 +193,8 @@ function finishSentence(kind: AgentRunKind, context: BuyerContext, unchanged: bo
 }
 
 /** The seller agents for one run. Each answer's calls count against the day's allowance and land on the run. */
-async function negotiationPort(db: Database, plan: PlanRow, runId: string, mode: ClaudeMode, sessionId: string): Promise<NegotiationPort> {
-  const transports = await offerTransportsFor();
+async function negotiationPort(db: Database, plan: PlanRow, runId: string, mode: ClaudeMode, sessionId: string, replay: boolean): Promise<NegotiationPort> {
+  const transports = await offerTransportsFor(replay ? RECORDED_RUN.claude : undefined);
   return {
     async answer(key, facts) {
       if (transports.mode === "live" && (await dailyAllowanceSpent(db, sessionId, DAILY_CALLS, new Date()))) {
@@ -221,6 +222,8 @@ export interface StartRunInput {
   request: string | null;
   sessionId: string;
   clientHash: string;
+  /** Replays the recorded Harbor Hall run, which spends no Claude calls and counts against no limit. */
+  replay?: boolean;
 }
 
 /**
@@ -230,7 +233,7 @@ export interface StartRunInput {
  */
 export async function startBuyerRun(input: StartRunInput): Promise<RunRow> {
   const db = getDb();
-  const mode = claudeMode();
+  const mode = input.replay === true ? "fixture" : claudeMode();
   const run = await startRun(db, {
     planId: input.plan.id,
     kind: input.kind,
@@ -254,11 +257,12 @@ async function executeRun(db: Database, input: StartRunInput, run: RunRow, mode:
   const plan = (await loadSessionPlan(db, input.plan.id, input.sessionId)) ?? input.plan;
   const catalog = await loadCatalog(db, preset.campus);
   const [stored, references] = await Promise.all([loadNegotiations(db, plan.id), loadRetailReferences(db, catalog.map((listing) => listing.id))]);
-  const channel3 = channel3Transport();
+  const replay = input.replay === true;
+  const channel3 = replay ? replayChannel3Transport(RECORDED_RUN.channel3) : channel3Transport();
   const context: BuyerContext = {
     ...buildContext(plan, preset, catalog, stored),
     checkout: checkoutPort(db, plan),
-    negotiator: await negotiationPort(db, plan, run.id, mode, input.sessionId),
+    negotiator: await negotiationPort(db, plan, run.id, mode, input.sessionId, replay),
     channel3: newProductPort({ db, transport: channel3, sessionId: input.sessionId, now: () => new Date() }),
   };
   const meta = planMeta({ ...plan, status: "planning" }, preset);
@@ -282,8 +286,12 @@ async function executeRun(db: Database, input: StartRunInput, run: RunRow, mode:
   try {
     snapshot(context.layout);
     // A plan run's first sentences come from its opening reads, which follow at once.
-    await record([{ tool: "run_started", summary: `${kind === "edit" ? "Edit" : "Plan"} run ${run.id} started with ${catalog.length} active listings.`, sentence: kind === "edit" ? "Working on your change." : undefined }]);
-    const { transport } = await transportFor(kind, preset.slug);
+    await record([
+      replay
+        ? { tool: "run_started", summary: `Plan run ${run.id} replays the recorded Harbor Hall 214 run with ${catalog.length} active listings, because a live run would pass the demo's limits.`, sentence: REPLAY_SENTENCE }
+        : { tool: "run_started", summary: `${kind === "edit" ? "Edit" : "Plan"} run ${run.id} started with ${catalog.length} active listings.`, sentence: kind === "edit" ? "Working on your change." : undefined },
+    ]);
+    const { transport } = await transportFor(kind, preset.slug, replay ? RECORDED_RUN.claude : undefined);
     const result = await runBuyerLoop({
       transport,
       context,

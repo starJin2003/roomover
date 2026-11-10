@@ -45,10 +45,27 @@ export function decideMcpPlanLimit(recent: WindowCount, now: Date, limit: number
   return { allowed: false, message: `This MCP session planned ${limit} rooms in the last hour, the most the demo allows, so use create_checkout on one of them or try again after ${retryAt.toISOString()}.`, retryAt };
 }
 
-/** Whether a new MCP session may open under the demo's cap. Idle sessions close after 30 minutes and free their place. */
-export function decideMcpSessionOpen(open: { total: number }): { allowed: true } | { allowed: false; message: string } {
-  if (open.total >= MCP_LIMITS.openSessions) return { allowed: false, message: `Roomover has ${MCP_LIMITS.openSessions} MCP sessions open, the most the demo allows, so try again in a few minutes once idle ones close.` };
-  return { allowed: true };
+export interface McpSessionState {
+  id: string;
+  /** When the session last sent a request. */
+  lastActive: number;
+  /** POST requests still answering, such as a plan_room run. */
+  inFlight: number;
+}
+
+export type McpSessionOpenDecision = { action: "open" } | { action: "evict"; sessionId: string } | { action: "refuse"; message: string };
+
+/**
+ * How a new MCP session opens under the demo's cap of 300. A full table
+ * closes the session idle longest, one with no request still answering, so
+ * a burst of initialize calls never locks real assistants out. Only a table
+ * where every session is answering a request refuses.
+ */
+export function decideMcpSessionOpen(sessions: readonly McpSessionState[]): McpSessionOpenDecision {
+  if (sessions.length < MCP_LIMITS.openSessions) return { action: "open" };
+  const idle = sessions.filter((session) => session.inFlight === 0).sort((a, b) => a.lastActive - b.lastActive)[0];
+  if (idle !== undefined) return { action: "evict", sessionId: idle.id };
+  return { action: "refuse", message: `Roomover has ${MCP_LIMITS.openSessions} MCP sessions open and every one is answering a request, so try again in a few minutes.` };
 }
 
 /** A browser that approves a preview link's payment, which takes the plan over for the handoff. */

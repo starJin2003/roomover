@@ -103,9 +103,9 @@ export function recordingTransport(inner: ClaudeTransport, path: string, kind: A
   };
 }
 
-/** The transport for one run. A configured fixture always wins, so tests never reach the API. */
-export async function transportFor(kind: AgentRunKind, scenario?: string): Promise<{ mode: ClaudeMode; transport: ClaudeTransport }> {
-  const fixture = readOptionalConfig("ROOMOVER_CLAUDE_FIXTURE");
+/** The transport for one run. A replay or a configured fixture always wins, so tests and replays never reach the API. */
+export async function transportFor(kind: AgentRunKind, scenario?: string, replay?: string): Promise<{ mode: ClaudeMode; transport: ClaudeTransport }> {
+  const fixture = replay ?? readOptionalConfig("ROOMOVER_CLAUDE_FIXTURE");
   if (fixture !== undefined) return { mode: "fixture", transport: await replayTransport(fixture, kind, scenario) };
   const live = liveTransport(readConfig(["ANTHROPIC_API_KEY"]).ANTHROPIC_API_KEY);
   const record = readOptionalConfig("ROOMOVER_CLAUDE_RECORD");
@@ -121,8 +121,8 @@ export interface OfferTransports {
 const REPLAY_OFFER_MS = 600;
 
 /** Seller agents for one run. Recorded answers come back by the offer's key, so parallel negotiations replay in any order. */
-export async function offerTransportsFor(): Promise<OfferTransports> {
-  const fixture = readOptionalConfig("ROOMOVER_CLAUDE_FIXTURE");
+export async function offerTransportsFor(replay?: string): Promise<OfferTransports> {
+  const fixture = replay ?? readOptionalConfig("ROOMOVER_CLAUDE_FIXTURE");
   if (fixture !== undefined) {
     const offers = (await readRecording(fixture)).offers ?? {};
     return {

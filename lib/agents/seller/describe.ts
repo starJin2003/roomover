@@ -80,13 +80,13 @@ export const SELLER_REFUSED = "The seller agent declined this photo. Take a new 
 
 /**
  * Describes one photo against the Channel3 candidates. An invalid answer
- * gets one retry with the validation error, and a second invalid answer
- * ends with a visible failure the seller can retry.
+ * gets one retry with the validation error while the photo has calls left,
+ * and a last invalid answer ends with a visible failure.
  */
-export async function describeListing(transport: SellerTransport, photo: PhotoData, candidates: readonly CandidateForAgent[]): Promise<DescribeResult> {
+export async function describeListing(transport: SellerTransport, photo: PhotoData, candidates: readonly CandidateForAgent[], maxCalls: number = 2): Promise<DescribeResult> {
   const usage: DescribeUsage = { calls: 0, inputTokens: 0, outputTokens: 0 };
   const messages: BetaMessageParam[] = [{ role: "user", content: sellerMessage(photo, candidates) }];
-  for (const attempt of [1, 2] as const) {
+  for (const attempt of ([1, 2] as const).slice(0, Math.max(1, Math.min(2, maxCalls)))) {
     const reply = await transport.send(buildSellerRequest(messages), attempt);
     usage.calls += 1;
     usage.inputTokens += reply.usage.input_tokens + (reply.usage.cache_read_input_tokens ?? 0) + (reply.usage.cache_creation_input_tokens ?? 0);

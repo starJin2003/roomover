@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DEMO_HOLD_MS, IDLE_HANDOFF_MS, releaseReason, SELL_LISTING_TTL_MS, sellListingCleanup } from "@/lib/domain/release";
+import { DEMO_HOLD_MS, IDLE_HANDOFF_MS, releaseReason, SELL_LISTING_TTL_MS, sellListingCleanup, settlementMovedMoney, STOPPED_SETTLEMENT_MS } from "@/lib/domain/release";
 import type { OrderStatus } from "@/lib/domain/enums";
 import { canTransition, releasedStatus } from "@/lib/domain/order-state";
 
@@ -35,13 +35,24 @@ describe("the demo release guard", () => {
     expect(releaseReason(order("authorized", null), NOW)).toBeNull();
   });
 
-  it("ends a release voided in authorize mode and refunded in capture mode, and a settlement cannot be released", () => {
+  it("ends a release voided in authorize mode and refunded in capture mode, and only a stopped settlement can turn into a release", () => {
     expect(releasedStatus("authorize_then_capture")).toBe("voided");
     expect(releasedStatus("capture_at_checkout")).toBe("refunded");
     expect(canTransition("authorized", "releasing")).toBe(true);
     expect(canTransition("captured", "releasing")).toBe(true);
-    expect(canTransition("settling", "releasing")).toBe(false);
+    expect(canTransition("settling", "releasing")).toBe(true);
     expect(canTransition("releasing", "settling")).toBe(false);
+    expect(canTransition("settled", "releasing")).toBe(false);
+  });
+
+  it("says a settlement moved money once an item was captured or refunded or a payout batch exists", () => {
+    const item = (paypalCaptureId: string | null = null, paypalRefundId: string | null = null) => ({ paypalCaptureId, paypalRefundId });
+    expect(settlementMovedMoney({ items: [item(), item()], payout: null })).toBe(false);
+    expect(settlementMovedMoney({ items: [item(), item()], payout: { paypalBatchId: null } })).toBe(false);
+    expect(settlementMovedMoney({ items: [item("CAP1"), item()], payout: null })).toBe(true);
+    expect(settlementMovedMoney({ items: [item(null, "REF1")], payout: null })).toBe(true);
+    expect(settlementMovedMoney({ items: [item()], payout: { paypalBatchId: "YQPE4TRNPC52U" } })).toBe(true);
+    expect(STOPPED_SETTLEMENT_MS).toBe(60 * 60 * 1000);
   });
 });
 

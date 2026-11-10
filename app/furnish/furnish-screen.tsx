@@ -97,16 +97,19 @@ export function FurnishScreen({ paypalClientId, presets, listingCount, initialPl
         else setRefusal({ message: body.error, retryAt: body.retryAt ?? null });
         return;
       }
-      const body = (await response.json()) as { planId: string; runId: string; roomLabel: string };
+      // A replay of the recorded run answers with Harbor Hall 214 and its own words.
+      const body = (await response.json()) as { planId: string; runId: string; roomLabel: string; presetSlug: string; stylePrompt: string };
       const startedAt = new Date().toISOString();
       setEvents([]);
+      setPresetSlug(body.presetSlug);
+      setPrompt(body.stylePrompt);
       setPlan({
         id: body.planId,
         status: "planning",
-        presetSlug,
+        presetSlug: body.presetSlug,
         roomLabel: body.roomLabel,
         budgetCents: 0,
-        stylePrompt: text,
+        stylePrompt: body.stylePrompt,
         items: [],
         totalCents: 0,
         usedCents: 0,

@@ -121,6 +121,28 @@ test("an outside assistant plans a room over MCP and the student approves it fro
     await expect(page.locator("[data-total]").first()).toHaveText(plan.paypalTotal);
     await expect(page.locator("[data-paypal-checkout='ready']")).toBeVisible({ timeout: 30_000 });
     await expect(page.locator("[data-room]")).toHaveAttribute("data-ready", "true", { timeout: 30_000 });
+    // The footer names the total beside the PayPal buttons.
+    await expect(page.locator("[data-footer-total]")).toHaveText(plan.paypalTotal);
+    if (!desktop) {
+      // On a phone the PayPal footer sticks to the screen only once the lead sentence sits clear above it.
+      const layout = () =>
+        page.evaluate(() => {
+          const lead = document.querySelector("[data-preview-lead]")?.getBoundingClientRect();
+          const footer = document.querySelector("[data-panel-footer]")?.getBoundingClientRect();
+          if (lead === undefined || footer === undefined) return null;
+          const leadOnScreen = lead.bottom > 0 && lead.top < window.innerHeight;
+          return { covers: leadOnScreen && footer.top < lead.bottom && footer.bottom > lead.top, footerAtBottom: Math.abs(footer.bottom - window.innerHeight) < 2 };
+        });
+      for (const top of [0, 80, 160, 260, 400, 700]) {
+        await page.evaluate((y) => window.scrollTo(0, y), top);
+        await page.waitForTimeout(200);
+        expect((await layout())?.covers, `scrolled to ${top}`).toBe(false);
+      }
+      expect((await layout())?.footerAtBottom).toBe(true);
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(200);
+      await page.screenshot({ path: `${SCREENSHOT_DIR}/mcp-preview-390-top.png` });
+    }
     await page.waitForTimeout(1200);
     await captureFullHeight(page, `${SCREENSHOT_DIR}/mcp-preview-${width}.png`);
     await expectAccessible(page);

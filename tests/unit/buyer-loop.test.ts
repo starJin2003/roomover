@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
-import { recordingTransport, replayTransport } from "@/lib/agents/buyer/claude";
+import { offerTransportsFor, recordingTransport, replayTransport, transportFor } from "@/lib/agents/buyer/claude";
+import { RECORDED_RUN } from "@/lib/agents/buyer/recorded";
+import { readChannel3Recording } from "@/lib/channel3/transport";
 import type { EventDraft } from "@/lib/agents/buyer/context";
 import { BUYER_MODEL, BUYER_TOOL_DEFINITIONS, MAX_TURNS, runBuyerLoop, type BuyerRequest, type ClaudeTransport, type LoopHooks } from "@/lib/agents/buyer/loop";
 import type { PlanLayout } from "@/lib/domain/layout";
@@ -236,6 +238,21 @@ describe("Claude transports", () => {
     const saved = JSON.parse(await readFile(path, "utf8")) as { runs: { plan: unknown[]; edit: unknown[] } };
     expect(saved.runs.plan).toHaveLength(1);
     expect(saved.runs.edit).toHaveLength(2);
+  });
+
+  it("replays the recorded Harbor Hall run with its seller answers and Channel3 searches, with no fixture configured", async () => {
+    expect(process.env.ROOMOVER_CLAUDE_FIXTURE).toBeUndefined();
+    const recording = JSON.parse(await readFile(RECORDED_RUN.claude, "utf8")) as { scenarios: Record<string, Message[]>; offers: Record<string, unknown> };
+    const scenario = recording.scenarios[RECORDED_RUN.presetSlug];
+    expect(scenario.at(-1)?.stop_reason).toBe("end_turn");
+    expect(scenario.flatMap((reply) => reply.content.flatMap((block) => (block.type === "tool_use" ? [block.name] : [])))).toContain("create_checkout");
+    expect(Object.keys(recording.offers).length).toBeGreaterThan(0);
+    expect(Object.keys((await readChannel3Recording(RECORDED_RUN.channel3)).searches ?? {}).length).toBeGreaterThan(0);
+
+    const { mode, transport } = await transportFor("plan", RECORDED_RUN.presetSlug, RECORDED_RUN.claude);
+    expect(mode).toBe("fixture");
+    expect((await transport.send({} as BuyerRequest, ignore)).id).toBe(scenario[0].id);
+    expect((await offerTransportsFor(RECORDED_RUN.claude)).mode).toBe("fixture");
   });
 
   it("ships a fixture with a full plan run and a full edit run", async () => {

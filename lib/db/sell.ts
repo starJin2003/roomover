@@ -5,7 +5,7 @@ import type { Channel3Candidate, Channel3Lookup, DraftDetails } from "@/lib/doma
 import type { ImageType } from "@/lib/images";
 import type { Database } from "./client";
 import type { Transaction } from "./plans";
-import { channel3Lookups, listingDrafts, listingPhotos, listings, negotiations, orderItems, orders, plans } from "./schema";
+import { channel3Lookups, listingDrafts, listingPhotos, listings, negotiations, orderItems, orders, plans, sellerAgentCalls } from "./schema";
 
 type Executor = Database | Transaction;
 
@@ -119,6 +119,41 @@ export async function latestDraft(db: Executor, sellerId: string, sessionId: str
     .orderBy(desc(listingDrafts.createdAt))
     .limit(1);
   return row ?? null;
+}
+
+/** Sell photos this browser started since midnight UTC. */
+export async function draftsToday(db: Executor, sessionId: string, now: Date): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(listingDrafts)
+    .where(and(eq(listingDrafts.sessionId, sessionId), gte(listingDrafts.createdAt, startOfUtcDay(now))));
+  return row?.count ?? 0;
+}
+
+/** Bytes of every stored Sell upload. */
+export async function storedSellPhotoBytes(db: Executor): Promise<number> {
+  const [row] = await db.select({ bytes: sql<string>`coalesce(sum(${listingPhotos.byteSize}), 0)` }).from(listingPhotos);
+  return Number(row?.bytes ?? 0);
+}
+
+/** Seller agent calls a photo spent or holds in reserve across all its tries. */
+export async function sellerCallsForDraft(db: Executor, draftId: string): Promise<number> {
+  const [row] = await db.select({ calls: sql<number>`coalesce(sum(${sellerAgentCalls.calls}), 0)::int` }).from(sellerAgentCalls).where(eq(sellerAgentCalls.draftId, draftId));
+  return row?.calls ?? 0;
+}
+
+/** Reserves a describe run's calls at the time it starts, under the run limit lock. */
+export async function reserveSellerCalls(db: Executor, input: { draftId: string; sessionId: string; clientHash: string; calls: number; at: Date }): Promise<string> {
+  const [row] = await db
+    .insert(sellerAgentCalls)
+    .values({ draftId: input.draftId, sessionId: input.sessionId, clientHash: input.clientHash, calls: input.calls, calledAt: input.at })
+    .returning({ id: sellerAgentCalls.id });
+  return row.id;
+}
+
+/** Replaces a reservation with the calls the run spent. */
+export async function settleSellerCalls(db: Executor, reservationId: string, calls: number): Promise<void> {
+  await db.update(sellerAgentCalls).set({ calls }).where(eq(sellerAgentCalls.id, reservationId));
 }
 
 export async function markDescribeStarted(db: Executor, draftId: string, mode: ClaudeMode): Promise<void> {

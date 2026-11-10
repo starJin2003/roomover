@@ -11,7 +11,7 @@ import { isMcpSession, MCP_SESSION_TAG, planClaimStep, type ClaimStep, type Plan
 import { roomGeometrySchema, type RoomGeometry } from "@/lib/domain/room";
 import type { ActivityEventView, PlanListing, RunView } from "@/lib/plan-view";
 import type { Database } from "./client";
-import { agentEvents, agentRuns, hallRules, halls, listingDrafts, listings, plans, retailReferences, roomPresets, users } from "./schema";
+import { agentEvents, agentRuns, hallRules, halls, listings, plans, retailReferences, roomPresets, sellerAgentCalls, users } from "./schema";
 
 export type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
@@ -343,19 +343,19 @@ export async function latestRun(db: Database, planId: string): Promise<RunRow | 
 }
 
 /**
- * Live agent runs a browser or a network started in the window. Buyer runs
- * and Sell runs of the seller agent share one count, so the demo's hourly
- * limits cover both screens.
+ * Live agent work a browser or a network started in the window. Each buyer
+ * run counts once and each seller agent call on Sell counts by the time it
+ * ran, so the demo's hourly limits cover both screens.
  */
 export async function windowCount(tx: Database | Transaction, by: "session" | "client", value: string, since: Date): Promise<WindowCount> {
   const runColumn = by === "session" ? agentRuns.sessionId : agentRuns.clientHash;
-  const draftColumn = by === "session" ? listingDrafts.sessionId : listingDrafts.clientHash;
+  const callColumn = by === "session" ? sellerAgentCalls.sessionId : sellerAgentCalls.clientHash;
   // MCP runs have limits of their own and never count against a network, since every Claude app connector shares Anthropic's.
   const result = await tx.execute<{ count: number; oldest: string | Date | null }>(sql`
-    select count(*)::int as count, min(started) as oldest from (
-      select ${agentRuns.startedAt} as started from ${agentRuns} where ${runColumn} = ${value} and ${agentRuns.sessionId} not like ${`${MCP_SESSION_TAG}%`} and ${agentRuns.claudeMode} = 'live' and ${agentRuns.startedAt} >= ${since}
+    select coalesce(sum(weight), 0)::int as count, min(started) as oldest from (
+      select 1 as weight, ${agentRuns.startedAt} as started from ${agentRuns} where ${runColumn} = ${value} and ${agentRuns.sessionId} not like ${`${MCP_SESSION_TAG}%`} and ${agentRuns.claudeMode} = 'live' and ${agentRuns.startedAt} >= ${since}
       union all
-      select ${listingDrafts.createdAt} from ${listingDrafts} where ${draftColumn} = ${value} and ${listingDrafts.claudeMode} = 'live' and ${listingDrafts.createdAt} >= ${since}
+      select ${sellerAgentCalls.calls}, ${sellerAgentCalls.calledAt} from ${sellerAgentCalls} where ${callColumn} = ${value} and ${sellerAgentCalls.calls} > 0 and ${sellerAgentCalls.calledAt} >= ${since}
     ) as runs`);
   const row = result.rows[0];
   return { count: row?.count ?? 0, oldest: row?.oldest === null || row?.oldest === undefined ? null : new Date(row.oldest) };
@@ -385,7 +385,7 @@ export async function dailyAllowanceSpent(db: Database, sessionId: string, limit
   return isMcpSession(sessionId) && (await mcpClaudeCallsToday(db, now)) >= limits.mcp;
 }
 
-/** Live Claude calls since midnight UTC, from buyer agent runs, verifier comparisons, and seller agent drafts together. */
+/** Live Claude calls since midnight UTC, from buyer agent runs, verifier comparisons, and seller agent calls on Sell together, each by when it ran. */
 export async function claudeCallsToday(db: Database | Transaction, now: Date): Promise<number> {
   const since = startOfUtcDay(now);
   const [runs] = await db
@@ -396,11 +396,11 @@ export async function claudeCallsToday(db: Database | Transaction, now: Date): P
     .select({ calls: sql<number>`coalesce(sum((${agentEvents.detail}->>'claudeCalls')::int), 0)::int` })
     .from(agentEvents)
     .where(and(eq(agentEvents.agent, "verifier"), gte(agentEvents.createdAt, since)));
-  const [drafts] = await db
-    .select({ calls: sql<number>`coalesce(sum(${listingDrafts.claudeCalls}), 0)::int` })
-    .from(listingDrafts)
-    .where(and(eq(listingDrafts.claudeMode, "live"), gte(listingDrafts.createdAt, since)));
-  return (runs?.calls ?? 0) + (comparisons?.calls ?? 0) + (drafts?.calls ?? 0);
+  const [sell] = await db
+    .select({ calls: sql<number>`coalesce(sum(${sellerAgentCalls.calls}), 0)::int` })
+    .from(sellerAgentCalls)
+    .where(gte(sellerAgentCalls.calledAt, since));
+  return (runs?.calls ?? 0) + (comparisons?.calls ?? 0) + (sell?.calls ?? 0);
 }
 
 /**

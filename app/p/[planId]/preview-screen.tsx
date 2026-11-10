@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { ActivityFeed } from "@/components/furnish/activity-feed";
 import { HandoffLink, PaidPanel } from "@/components/furnish/paid-panel";
 import { UnderTheHoodLog } from "@/components/furnish/under-the-hood-log";
@@ -69,6 +69,39 @@ function ItemList({ items }: { items: readonly RoomItemData[] }) {
 }
 
 /**
+ * Whether the lead sentence sits clear of the strip the footer takes at the
+ * bottom of a phone screen, or has scrolled away above it. The PayPal
+ * footer sticks to the screen only then, so it never covers the sentence
+ * that says what the page is.
+ */
+function useClearOfFooter(lead: RefObject<HTMLElement | null>, footer: RefObject<HTMLElement | null>, active: boolean): boolean {
+  const [clear, setClear] = useState(false);
+  useEffect(() => {
+    if (!active) return;
+    const check = () => {
+      const sentence = lead.current;
+      const strip = footer.current?.closest("[data-panel-footer]");
+      if (sentence === null || !(strip instanceof HTMLElement)) return;
+      setClear(sentence.getBoundingClientRect().bottom <= window.innerHeight - strip.offsetHeight);
+    };
+    check();
+    window.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    // The footer grows when PayPal's buttons and message arrive, which moves the strip it takes.
+    const sizes = new ResizeObserver(check);
+    const strip = footer.current?.closest("[data-panel-footer]");
+    if (strip instanceof HTMLElement) sizes.observe(strip);
+    if (lead.current !== null) sizes.observe(lead.current);
+    return () => {
+      window.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+      sizes.disconnect();
+    };
+  }, [active, lead, footer]);
+  return clear;
+}
+
+/**
  * A room an outside assistant planned over MCP, as the student sees it from
  * the preview link: the room in 3D, what is in it and from whom, the total,
  * and the PayPal button. The page follows the plan's activity while the
@@ -89,6 +122,9 @@ export function PreviewScreen({ paypalClientId, holder, preset, initialPlan, ini
   const added = plan.items.filter((item) => item.newFrom !== undefined);
   const sellers = new Set(used.map((item) => item.sellerName)).size;
   const payable = !running && !paid && used.length > 0;
+  const lead = useRef<HTMLParagraphElement>(null);
+  const pay = useRef<HTMLDivElement>(null);
+  const footerSticks = useClearOfFooter(lead, pay, payable);
 
   // Approving from this page claims the plan through the session cookie the answer set, so the server render picks up who holds it.
   const onPaid = useCallback(
@@ -113,7 +149,17 @@ export function PreviewScreen({ paypalClientId, holder, preset, initialPlan, ini
       )}
     </div>
   ) : payable ? (
-    <PayPalCheckout clientId={paypalClientId} planId={plan.id} amountCents={plan.usedCents} disabledReason={null} onPaid={onPaid} />
+    <div ref={pay} className="flex flex-col gap-3">
+      <p className="flex items-baseline justify-between gap-4">
+        <span className="text-sm text-flint">
+          {used.length} used {used.length === 1 ? "item" : "items"} through PayPal
+        </span>
+        <span className="text-xl font-semibold tabular-nums" data-footer-total={plan.usedCents}>
+          {formatUsdShort(plan.usedCents)}
+        </span>
+      </p>
+      <PayPalCheckout clientId={paypalClientId} planId={plan.id} amountCents={plan.usedCents} disabledReason={null} onPaid={onPaid} />
+    </div>
   ) : undefined;
 
   return (
@@ -133,9 +179,9 @@ export function PreviewScreen({ paypalClientId, holder, preset, initialPlan, ini
           action={<UnderTheHoodSwitch />}
           top={<StepStrip steps={BUYER_STEPS} current={paid ? 2 : running ? 0 : 1} label="Room progress" />}
           footer={footer}
-          footerClassName={payable ? "max-lg:sticky max-lg:bottom-0 max-lg:z-10 max-lg:border-t max-lg:border-hair max-lg:bg-paper max-lg:pb-[max(1rem,env(safe-area-inset-bottom))]" : ""}
+          footerClassName={payable ? `${footerSticks ? "max-lg:sticky max-lg:bottom-0 max-lg:z-10" : ""} max-lg:border-t max-lg:border-hair max-lg:bg-paper max-lg:pb-[max(1rem,env(safe-area-inset-bottom))]` : ""}
         >
-          <p className="text-base">
+          <p ref={lead} data-preview-lead className="text-base">
             {assistant} asked Roomover to furnish this room for {formatUsdShort(plan.budgetCents)}. {paid ? "PayPal now holds the payment." : `Nothing is charged until you approve in PayPal.`}
           </p>
           {notice !== null && !paid && (

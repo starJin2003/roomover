@@ -42,15 +42,25 @@ export function startOfUtcDay(now: Date): Date {
 
 const slotOpens = (window: WindowCount, now: Date) => new Date((window.oldest ?? now).getTime() + HOUR_MS);
 
-/** A Sell run is one seller agent call and its one retry. */
-export const SELL_RUN_CALLS = 2;
+/**
+ * Sell guards. A photo gets at most two seller agent calls across all its
+ * tries (one answer and one retry), a browser starts at most 20 photos a
+ * day, and uploads close once stored Sell photos pass 300 MB.
+ */
+export const SELL_LIMITS = {
+  callsPerDraft: 2,
+  draftsPerSessionPerDay: 20,
+  storedPhotoBytes: 300 * 1024 * 1024,
+} as const;
 
 /**
- * Whether a new run may start. Buyer runs and Sell runs share these limits.
- * A run reserves its worst case of Claude calls against the daily
- * allowance, so a run that starts can always finish.
+ * Whether a new run may start. Buyer runs and seller agent calls on Sell
+ * share these limits. A buyer run counts once an hour and reserves its worst
+ * case of Claude calls against the daily allowance, so a run that starts can
+ * always finish. A Sell describe reserves the calls its photo has left, and
+ * each of those calls counts.
  */
-export function decideLimit(counts: LimitCounts, kind: AgentRunKind | "sell", now: Date, limits: RunLimits = RUN_LIMITS): LimitDecision {
+export function decideLimit(counts: LimitCounts, reserve: AgentRunKind | number, now: Date, limits: RunLimits = RUN_LIMITS): LimitDecision {
   if (counts.session.count >= limits.sessionRunsPerHour) {
     return {
       allowed: false,
@@ -67,7 +77,7 @@ export function decideLimit(counts: LimitCounts, kind: AgentRunKind | "sell", no
       retryAt: slotOpens(counts.client, now),
     };
   }
-  if (counts.claudeCallsToday + (kind === "sell" ? SELL_RUN_CALLS : MAX_TURNS[kind]) > limits.claudeCallsPerDay) {
+  if (counts.claudeCallsToday + (typeof reserve === "number" ? reserve : MAX_TURNS[reserve]) > limits.claudeCallsPerDay) {
     return {
       allowed: false,
       reason: "daily",

@@ -4,6 +4,7 @@ import {
   advance,
   allocateBundle,
   checkSellerReply,
+  hintsAtFloor,
   NEGOTIATION_ROUND_LIMIT,
   negotiationWindow,
   NEW_NEGOTIATION,
@@ -13,6 +14,7 @@ import {
   type NegotiationState,
   type Offer,
   type Terms,
+  UNDER_FLOOR_NOTE,
 } from "@/lib/domain/negotiation";
 
 // Jun's winter window on a 2026-11-09 seed day: move out days 7 to 16 overlapping winter move in days 14 to 16.
@@ -95,15 +97,33 @@ describe("seller answers checked in code", () => {
   const offer = terms(3_500);
   const input = { listings: [DESK], offer, window: WINDOW };
 
-  it("never accepts below the floor", () => {
-    expect(checkSellerReply({ action: "accept" }, input)).toEqual({ action: "counter", terms: { priceCents: 4_000, slot: offer.slot }, heldByCode: "The offer was under the seller's floor, so code countered at the floor." });
-    expect(checkSellerReply({ action: "accept" }, { ...input, offer: terms(4_500) })).toEqual({ action: "accept", terms: terms(4_500), heldByCode: null });
+  it("never accepts below the floor, and counters at the asking price with a note that never names the floor", () => {
+    expect(checkSellerReply({ action: "accept" }, input)).toEqual({ action: "counter", terms: { priceCents: 5_500, slot: offer.slot }, heldByCode: UNDER_FLOOR_NOTE, agentWords: false });
+    expect(UNDER_FLOOR_NOTE).toBe("The seller's agent cannot take this price, so code countered at the asking price.");
+    expect(UNDER_FLOOR_NOTE).not.toMatch(/floor|\$/i);
+    expect(checkSellerReply({ action: "accept" }, { ...input, offer: terms(4_500) })).toEqual({ action: "accept", terms: terms(4_500), heldByCode: null, agentWords: true });
   });
 
-  it("holds a counter between the floor and the asking price in whole dollars", () => {
-    expect(checkSellerReply({ action: "counter", priceCents: 3_000 }, input).terms?.priceCents).toBe(4_000);
+  it("answers a counter under the floor with the asking price, so no counter ever lands on the floor", () => {
+    expect(checkSellerReply({ action: "counter", priceCents: 3_000 }, input)).toMatchObject({ terms: { priceCents: 5_500 }, heldByCode: UNDER_FLOOR_NOTE });
+    expect(checkSellerReply({ action: "counter", priceCents: 3_940 }, input).terms?.priceCents).toBe(5_500);
+    // A counter at the floor is the seller agent's own choice and stands, with no note.
+    expect(checkSellerReply({ action: "counter", priceCents: 4_000 }, input)).toEqual({ action: "counter", terms: { priceCents: 4_000, slot: offer.slot }, heldByCode: null, agentWords: true });
+  });
+
+  it("holds a counter at or under the asking price in whole dollars", () => {
     expect(checkSellerReply({ action: "counter", priceCents: 9_000 }, input).terms?.priceCents).toBe(5_500);
-    expect(checkSellerReply({ action: "counter", priceCents: 4_849 }, input)).toEqual({ action: "counter", terms: { priceCents: 4_800, slot: offer.slot }, heldByCode: "Code held the counter between the seller's floor and the asking price, in whole dollars." });
+    expect(checkSellerReply({ action: "counter", priceCents: 4_849 }, input)).toEqual({ action: "counter", terms: { priceCents: 4_800, slot: offer.slot }, heldByCode: "Code held the counter at or under the asking price, in whole dollars.", agentWords: false });
+  });
+
+  it("flags a seller sentence that could hint at the floor", () => {
+    const known = [3_500, 5_500, 4_800];
+    expect(hintsAtFloor("Thanks for the offer, I can do $48 for the desk with your Monday handoff.", known)).toBe(false);
+    expect(hintsAtFloor("I can do $48, since $40 is my floor.", known)).toBe(true);
+    expect(hintsAtFloor("The lowest I can go is $48.", known)).toBe(true);
+    expect(hintsAtFloor("I need at least $48 for it.", known)).toBe(true);
+    expect(hintsAtFloor("I could take $41.50 for it.", known)).toBe(true);
+    expect(hintsAtFloor("Asking was $55, and $48 works for me.", known)).toBe(false);
   });
 
   it("treats a counter at or under the offer as an accept", () => {

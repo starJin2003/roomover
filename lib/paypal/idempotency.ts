@@ -2,10 +2,11 @@
  * PayPal-Request-Id values derived from Roomover record IDs.
  *
  * A key is a pure function of the action, the record, and the attempt number
- * stored on that record. Retrying the same attempt after a timeout or a 5xx
- * sends the same key, so PayPal replays its first answer and money moves at
- * most once. A deliberate new attempt (for example a capture after the buyer
- * re-verified an item) increments the attempt on the record and gets a new key.
+ * stored on that record. Retrying after a timeout, a 5xx, or any answer whose
+ * outcome is unknown sends the same key, so PayPal replays its first answer
+ * and money moves at most once. A definite refusal (a 4xx such as a declined
+ * capture) moves the record to its next attempt (`keyedWrite` in retry.ts),
+ * so the next try gets a new key and PayPal judges it afresh.
  */
 
 export type IdempotentAction =

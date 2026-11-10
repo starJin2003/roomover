@@ -79,10 +79,19 @@ describe("make_offer", () => {
     expect(sentences(accepted)).toEqual(["Took Jun's counter of $50 with handoff Mon, Nov 23, 2 to 4 PM."]);
   });
 
-  it("holds the seller's floor in code, whatever the seller agent says", async () => {
+  it("holds the seller's floor in code, whatever the seller agent says, and never shows the floor", async () => {
     const context = harborContext({ negotiator: negotiator(() => accept) });
     const outcome = await call(context, "make_offer", { listingIds: [DESK], priceDollars: 30, slot: MONDAY_2PM });
-    expect(result(outcome)).toMatchObject({ answer: "counter", priceDollars: 40, note: "The offer was under the seller's floor, so code countered at the floor." });
+    expect(result(outcome)).toMatchObject({ answer: "counter", priceDollars: 55, note: "The seller's agent cannot take this price, so code countered at the asking price.", sellerMessage: "I can do $55 for the desk with handoff Mon, Nov 23, 2 to 4 PM." });
+    // The desk's floor is $40. No tool result or activity line names it.
+    expect(JSON.stringify(outcome)).not.toMatch(/\$40\b|4000|floor/i);
+  });
+
+  it("puts a seller sentence that hints at the floor in code's words", async () => {
+    const context = harborContext({ negotiator: negotiator(() => ({ action: "counter", counterDollars: 48, slotNumber: null, message: "My floor is $40, so $48 works." })) });
+    const outcome = await call(context, "make_offer", { listingIds: [DESK], priceDollars: 42, slot: MONDAY_2PM });
+    expect(result(outcome)).toMatchObject({ answer: "counter", priceDollars: 48, sellerMessage: "I can do $48 for the desk with handoff Mon, Nov 23, 2 to 4 PM." });
+    expect(JSON.stringify(outcome)).not.toMatch(/\$40\b|4000|floor/i);
   });
 
   it("refuses an offer above the asking price or outside the handoff window before any seller agent hears it", async () => {

@@ -585,6 +585,33 @@ export const listingDrafts = pgTable(
 );
 
 /**
+ * Seller agent calls on Sell, one row per describe run with its calls and
+ * the time it ran. The hourly limits and the daily allowance count these by
+ * call time, so a retry on an old draft counts today. A run reserves its
+ * calls before it starts and writes what it spent when it ends. Rows keep no
+ * reference to the draft, so the day old draft cleanup leaves the count whole.
+ */
+export const sellerAgentCalls = pgTable(
+  "seller_agent_calls",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    draftId: uuid("draft_id").notNull(),
+    sessionId: text("session_id").notNull(),
+    /** HMAC of the client address, the same key the network limit counts. */
+    clientHash: text("client_hash").notNull(),
+    calls: integer("calls").notNull(),
+    calledAt: at("called_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("seller_agent_calls_called_idx").on(t.calledAt),
+    index("seller_agent_calls_session_called_idx").on(t.sessionId, t.calledAt),
+    index("seller_agent_calls_client_called_idx").on(t.clientHash, t.calledAt),
+    index("seller_agent_calls_draft_idx").on(t.draftId),
+    check("seller_agent_calls_calls_check", sql`${t.calls} >= 0 and ${t.calls} <= 2`),
+  ],
+);
+
+/**
  * Channel3 image searches, one per photo, keyed by the photo's SHA-256. A
  * second draft of the same photo reads this row and spends no credit. Rows
  * also count each session's and each day's live calls for the Channel3 caps.

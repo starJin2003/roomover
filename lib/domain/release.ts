@@ -30,6 +30,21 @@ export interface ReleaseCandidate {
 
 export type ReleaseReason = "demo_hold" | "idle_handoff";
 
+/**
+ * A settlement that stopped and saw no change for this long is picked up by
+ * the hourly job, which carries on from where it stopped.
+ */
+export const STOPPED_SETTLEMENT_MS = HOUR_MS;
+
+/**
+ * Whether settlement already moved money for an order: an item captured or
+ * refunded, or a payout batch created. A stopped settlement that moved none
+ * can still be released in full when carrying on fails again.
+ */
+export function settlementMovedMoney(order: { items: readonly { paypalCaptureId: string | null; paypalRefundId: string | null }[]; payout: { paypalBatchId: string | null } | null }): boolean {
+  return order.items.some((item) => item.paypalCaptureId !== null || item.paypalRefundId !== null) || (order.payout?.paypalBatchId ?? null) !== null;
+}
+
 /** Why the hourly job releases an order now, or null when it stays. */
 export function releaseReason(order: ReleaseCandidate, now: Date): ReleaseReason | null {
   if (!canCheck(order.status) || order.approvedAt === null) return null;

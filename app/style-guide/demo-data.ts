@@ -213,17 +213,21 @@ export const SELLER_PAYOUTS: readonly SellerPayout[] = CART.map((item) => ({
 /** Payout events rarely arrive in display order, so the replay fills rows out of order. */
 export const PAYOUT_ARRIVALS: readonly string[] = (["lea", "jun", "sofia", "ava", "marcus"] as const).map((seller) => PAYOUT_ITEM_IDS[seller]);
 
-const lamp = seedListing("ava-desk-lamp");
+/**
+ * The Sell panel sample. Its item and prices are made up for the style guide
+ * and match no listing, so this public page shows no real seller's floor.
+ */
+const SAMPLE_LISTING = { title: "Green glass banker's lamp", priceCents: 1_800, floorCents: 1_300, newCents: 4_500, sizeMm: [300, 220, 360] as [number, number, number], moveOut: [new Date("2027-05-10T12:00:00Z"), new Date("2027-05-14T12:00:00Z")] as const };
 
 export const SELL = {
-  title: lamp.title,
-  priceCents: lamp.priceCents,
-  floorCents: lamp.floorPriceCents,
-  newCents: lamp.retailReference.newPriceCents,
+  title: SAMPLE_LISTING.title,
+  priceCents: SAMPLE_LISTING.priceCents,
+  floorCents: SAMPLE_LISTING.floorCents,
+  newCents: SAMPLE_LISTING.newCents,
   facts: [
-    { label: "Lowest you'll take", value: usd(lamp.floorPriceCents) },
-    { label: "Condition", value: CONDITION_LABEL[lamp.conditionReport.grade] },
-    { label: "Size", value: formatInches([lamp.widthMm, lamp.depthMm, lamp.heightMm]) },
-    { label: "Moving out", value: formatDayRange(lamp.moveOutStartsAt, lamp.moveOutEndsAt) },
+    { label: "Lowest you'll take", value: usd(SAMPLE_LISTING.floorCents) },
+    { label: "Condition", value: CONDITION_LABEL.good },
+    { label: "Size", value: formatInches(SAMPLE_LISTING.sizeMm) },
+    { label: "Moving out", value: formatDayRange(SAMPLE_LISTING.moveOut[0], SAMPLE_LISTING.moveOut[1]) },
   ],
 };

@@ -12,6 +12,7 @@ import {
 } from "@/app/style-guide/demo-data";
 import { AGENT_NAMES } from "@/lib/domain/enums";
 import { sumCents } from "@/lib/domain/money";
+import { seedListings } from "@/scripts/seed/listings";
 
 describe("style guide demo data", () => {
   it("conserves money from authorization to payouts", () => {
@@ -54,8 +55,9 @@ describe("style guide demo data", () => {
     expect(adjusted[0].note).toBe("new 3 cm tear. You pay $30 of $35");
   });
 
-  it("lists Ava's lamp from the seed with its floor under the price", () => {
-    expect(SELL).toMatchObject({ title: "Black balance arm desk lamp", priceCents: 1_600, floorCents: 1_200, newCents: 4_900 });
-    expect(SELL.facts.map((fact) => fact.value)).toEqual(["$12", "Like new", "16.5 × 7 × 19 in", "Nov 17 to 25"]);
+  it("shows a made up Sell sample whose floor belongs to no listing", () => {
+    expect(SELL).toMatchObject({ title: "Green glass banker's lamp", priceCents: 1_800, floorCents: 1_300, newCents: 4_500 });
+    expect(SELL.facts.map((fact) => fact.value)).toEqual(["$13", "Good", "12 × 8.5 × 14 in", "May 10 to 14"]);
+    expect(seedListings("2026-11-08").some((listing) => listing.title === SELL.title)).toBe(false);
   });
 });

@@ -15,6 +15,8 @@ import { buildMcpServer } from "./server";
 interface OpenSession {
   transport: WebStandardStreamableHTTPServerTransport;
   lastActive: number;
+  /** POST requests still answering. A session with none is idle and may make room for a new one. */
+  inFlight: number;
 }
 
 export interface McpSessionSetup {
@@ -41,10 +43,63 @@ const rpcError = (status: number, code: number, message: string) => Response.jso
 /** Closes sessions that saw no request for the idle time, which also frees their place under the caps. */
 export function closeIdleSessions(now: number): void {
   for (const [id, session] of openSessions()) {
-    if (now - session.lastActive < MCP_LIMITS.idleMs) continue;
-    openSessions().delete(id);
-    void session.transport.close().catch(() => undefined);
+    if (now - session.lastActive >= MCP_LIMITS.idleMs) closeSession(id);
   }
+}
+
+function closeSession(id: string): void {
+  const session = openSessions().get(id);
+  openSessions().delete(id);
+  void session?.transport.close().catch(() => undefined);
+}
+
+/**
+ * Counts a POST as in flight until its answer stream ends or the client
+ * leaves. A GET opens the session's notification stream, which stays open
+ * and does not count.
+ */
+async function answer(session: OpenSession, request: Request): Promise<Response> {
+  if (request.method !== "POST") return session.transport.handleRequest(request);
+  session.inFlight += 1;
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    session.inFlight -= 1;
+  };
+  let response: Response;
+  try {
+    response = await session.transport.handleRequest(request);
+  } catch (error) {
+    finish();
+    throw error;
+  }
+  if (response.body === null) {
+    finish();
+    return response;
+  }
+  const reader = response.body.getReader();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          finish();
+          controller.close();
+        } else {
+          controller.enqueue(chunk.value);
+        }
+      } catch (error) {
+        finish();
+        controller.error(error);
+      }
+    },
+    cancel(reason) {
+      finish();
+      return reader.cancel(reason);
+    },
+  });
+  return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
 }
 
 export async function handleMcpRequest(request: Request, setup: McpSessionSetup): Promise<Response> {
@@ -55,7 +110,7 @@ export async function handleMcpRequest(request: Request, setup: McpSessionSetup)
     const session = openSessions().get(sessionId);
     if (session === undefined) return rpcError(404, -32001, "Session not found. Start a new session with initialize.");
     session.lastActive = now;
-    return session.transport.handleRequest(request);
+    return answer(session, request);
   }
   if (request.method !== "POST") return rpcError(400, -32000, "Bad Request: send Mcp-Session-Id, or POST initialize to start a session.");
 
@@ -67,14 +122,15 @@ export async function handleMcpRequest(request: Request, setup: McpSessionSetup)
   }
   if (!isInitializeRequest(body)) return rpcError(400, -32000, "Bad Request: send Mcp-Session-Id, or POST initialize to start a session.");
 
-  const decision = decideMcpSessionOpen({ total: openSessions().size });
-  if (!decision.allowed) return rpcError(503, -32000, decision.message);
+  const decision = decideMcpSessionOpen([...openSessions()].map(([id, session]) => ({ id, lastActive: session.lastActive, inFlight: session.inFlight })));
+  if (decision.action === "refuse") return rpcError(503, -32000, decision.message);
+  if (decision.action === "evict") closeSession(decision.sessionId);
 
   const id = randomUUID();
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: () => id,
     onsessioninitialized: () => {
-      openSessions().set(id, { transport, lastActive: now });
+      openSessions().set(id, { transport, lastActive: now, inFlight: 0 });
     },
     onsessionclosed: () => {
       openSessions().delete(id);

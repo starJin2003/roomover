@@ -28,8 +28,17 @@ describe("demo session cookie", () => {
 });
 
 describe("client address", () => {
-  it("takes the first X-Forwarded-For entry and falls back to X-Real-IP", () => {
-    expect(clientAddress(new Headers({ "x-forwarded-for": "203.0.113.7, 10.0.0.2" }))).toBe("203.0.113.7");
+  it("keys on the address Cloudflare saw, which a caller cannot set by sending its own X-Forwarded-For", () => {
+    // A caller claims an Anthropic address in front, and Cloudflare appends the real one and writes it to CF-Connecting-IP.
+    const spoofed = new Headers({ "x-forwarded-for": "160.79.104.10, 203.0.113.7", "cf-connecting-ip": "203.0.113.7" });
+    expect(clientAddress(spoofed)).toBe("203.0.113.7");
+    expect(clientAddress(new Headers({ "x-forwarded-for": "160.79.104.10", "cf-connecting-ip": "203.0.113.7" }))).toBe("203.0.113.7");
+  });
+
+  it("falls back to the last X-Forwarded-For entry, then X-Real-IP, where no Cloudflare header exists", () => {
+    expect(clientAddress(new Headers({ "x-forwarded-for": "198.51.100.9, 203.0.113.7" }))).toBe("203.0.113.7");
+    expect(clientAddress(new Headers({ "x-forwarded-for": "203.0.113.7" }))).toBe("203.0.113.7");
+    expect(clientAddress(new Headers({ "x-forwarded-for": " , " , "x-real-ip": "198.51.100.4" }))).toBe("198.51.100.4");
     expect(clientAddress(new Headers({ "x-real-ip": "198.51.100.4" }))).toBe("198.51.100.4");
     expect(clientAddress(new Headers())).toBe("unknown");
   });

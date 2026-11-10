@@ -199,36 +199,60 @@ export interface SellerReply {
 export interface CheckedReply {
   action: "accept" | "counter" | "decline";
   terms: Terms | null;
-  /** Why code changed the seller agent's answer, when it did. */
+  /** Why code changed the seller agent's answer, when it did. It never names the floor. */
   heldByCode: string | null;
+  /** False when code changed the price or the slot, so the seller agent's own sentence no longer matches the terms. */
+  agentWords: boolean;
 }
 
+/** What code says when an answer would have sold under the seller's floor. The note and the counter stay clear of the floor's value. */
+export const UNDER_FLOOR_NOTE = "The seller's agent cannot take this price, so code countered at the asking price.";
+
 /**
- * Turns the seller agent's answer into terms code stands behind. An accept
- * below the floor becomes a counter at the floor, a counter is held between
- * the floor and the asking price in whole dollars, a counter at or under
- * the offer is an accept, and a slot outside the window falls back to the
+ * Turns the seller agent's answer into terms code stands behind. An answer
+ * that would sell under the floor becomes a counter at the asking price, so
+ * no counter sits at the floor and no note names it. A counter is held at
+ * or under the asking price in whole dollars, a counter at or under the
+ * offer is an accept, and a slot outside the window falls back to the
  * buyer's slot.
  */
 export function checkSellerReply(reply: SellerReply, input: { listings: readonly NegotiableListing[]; offer: Terms; window: TimeWindow }): CheckedReply {
   const { listings, offer, window } = input;
   const floor = floorTotalCents(listings);
   const asking = listTotalCents(listings);
-  const atFloor = (reason: string): CheckedReply => ({ action: "counter", terms: { priceCents: floor, slot: offer.slot }, heldByCode: reason });
-  if (reply.action === "decline") return { action: "decline", terms: null, heldByCode: null };
+  const atAsking = (slot: TimeWindow): CheckedReply => ({ action: "counter", terms: { priceCents: asking, slot }, heldByCode: UNDER_FLOOR_NOTE, agentWords: false });
+  if (reply.action === "decline") return { action: "decline", terms: null, heldByCode: null, agentWords: true };
   if (reply.action === "accept") {
-    return offer.priceCents >= floor ? { action: "accept", terms: offer, heldByCode: null } : atFloor("The offer was under the seller's floor, so code countered at the floor.");
+    return offer.priceCents >= floor ? { action: "accept", terms: offer, heldByCode: null, agentWords: true } : atAsking(offer.slot);
   }
   const slot = reply.slot !== undefined && isSlotShape(reply.slot) && slotInside(reply.slot, window) ? reply.slot : offer.slot;
   const slotNote = reply.slot !== undefined && slot === offer.slot && reply.slot.startsAt.getTime() !== offer.slot.startsAt.getTime() ? "The counter's slot fell outside the handoff window, so code kept the buyer's slot." : null;
   const asked = reply.priceCents ?? asking;
   const rounded = Math.round(asked / 100) * 100;
-  const price = Math.min(asking, Math.max(floor, rounded));
-  const priceNote = price !== asked ? "Code held the counter between the seller's floor and the asking price, in whole dollars." : null;
+  if (rounded < floor) return atAsking(slot);
+  const price = Math.min(asking, rounded);
+  const priceNote = price !== asked ? "Code held the counter at or under the asking price, in whole dollars." : null;
   if (price <= offer.priceCents) {
-    return offer.priceCents >= floor ? { action: "accept", terms: { priceCents: offer.priceCents, slot }, heldByCode: "A counter at or under the offer is an accept." } : atFloor("The offer was under the seller's floor, so code countered at the floor.");
+    return offer.priceCents >= floor ? { action: "accept", terms: { priceCents: offer.priceCents, slot }, heldByCode: "A counter at or under the offer is an accept.", agentWords: false } : atAsking(slot);
   }
-  return { action: "counter", terms: { priceCents: price, slot }, heldByCode: priceNote ?? slotNote };
+  return { action: "counter", terms: { priceCents: price, slot }, heldByCode: priceNote ?? slotNote, agentWords: priceNote === null && slotNote === null };
+}
+
+const FLOOR_WORDS = /\b(floor|lowest|minimum|bottom|least|reserve)\b/i;
+const DOLLARS = /\$\s?(\d{1,3}(?:,\d{3})*|\d+)(?:\.(\d{1,2}))?/g;
+
+/**
+ * Whether a seller agent's sentence could hint at the floor: it uses a word
+ * like floor or lowest, or names a dollar amount other than the prices the
+ * buyer already knows (the offer, the answer, and the asking prices).
+ */
+export function hintsAtFloor(message: string, knownCents: readonly number[]): boolean {
+  if (FLOOR_WORDS.test(message)) return true;
+  for (const match of message.matchAll(DOLLARS)) {
+    const cents = Number(match[1].replaceAll(",", "")) * 100 + Number((match[2] ?? "0").padEnd(2, "0"));
+    if (!knownCents.includes(cents)) return true;
+  }
+  return false;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { EventDraft } from "@/lib/agents/buyer/context";
 import type { HandoffDecision, HandoffMode, HandoffStatus, ListingStatus, OrderItemStatus, OrderStatus, PaymentMode, PayoutItemStatus, PayoutRecipientType, PayoutStatus, PayoutWallet } from "@/lib/domain/enums";
 import { handoffPhotosSchema, handoffWindow, type HandoffPhoto } from "@/lib/domain/handoff";
@@ -398,6 +398,24 @@ export async function recordSettlementError(db: Executor, orderId: string, error
   await db.update(orders).set({ settlementError: error }).where(eq(orders.id, orderId));
 }
 
+/**
+ * Moves a record to its next PayPal attempt after a definite refusal, so the
+ * next try sends a new key. The update names the attempt that failed, so two
+ * refusals of the same attempt move it once.
+ */
+export async function nextOrderAttempt(db: Executor, orderId: string, failed: number): Promise<void> {
+  await db.update(orders).set({ attempt: failed + 1 }).where(and(eq(orders.id, orderId), eq(orders.attempt, failed)));
+}
+
+export async function nextItemAttempt(db: Executor, orderItemId: string, failed: number): Promise<void> {
+  await db.update(orderItems).set({ attempt: failed + 1 }).where(and(eq(orderItems.id, orderItemId), eq(orderItems.attempt, failed)));
+}
+
+/** A refused batch takes a new sender_batch_id with its next attempt, since PayPal keeps each one for 30 days. */
+export async function nextPayoutAttempt(db: Executor, payoutId: string, failed: number, senderBatchId: string): Promise<void> {
+  await db.update(payouts).set({ attempt: failed + 1, senderBatchId }).where(and(eq(payouts.id, payoutId), eq(payouts.attempt, failed), isNull(payouts.paypalBatchId)));
+}
+
 export async function recordReauthorization(db: Executor, orderId: string, authorizationId: string, at: Date): Promise<void> {
   await db.update(orders).set({ paypalReauthorizationId: authorizationId, reauthorizedAt: at }).where(and(eq(orders.id, orderId), isNull(orders.reauthorizedAt)));
 }
@@ -555,12 +573,12 @@ export async function finishSettlement(db: Database, order: HandoffOrder, at: Da
 }
 
 /** Starts giving an unchecked order's money back. Only an order that still holds it, with no settlement under way, can be claimed. */
-export async function claimRelease(db: Executor, orderId: string): Promise<boolean> {
+export async function claimRelease(db: Executor, orderId: string, options: { fromSettling?: boolean } = {}): Promise<boolean> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId)).for("update");
     if (row === undefined) return false;
     if (row.status === "releasing") return true;
-    if (row.status !== "authorized" && row.status !== "captured") return false;
+    if (row.status !== "authorized" && row.status !== "captured" && !(options.fromSettling === true && row.status === "settling")) return false;
     await tx.update(orders).set({ status: "releasing" }).where(eq(orders.id, orderId));
     return true;
   });
@@ -666,6 +684,16 @@ export async function releaseCandidates(db: Executor, approvedBefore: Date): Pro
 }
 
 /** Writes handoff activity lines. Their run ID is the order's ID, like checkout's. */
+/** Settlements that stopped and saw no change since `changedBefore`, oldest first. */
+export async function stoppedSettlements(db: Executor, changedBefore: Date): Promise<{ id: string; planId: string; sessionId: string | null }[]> {
+  return db
+    .select({ id: orders.id, planId: orders.planId, sessionId: plans.sessionId })
+    .from(orders)
+    .innerJoin(plans, eq(orders.planId, plans.id))
+    .where(and(eq(orders.status, "settling"), lt(orders.updatedAt, changedBefore)))
+    .orderBy(asc(orders.updatedAt));
+}
+
 export async function insertHandoffEvents(db: Executor, order: Pick<HandoffOrder, "id" | "planId">, agent: "verifier" | "platform", drafts: readonly EventDraft[]): Promise<ActivityEventView[]> {
   return insertEvents(db, { runId: order.id, planId: order.planId, orderId: order.id, agent, drafts });
 }

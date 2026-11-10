@@ -38,9 +38,25 @@ export function sessionCookieOptions(secure: boolean) {
   return { httpOnly: true, sameSite: "lax" as const, secure, path: "/", maxAge: MAX_AGE_SECONDS };
 }
 
-/** The client address Render's proxy reports first in X-Forwarded-For. */
+/**
+ * The client address every limit keys on. Cloudflare fronts each public
+ * Render web service: it appends the address it saw to X-Forwarded-For and
+ * writes that same address to CF-Connecting-IP, overwriting any copy the
+ * caller sent (render.com/articles/host-pocketbase-on-render). Entries a
+ * caller puts in X-Forwarded-For stay in front of Cloudflare's, so the
+ * leftmost entry can claim any address. Roomover reads CF-Connecting-IP,
+ * and the entry the nearest proxy appended (the last one) where no
+ * Cloudflare header exists, as on a local server.
+ */
 export function clientAddress(headers: Headers): string {
-  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const connecting = headers.get("cf-connecting-ip")?.trim();
+  if (connecting) return connecting;
+  const forwarded = headers
+    .get("x-forwarded-for")
+    ?.split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .at(-1);
   return forwarded || headers.get("x-real-ip")?.trim() || "unknown";
 }
 

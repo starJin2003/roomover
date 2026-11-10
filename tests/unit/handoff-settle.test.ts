@@ -22,6 +22,9 @@ const state = vi.hoisted(() => ({
   calls: [] as Call[],
   events: [] as { tool: string; sentence?: string }[],
   failCaptureOf: null as string | null,
+  /** How a failing capture fails: PayPal refuses it, the call times out, or PayPal answers DECLINED. */
+  captureFailure: "refused" as "refused" | "timeout" | "declined",
+  failPayout: null as null | "refused" | "timeout",
   batchItems: [] as { senderItemId: string; amountCents: number; recipientType: string; receiver: string; note?: string }[],
   batches: 0,
   /** The seller who logged in with PayPal, so Roomover holds their payer ID. */
@@ -128,6 +131,17 @@ vi.mock("@/lib/db/handoffs", () => ({
     const target = state.order.items.find((entry) => entry.orderItemId === input.orderItemId);
     if (target !== undefined) Object.assign(target, { paypalRefundId: input.refundId, refundedAmountCents: input.amountCents - input.payCents });
   },
+  nextItemAttempt: async (_db: unknown, id: string, failed: number) => {
+    const target = state.order.items.find((entry) => entry.orderItemId === id);
+    if (target !== undefined && target.attempt === failed) target.attempt = failed + 1;
+  },
+  nextOrderAttempt: async (_db: unknown, _id: string, failed: number) => {
+    if (state.order.attempt === failed) state.order.attempt = failed + 1;
+  },
+  nextPayoutAttempt: async (_db: unknown, _id: string, failed: number, senderBatchId: string) => {
+    const payout = state.order.payout;
+    if (payout !== null && payout.attempt === failed && payout.paypalBatchId === null) Object.assign(payout, { attempt: failed + 1, senderBatchId });
+  },
   recordVoided: async (_db: unknown, _id: string, at: Date) => {
     state.order.voidedAt = at;
   },
@@ -180,6 +194,8 @@ vi.mock("@/lib/paypal/server-sdk/payments", () => ({
   captureAuthorization: async (_sdk: unknown, id: string, input: { amountCents: number; finalCapture: boolean }, key: string) => {
     state.calls.push({ op: "capture", id, key, amountCents: input.amountCents, finalCapture: input.finalCapture });
     if (state.failCaptureOf !== null && key.includes(state.failCaptureOf)) {
+      if (state.captureFailure === "timeout") throw new Error("timeout of 20000ms exceeded");
+      if (state.captureFailure === "declined") return { id: "CAP-DECLINED", status: "DECLINED" };
       const { PayPalApiError } = await import("@/lib/paypal/errors");
       throw new PayPalApiError({ operation: "capture", status: 422, errorName: "UNPROCESSABLE_ENTITY", message: "Declined", details: [{ issue: "INSTRUMENT_DECLINED" }], debugId: undefined });
     }
@@ -203,6 +219,11 @@ vi.mock("@/lib/paypal/rest/payouts", () => ({
     state.batches += 1;
     state.batchItems = input.items;
     state.calls.push({ op: "payout", id: "", key });
+    if (state.failPayout === "timeout") throw new Error("socket hang up");
+    if (state.failPayout === "refused") {
+      const { PayPalApiError } = await import("@/lib/paypal/errors");
+      throw new PayPalApiError({ operation: "payout", status: 422, errorName: "INSUFFICIENT_FUNDS", message: "Sender does not have sufficient funds.", details: [], debugId: undefined });
+    }
     return { batch_header: { payout_batch_id: "YQPE4TRNPC52U", batch_status: "PENDING" } };
   },
   getPayoutBatch: async () => ({
@@ -223,6 +244,8 @@ beforeEach(() => {
   state.calls = [];
   state.events = [];
   state.failCaptureOf = null;
+  state.captureFailure = "refused";
+  state.failPayout = null;
   state.batchItems = [];
   state.batches = 0;
   state.finished = false;
@@ -272,24 +295,67 @@ describe("settleHandoff in authorize mode", () => {
     expect(state.events.find((event) => event.tool === "void_authorization")?.sentence).toBe("PayPal released your $90 hold, so nothing was charged.");
   });
 
-  it("stops at a declined capture with a sentence, and a retry captures only what is left with the same keys", async () => {
+  it("stops at a capture PayPal refused, and the retry sends that item's next attempt and keeps the others' keys", async () => {
     state.order = freshOrder("authorize_then_capture", cart());
     state.failCaptureOf = "lamp";
     await expect(settleHandoff(deps, "plan-1", "Harbor Hall 214", layout(CART_IDS))).rejects.toBeInstanceOf(SettlementStopped);
     expect(state.order.status).toBe("settling");
     expect(state.error).toBe("PayPal did not finish settling your handoff. Nothing was charged twice. Press Try again.");
     expect(state.batches).toBe(0);
+    // A 422 is not transient, so it went out once.
+    expect(state.calls.filter((call) => call.key.startsWith("rmv.capture.lamp")).map((call) => call.key)).toEqual(["rmv.capture.lamp.1"]);
 
     state.failCaptureOf = null;
     state.calls = [];
     await settleHandoff(deps, "plan-1", "Harbor Hall 214", layout(CART_IDS));
     expect(state.calls.filter((call) => call.op === "capture").map((call) => [call.key, call.finalCapture])).toEqual([
-      ["rmv.capture.lamp.1", false],
+      ["rmv.capture.lamp.2", false],
       ["rmv.capture.clamp.1", false],
       ["rmv.capture.bag.1", true],
     ]);
     expect(state.batches).toBe(1);
     expect(state.events.filter((event) => event.tool === "money_settled")).toHaveLength(1);
+  });
+
+  it("keeps the same key after a timeout, so PayPal replays a capture that may have landed", async () => {
+    state.order = freshOrder("authorize_then_capture", cart());
+    state.failCaptureOf = "lamp";
+    state.captureFailure = "timeout";
+    await expect(settleHandoff(deps, "plan-1", "Harbor Hall 214", layout(CART_IDS))).rejects.toBeInstanceOf(SettlementStopped);
+    // One quiet retry inside the call, with the same key, then the stop.
+    expect(state.calls.filter((call) => call.key.startsWith("rmv.capture.lamp")).map((call) => call.key)).toEqual(["rmv.capture.lamp.1", "rmv.capture.lamp.1"]);
+
+    state.failCaptureOf = null;
+    state.calls = [];
+    await settleHandoff(deps, "plan-1", "Harbor Hall 214", layout(CART_IDS));
+    expect(state.calls.find((call) => call.op === "capture")?.key).toBe("rmv.capture.lamp.1");
+  });
+
+  it("moves an item to its next attempt when PayPal answers the capture DECLINED", async () => {
+    state.order = freshOrder("authorize_then_capture", cart());
+    state.failCaptureOf = "lamp";
+    state.captureFailure = "declined";
+    await expect(settleHandoff(deps, "plan-1", "Harbor Hall 214", layout(CART_IDS))).rejects.toThrow("PayPal declined the charge for Ava's");
+    expect(state.order.items.find((entry) => entry.orderItemId === "lamp")?.attempt).toBe(2);
+
+    state.failCaptureOf = null;
+    state.calls = [];
+    await settleHandoff(deps, "plan-1", "Harbor Hall 214", layout(CART_IDS));
+    expect(state.calls.find((call) => call.op === "capture")?.key).toBe("rmv.capture.lamp.2");
+  });
+
+  it("sends a refused payout batch again under a new sender_batch_id, and a lost one under the same", async () => {
+    state.order = freshOrder("authorize_then_capture", cart());
+    state.failPayout = "timeout";
+    await expect(settleHandoff(deps, "plan-1", "Harbor Hall 214", layout(CART_IDS))).rejects.toBeInstanceOf(SettlementStopped);
+    state.failPayout = "refused";
+    await expect(settleHandoff(deps, "plan-1", "Harbor Hall 214", layout(CART_IDS))).rejects.toBeInstanceOf(SettlementStopped);
+    state.failPayout = null;
+    await settleHandoff(deps, "plan-1", "Harbor Hall 214", layout(CART_IDS));
+    const order = "6f9b2c1e-0d3a-4b5c-9e8f-1a2b3c4d5e6f";
+    expect(state.calls.filter((call) => call.op === "payout").map((call) => call.key)).toEqual([`rmv.payout.${order}.1`, `rmv.payout.${order}.1`, `rmv.payout.${order}.1`, `rmv.payout.${order}.2`]);
+    expect(state.calls.filter((call) => call.op === "capture")).toHaveLength(5);
+    expect(state.finished).toBe(true);
   });
 
   it("does nothing for an order that already settled, and sends a lost batch again with the same key", async () => {

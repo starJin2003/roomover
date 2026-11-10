@@ -9,6 +9,7 @@ import {
   allocateBundle,
   BUNDLE_MAX_ITEMS,
   checkSellerReply,
+  hintsAtFloor,
   listTotalCents,
   NEGOTIATION_ROUND_LIMIT,
   negotiationWindow,
@@ -300,7 +301,7 @@ async function answered(context: BuyerContext, port: NonNullable<BuyerContext["n
   let failed = false;
   let usage: { claudeCalls: number; inputTokens: number; outputTokens: number; cacheReadTokens: number; latencyMs: number } | null = null;
   if (terms.priceCents >= asking) {
-    checked = { action: "accept", terms, heldByCode: "The offer met the asking price, so code accepted it." };
+    checked = { action: "accept", terms, heldByCode: "The offer met the asking price, so code accepted it.", agentWords: false };
     message = "Accepted at the asking price.";
   } else {
     const taken = heldSlots(context).filter((entry) => entry.sellerId !== listings[0].sellerId).map((entry) => entry.slot);
@@ -322,10 +323,11 @@ async function answered(context: BuyerContext, port: NonNullable<BuyerContext["n
         { action: answer.answer.action, ...(answer.answer.counterDollars === null ? {} : { priceCents: answer.answer.counterDollars * 100 }), ...(picked === undefined ? {} : { slot: picked }) },
         { listings: listings.map(negotiable), offer: terms, window },
       );
-      message = answer.answer.message;
+      const known = [terms.priceCents, asking, ...listings.map((listing) => listing.priceCents), ...(checked.terms === null ? [] : [checked.terms.priceCents])];
+      message = checked.agentWords && !hintsAtFloor(answer.answer.message, known) ? answer.answer.message : codeMessage(checked, listings);
     } else {
       failed = true;
-      checked = { action: "decline", terms: null, heldByCode: "The seller agent gave no valid answer, so code declined for it." };
+      checked = { action: "decline", terms: null, heldByCode: "The seller agent gave no valid answer, so code declined for it.", agentWords: false };
       message = "No answer.";
     }
   }
@@ -376,6 +378,14 @@ async function answered(context: BuyerContext, port: NonNullable<BuyerContext["n
     },
     events: [{ ...offerEvent }, answerEvent],
   };
+}
+
+/** The seller's sentence in code's words, when code changed the answer or the agent's own sentence could hint at the floor. */
+function codeMessage(checked: CheckedReply, listings: readonly CatalogListing[]): string {
+  const noun = nounList(listings);
+  if (checked.terms === null) return `I can't take that offer for the ${noun}.`;
+  const terms = `${usd(checked.terms.priceCents)} for the ${noun} with handoff ${formatSlot(checked.terms.slot)}`;
+  return checked.action === "accept" ? `I accept ${terms}.` : `I can do ${terms}.`;
 }
 
 export async function respondToOffer(context: BuyerContext, input: z.infer<typeof respondToOfferInput>): Promise<NegotiationOutcome> {

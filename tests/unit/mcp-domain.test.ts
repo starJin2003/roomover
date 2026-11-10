@@ -35,11 +35,20 @@ describe("MCP limits", () => {
     expect(refused.message).toBe("This MCP session planned 3 rooms in the last hour, the most the demo allows, so use create_checkout on one of them or try again after 2026-11-09T18:10:00.000Z.");
   });
 
-  it("caps open sessions across the demo only, since every Claude app connector shares Anthropic's network", () => {
+  const sessions = (count: number, busy: (index: number) => boolean = () => false) =>
+    Array.from({ length: count }, (_, index) => ({ id: `s${index}`, lastActive: 1_000 + ((index * 7) % count), inFlight: busy(index) ? 1 : 0 }));
+
+  it("caps open sessions across the demo only, and a full table closes the session idle longest", () => {
     expect(MCP_LIMITS.openSessions).toBe(300);
-    expect(decideMcpSessionOpen({ total: 299 })).toEqual({ allowed: true });
-    const refused = decideMcpSessionOpen({ total: 300 });
-    expect(refused).toEqual({ allowed: false, message: "Roomover has 300 MCP sessions open, the most the demo allows, so try again in a few minutes once idle ones close." });
+    expect(decideMcpSessionOpen(sessions(299))).toEqual({ action: "open" });
+    // Session s0 last spoke at 1,000, the earliest of the 300.
+    expect(decideMcpSessionOpen(sessions(300))).toEqual({ action: "evict", sessionId: "s0" });
+    // A session still answering plan_room stays, and the next oldest idle one goes.
+    expect(decideMcpSessionOpen(sessions(300, (index) => index === 0))).toEqual({ action: "evict", sessionId: "s43" });
+  });
+
+  it("refuses only when every open session is answering a request", () => {
+    expect(decideMcpSessionOpen(sessions(300, () => true))).toEqual({ action: "refuse", message: "Roomover has 300 MCP sessions open and every one is answering a request, so try again in a few minutes." });
   });
 
   const counts = (over: Partial<Parameters<typeof decideMcpRunLimit>[0]> = {}) => ({ mcpRuns: { count: 0, oldest: null }, mcpClaudeCallsToday: 0, claudeCallsToday: 0, ...over });
@@ -72,11 +81,10 @@ describe("MCP limits", () => {
       decideMcpRunLimit(counts({ mcpRuns: { count: 10, oldest: now } }), "plan", now),
       decideMcpRunLimit(counts({ mcpClaudeCallsToday: 150 }), "plan", now),
       decideMcpRunLimit(counts({ claudeCallsToday: 400 }), "plan", now),
-      decideMcpSessionOpen({ total: 300 }),
     ];
-    for (const refusal of refusals) {
-      expect(refusal.allowed).toBe(false);
-      const message = refusal.allowed ? "" : refusal.message;
+    const full = decideMcpSessionOpen(sessions(300, () => true));
+    const messages = [...refusals.map((refusal) => (refusal.allowed ? "" : refusal.message)), full.action === "refuse" ? full.message : ""];
+    for (const message of messages) {
       expect(message.match(/\. |\.$/g)).toHaveLength(1);
       expect(message).toMatch(/try again/);
     }

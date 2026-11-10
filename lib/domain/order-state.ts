@@ -4,7 +4,8 @@ import type { OrderItemStatus, OrderStatus, PaymentMode } from "./enums";
  * The order state machine. Checkout moves an order out of pending approval
  * once, through the API answer or a webhook, whichever arrives first. At
  * handoff an order holding money either settles (captures, refunds, and the
- * payout) or is released in full by the demo release or a new plan.
+ * payout) or is released in full by the demo release or a new plan. A
+ * settlement that stopped before moving any money can still be released.
  */
 const ORDER_TRANSITIONS: Readonly<Record<OrderStatus, readonly OrderStatus[]>> = {
   pending_approval: ["approved", "authorized", "capture_pending", "captured", "capture_declined", "canceled"],
@@ -13,7 +14,7 @@ const ORDER_TRANSITIONS: Readonly<Record<OrderStatus, readonly OrderStatus[]>> =
   capture_pending: ["captured", "capture_declined"],
   captured: ["settling", "releasing", "reversed"],
   capture_declined: ["canceled"],
-  settling: ["settled"],
+  settling: ["settled", "releasing"],
   releasing: ["voided", "refunded"],
   settled: [],
   canceled: [],
