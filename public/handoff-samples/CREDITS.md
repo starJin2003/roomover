@@ -5,3 +5,5 @@ These are the sample photos the Handoff screen offers in place of a camera. Each
 `pnpm handoff:samples` (`scripts/handoff/make-samples.ts`) writes every file in this folder. It draws each listing photo onto a canvas in Chromium with its own crop (86 to 92 percent of the frame, shifted off center), a turn of 0.8 to 2.4 degrees, and new light (brightness, contrast, and saturation with a warm or cool wash), then saves a JPEG at most 1100 pixels on the long edge. The run is deterministic, so it rewrites the same files.
 
 `marcus-mesh-desk-chair-torn.jpg` is `marcus-mesh-desk-chair.jpg` with a split a few centimeters long drawn into the gray vinyl seat before the crop and light are applied. The tear is drawn by the script and shows damage that the seller's photo does not have.
+
+`lea-navy-bean-bag-torn.jpg` is `lea-navy-bean-bag.jpg` with a split about 15 centimeters long drawn into the side of the bag before the crop and light are applied. White filling beads pack the opening and a few cling to the vinyl below it. The split is drawn by the script and shows damage that the seller's photo does not have.

@@ -1,8 +1,9 @@
 /**
  * Sample handoff photos for judges without the item at hand. Each seed
  * listing has one, made from its own listing photo with a different crop
- * and light, and the mesh desk chair also has one with a new tear in the
- * seat. `pnpm handoff:samples` writes them to public/handoff-samples.
+ * and light. The mesh desk chair also has one with a new tear in the seat,
+ * and the navy bean bag one with a split in its side that shows the filling.
+ * `pnpm handoff:samples` writes them to public/handoff-samples.
  */
 
 export const SAMPLE_KINDS = ["as_listed", "torn"] as const;
@@ -10,7 +11,7 @@ export type SampleKind = (typeof SAMPLE_KINDS)[number];
 
 const SAMPLE_DIR = "/handoff-samples";
 const LISTING_PHOTO = /^\/seed\/listings\/([a-z0-9-]+)\.jpg$/;
-const TORN = new Set(["marcus-mesh-desk-chair"]);
+const TORN = new Set(["marcus-mesh-desk-chair", "lea-navy-bean-bag"]);
 
 export interface SampleOption {
   kind: SampleKind;

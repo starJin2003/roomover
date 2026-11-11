@@ -30,15 +30,16 @@ describe("handoff sentences", () => {
 });
 
 describe("sample photos", () => {
-  it("exist for every seed listing, with a torn copy of the mesh desk chair only", () => {
+  it("exist for every seed listing, with torn copies of the mesh desk chair and the navy bean bag only", () => {
     const listings = seedListings("2026-11-08");
     for (const listing of listings) {
       const samples = samplesFor(listing.photos[0].src);
       expect(samples[0].kind).toBe("as_listed");
       for (const sample of samples) expect(existsSync(`public${sample.src}`)).toBe(true);
     }
-    expect(listings.filter((listing) => samplesFor(listing.photos[0].src).length === 2).map((listing) => listing.photos[0].src)).toEqual(["/seed/listings/marcus-mesh-desk-chair.jpg"]);
+    expect(listings.filter((listing) => samplesFor(listing.photos[0].src).length === 2).map((listing) => listing.photos[0].src).sort()).toEqual(["/seed/listings/lea-navy-bean-bag.jpg", "/seed/listings/marcus-mesh-desk-chair.jpg"]);
     expect(sampleFor("/seed/listings/marcus-mesh-desk-chair.jpg", "torn")?.src).toBe("/handoff-samples/marcus-mesh-desk-chair-torn.jpg");
+    expect(sampleFor("/seed/listings/lea-navy-bean-bag.jpg", "torn")?.src).toBe("/handoff-samples/lea-navy-bean-bag-torn.jpg");
     expect(samplesFor("https://example.com/upload.jpg")).toEqual([]);
   });
 });
