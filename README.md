@@ -14,11 +14,13 @@ Roomover is a campus marketplace that passes furniture and dorm essentials from 
 | What | Where |
 | --- | --- |
 | Hosted demo | https://roomover.onrender.com |
-| Demo video (YouTube) | **VIDEO LINK GOES HERE AFTER UPLOAD** |
+| Demo video (YouTube, 2:44) | https://youtu.be/lww3KxAN5gc |
 | Fastest path for judges | [Four steps](#fastest-path-for-judges) |
 | Test accounts for judges | [Test accounts](#test-accounts-for-judges) |
 | Proof on the PayPal sandbox | [Real sandbox IDs](#real-sandbox-ids) |
 | Model Context Protocol (MCP) server for AI assistants | `https://roomover.onrender.com/mcp` |
+
+<a href="https://youtu.be/lww3KxAN5gc"><img alt="The Roomover demo video on YouTube. The thumbnail reads Furnish your dorm beside the furnished Harbor Hall 214." src="docs/video-thumbnail.png" width="600"></a>
 
 ## The problem
 
@@ -52,13 +54,13 @@ Campus resale apps already exist, and they all depend on the buyer and the selle
 
 Roomover runs three flows at the fictional Lakeshore University, whose rooms follow the sizes of real residence hall rooms. Ava, Jun, Marcus, Sofia, and Lea are leaving and list 24 items between them. Jordan is arriving at Harbor Hall 214 with a $150 budget.
 
-The video and the Furnish images follow the Harbor Hall plan that the buyer agent negotiated for "$150, cozy, I study late", which holds 6 items from 4 students for $107. The handoff GIF and the schedule image show the handoff demo plan. A script builds this fixed cart from all five sellers for the handoff tests, and its real sandbox run charged $144 and paid out $139 after one torn chair. A judge's own handoff pays every seller in the cart the agent built.
+The Furnish and Handoff images follow one live run of "$150, cozy, I study late" on the hosted demo. The buyer agent negotiated 6 items from 4 students for $107, and Lea's bean bag showed a new tear at handoff. The video follows another live run of the same request, 7 items from 4 students for $116, since the buyer agent plans each run afresh. The sandbox proof below also cites the handoff demo plan. A script builds this fixed cart from all five sellers for the handoff tests, and its real sandbox run charged $144 and paid out $139 after one torn chair. A judge's own handoff pays every seller in the cart the agent built.
 
 ### 1. Sell: a leaving student lists an item from one photo
 
-<img alt="The Sell screen after one photo. Claude and Channel3 filled in a black 3-tier rolling utility cart, new about $39, priced at $21 with a $16 floor." src="docs/sell.png" width="900">
+<img alt="The Sell screen after one photo. Claude named a black three tier rolling utility cart, Channel3 had no exact match, and three similar carts that sell new for about $40 set the price at $18." src="docs/sell.png" width="900">
 
-Ava logs in with PayPal, which gives Roomover the email her payouts go to. She takes one photo, and the product search application programming interface (API) from Channel3 finds matching retail products with their new prices, and with their sizes when the retailer lists them. The seller agent picks the match and writes the listing. When no product is the same one, the agent picks the similar ones, and code prices the listing from their median new price. The cart's match carries no size, so Ava enters it herself. Code caps the price at 70 percent of the new price, and Ava sets the lowest price her agent may accept.
+Ava logs in with PayPal, which gives Roomover the email her payouts go to. She takes one photo, and the product search application programming interface (API) from Channel3 finds matching retail products with their new prices, and with their sizes when the retailer lists them. The seller agent picks the match and writes the listing. When no product is the same one, the agent picks the similar ones, and code prices the listing from their median new price. The sample cart has no exact match, so three similar carts set its new price at about $40, and the size fields fill from a similar item for Ava to check. Code caps the price at 70 percent of the new price, and Ava sets the lowest price her agent may accept.
 
 ```mermaid
 sequenceDiagram
@@ -75,7 +77,7 @@ sequenceDiagram
     R->>C3: Image search
     C3-->>R: Matching products, sizes, new prices
     R->>S: Photo and the Channel3 candidates
-    S-->>R: describe_listing with the match, condition, defects, and a price
+    S-->>R: describe_listing with the match or the similar ones, condition, defects, and a price
     R->>R: Cap the price at 70 percent of new
     Ava->>R: Confirm the price and the floor, then list
 ```
@@ -84,7 +86,7 @@ sequenceDiagram
 
 <img alt="Harbor Hall 214 fills item by item while the panel reports each seller agent's counteroffer." src="docs/furnish.gif" width="900">
 
-Jordan types "$150, cozy, I study late". The buyer agent reads the room size and the hall rules, searches the listings, and places each item while code checks the fit, the rules, and the budget. Every placed item lands in the 3D room as it goes, streamed to the browser over server sent events (SSE). The agent then offers each seller's agent a price and a handoff slot, the seller agents answer in parallel, and code holds every answer between the seller's floor and the asking price. When no used item fits a need, Channel3 supplies a new product that fits the size and the budget. The Harbor Hall plan ends at $107, and Channel3's cheapest comparable new items would cost $260.97 more. The GIF runs on recorded answers, where yellow buttons stand in for PayPal's, and the hosted demo renders PayPal's own JavaScript software development kit (SDK) v6 buttons.
+Jordan types "$150, cozy, I study late". The buyer agent reads the room size and the hall rules, searches the listings, and places each item while code checks the fit, the rules, and the budget. Every placed item lands in the 3D room as it goes, streamed to the browser over server sent events (SSE). The agent then offers each seller's agent a price and a handoff slot, the seller agents answer in parallel, and code holds every answer between the seller's floor and the asking price. When no used item fits a need, Channel3 supplies a new product that fits the size and the budget. The Harbor Hall plan ends at $107, and Channel3's cheapest comparable new items would cost $260.97 more. The GIF and the image below show that run on the hosted demo, where PayPal's own JavaScript software development kit (SDK) v6 renders the buttons.
 
 <img alt="The ready room with a navy PayPal card that says PayPal holds your $107 until handoff." src="docs/paypal-hold.png" width="900">
 
@@ -122,9 +124,9 @@ sequenceDiagram
 
 ### 3. Handoff: a photo check per item, then PayPal pays every seller
 
-<img alt="The handoff demo plan. The verifier finds a new 3 cm tear in Marcus's chair, Jordan pays $30 of $35, and each seller's payout arrives one by one." src="docs/handoff.gif" width="900">
+<img alt="The handoff of the same run. The verifier finds a new 15 cm tear in Lea's bean bag, Jordan keeps it for $13.50 of $27, and each seller's payout arrives." src="docs/handoff.gif" width="900">
 
-At handoff, Jordan photographs each item. The verifier agent compares the photo with the listing photos, and the money policy in code turns its finding into an amount. In the handoff demo plan, Marcus's mesh desk chair shows a new 3 cm tear, so Jordan pays $30 of the $35. After the last item, settlement captures each kept item from the authorization and sends one PayPal Payouts batch with an item for each seller in the cart. The demo plan's run paid $139 to its five sellers this way. A dispute the buyer opens later in PayPal comes back to the verifier agent, and Roomover answers with one message in the inquiry stage and with evidence after escalation.
+At handoff, Jordan photographs each item. The verifier agent compares the photo with the listing photos, and the money policy in code turns its finding into an amount. In the run above, Lea's bean bag shows a new 15 cm tear. The money policy treats that as major damage and offers the bean bag at half of the agreed $27, so Jordan keeps it for $13.50. In the handoff demo plan, a new 3 cm tear in Marcus's mesh desk chair counts as minor damage, and Jordan pays $30 of the $35. After the last item, settlement captures each kept item from the authorization and sends one PayPal Payouts batch with an item for each seller in the cart. The run above captured $93.50 of the $107 and paid its four sellers this way, and the demo plan's run paid $139 to its five sellers. A dispute the buyer opens later in PayPal comes back to the verifier agent, and Roomover answers with one message in the inquiry stage and with evidence after escalation.
 
 ```mermaid
 sequenceDiagram
@@ -213,6 +215,8 @@ Every ID below came from a real sandbox response.
 
 | Run | IDs |
 | --- | --- |
+| Live run on the hosted demo, shown in the Furnish and Handoff images | Order `5KS30897JA235312N` for $107, authorization `3X8053579U008480N`, $93.50 captured after the torn bean bag, payout batch `HBQNY6FAD2E3W` to 4 sellers |
+| The demo video's run on the hosted demo | Order `6MU60631JD595151V` for $116, authorization `0JB37270PK541901W`, $102 captured after the torn bean bag, payout batch `K2TTK5JBAL2SG` to 4 sellers |
 | Handoff demo plan on Render, settled by webhook | Order `4BJ62082TS2591355`, authorization `87S91919A36663839`, payout batch `D65SGN757KMKA` for $139 |
 | Handoff demo plan run locally, with the torn chair at $30 of $35 | Order `78E19905K1239093D`, authorization `49F41736WL517390H`, payout batch `SMBUWTGSLQG9J` |
 | Capture mode, a storage cart with April 2027 handoff slots and one item turned down | Order `4NJ97274JR406582M` for $73, capture `4LF69479JL425463Y`, refund `3Y551341LC337200B` of $10 for Ava's drawer tower, payout batch `8XRP3TRPXKKGG` of $63 to Ava and Marcus |
@@ -269,7 +273,11 @@ The MCP server at `https://roomover.onrender.com/mcp` speaks streamable HTTP, so
 | Claude calls MCP may spend | 150 of the demo's 400 a day |
 | Open sessions | 300. A full table closes the session idle longest, and a session idle for 30 minutes closes |
 
-**CLAUDE APP SCREENSHOT GOES HERE AFTER THE VIDEO**
+In the video, the Claude app plans Harbor Hall 214 through these tools. The plan holds 5 used items from 3 students for $87, and its link opens the preview page with PayPal's own buttons.
+
+<img alt="The Claude app answers a request to furnish Harbor Hall 214 through Roomover. It names five used items for $87, the handoff times, and a link to the room in 3D." src="docs/claude-app-answer.png" width="900">
+
+<img alt="The preview page behind that link. The planned room stands beside the five items, the $87 total, and the PayPal and Pay Later buttons." src="docs/claude-app-preview.png" width="900">
 
 The first browser that approves the payment from a preview link takes the plan over for the handoff, and other browsers see the plan read only. The activity panel names the client from the `clientInfo` it sends. A session that arrives from Anthropic's published outbound addresses is the Claude app, since its connector reports the same `claude-code` name as Claude Code.
 
@@ -285,11 +293,11 @@ Open the approval link the assistant returns, sign in as the judge buyer from [T
 
 ### Channel3
 
-Channel3 powers search in two of the three flows, Sell and Furnish.
+Channel3 powers search in two of the three flows, Sell and Furnish. For a seller's photo it finds the matching product when there is one and similar products otherwise, and Roomover uses Channel3's products for the new price reference, the size, and the savings line.
 
 | Where | What Channel3 does | Files |
 | --- | --- | --- |
-| Sell | Image search identifies the product in the seller's photo, with its size and new price | `lib/channel3/identify.ts`, `lib/sell/analyze.ts` |
+| Sell | Image search finds the product in the seller's photo, or similar products when none is the same one. The match, or the median of the similar ones, gives the new price reference and the size | `lib/channel3/identify.ts`, `lib/sell/analyze.ts` |
 | Furnish | Text search fills a gap with a new product filtered by price and size, when no used listing fits | `lib/channel3/products.ts`, `lib/agents/buyer/new-products.ts` |
 | Savings | The cheapest comparable new product prices each used item, so the plan shows what the student saved | `lib/domain/savings.ts` |
 
@@ -311,7 +319,7 @@ Render is the cloud platform that runs the hosted demo, and the blueprint in `re
 
 Bryntum makes JavaScript scheduling components, and its Scheduler draws the handoff schedule with each seller's move out window, the storage wait, Jordan's move in, and the agreed slots as keys a student can drag or move from the keyboard. The schedule reads its rows from the handoff view that Next.js serves, and each slot move posts to the handoff's slots route, where the server checks it against both windows and the authorization before it moves the handoff. Roomover runs the 45 day trial the hackathon offers participants, and the scheduler loads only when the schedule opens (`components/schedule/`).
 
-<img alt="The Handoff screen with the schedule open on the whole gap. Each seller's move out bar, the storage waits for Sofia and Lea, Jordan's move in, and five handoff slots as dark keys, under Bryntum's Trial Version watermark." src="docs/handoff-schedule.png" width="900">
+<img alt="The Handoff screen with the schedule open on the whole gap. Jordan's move in leads, then each of the four sellers' move out bars, the waits for Lea's and Sofia's items, and four handoff slots as dark keys, under Bryntum's Trial Version watermark." src="docs/handoff-schedule.png" width="900">
 
 ## Development
 
@@ -492,6 +500,7 @@ A paid demo order that never reaches a handoff is released within about 3 hours,
 - **MCP sessions live in memory.** The web service runs one instance, so a deploy or a restart ends open sessions and the client starts a new one.
 - **Bryntum watermark.** The schedule runs on Bryntum's 45 day trial and shows its "Trial Version" watermark.
 - **One campus, partly estimated.** Room presets cover one campus. The double and the single use estimated floor sizes, and the apartment bedroom uses measured ones.
+- **No shipping, by design.** Shipping bulky furniture costs more than the items are worth, so every item changes hands on campus. The next step is moving items from room to room through a campus moving or storage partner.
 - **A new campus starts with no supply.** The launch path is a partnership with each university's move out reuse program and residence life office.
 - **The verifier's result is advisory.** The student confirms every decision at handoff, and disputes go through PayPal.
 

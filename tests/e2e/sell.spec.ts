@@ -65,9 +65,29 @@ test("a leaving student logs in with PayPal, lists a sample photo with Channel3'
     await expectAccessible(page);
     await captureFullHeight(page, `${SCREENSHOT_DIR}/photo-${width}.png`);
 
-    // A sample photo runs Channel3, then the seller agent, and the panel says what each found.
+    // A sample photo runs Channel3, then the seller agent, and the panel says what each found. The recorded seller
+    // agent answers at once, so its request waits a moment and the reading lines stay on screen to be measured.
+    await page.route(
+      "**/api/sell/drafts/*/describe",
+      async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        await route.continue();
+      },
+      { times: 1 },
+    );
     await page.getByRole("button", { name: "Black rolling cart" }).click();
     await expect(page.getByText(/^Channel3 found \d products like it$/)).toBeVisible({ timeout: 30_000 });
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/reading-${width}.png`, scale: "css" });
+    if (!desktop) {
+      // On a phone both reading lines sit above the sticky button, never under it.
+      const footer = await page.locator("[data-panel-footer]").boundingBox();
+      for (const key of ["channel3", "claude"]) {
+        const line = page.locator(`[data-step="${key}"]`);
+        await expect(line).toBeInViewport({ ratio: 1 });
+        const box = await line.boundingBox();
+        expect(box !== null && footer !== null && box.y + box.height <= footer.y).toBe(true);
+      }
+    }
     await expect(page.getByRole("heading", { level: 1, name: "Check the details" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("heading", { level: 2, name: "Black 3-tier rolling utility cart" })).toBeVisible();
     await expect(page.getByText("Filled in from your photo. New about $39. Channel3 has no size for this product, so enter it yourself.")).toBeVisible();

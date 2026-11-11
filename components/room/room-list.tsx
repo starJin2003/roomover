@@ -37,7 +37,7 @@ export function RoomList({ label, items, total, selectedKey, onActivate, onToggl
       </div>
       {editing !== undefined && items.length > 0 && (
         <p id="room-list-keys" className="px-2 text-xs text-flint">
-          Focus an item, then use the arrow keys to move it and R to turn it. Escape puts it back.
+          Focus an item, then use the arrow keys to move it and R to turn it. Escape puts back a spot you are trying, then deselects the item.
         </p>
       )}
       {items.length === 0 ? (

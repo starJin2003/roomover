@@ -156,6 +156,8 @@ test.describe("the buyer agent", () => {
     await seatRow.focus();
     await page.keyboard.press("ArrowUp");
     expect((await saved).status()).toBe(200);
+    // The stage says so once it has taken the answer in. Until then Escape would still put the tried spot back.
+    await expect(page.locator('p[aria-live="polite"]', { hasText: /^Moved the bean bag / })).toBeAttached();
     // Keys keep the item selected for the next press, and Escape lets go of it.
     await expect(room).toHaveAttribute("data-selected", BEAN_BAG);
     await page.keyboard.press("Escape");

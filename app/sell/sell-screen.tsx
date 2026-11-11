@@ -74,6 +74,23 @@ function progressSteps(draft: SellDraftView | null, work: Work): ProgressStep[] 
   return [channel3, claude];
 }
 
+/**
+ * The reading lines. On a phone the photo and the header fill the screen above them, so each time a line changes
+ * they scroll clear of the sticky button.
+ */
+function ReadingProgress({ steps }: { steps: readonly ProgressStep[] }) {
+  const lines = useRef<HTMLDivElement>(null);
+  const text = steps.map((step) => step.text).join("\n");
+  useEffect(() => {
+    lines.current?.scrollIntoView({ block: "nearest" });
+  }, [text]);
+  return (
+    <div ref={lines} className="max-lg:scroll-mb-28">
+      <SellProgress steps={steps} />
+    </div>
+  );
+}
+
 const STICKY_FOOTER = "max-lg:sticky max-lg:bottom-0 max-lg:z-10 max-lg:border-t max-lg:border-hair max-lg:bg-paper max-lg:pb-[max(1rem,env(safe-area-inset-bottom))]";
 
 interface SellPanelProps {
@@ -370,7 +387,7 @@ export function SellScreen({ initialView, loginNote }: SellScreenProps) {
   } else if (working || (draft !== null && draft.status === "matched")) {
     panel = (
       <SellPanel title="Reading your photo" subtitle={signedIn} step={0} hood={work.kind !== "matching"} footer={<Button className="w-full" loadingLabel="Filling in the details" />}>
-        <SellProgress steps={progressSteps(work.kind === "matching" ? null : draft, work)} />
+        <ReadingProgress steps={progressSteps(work.kind === "matching" ? null : draft, work)} />
         {hood}
       </SellPanel>
     );
