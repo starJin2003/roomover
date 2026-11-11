@@ -3,7 +3,7 @@ import { campusCalendar, campusDay, campusWindow, type Window } from "@/scripts/
 import { HANDOFF_MODES, LISTING_CATEGORIES, PLACEMENTS, type HandoffMode, type ListingCategory, type Placement } from "./enums";
 import { handoffWindow, type MoveWindows } from "./handoff";
 import { CONDITION_GRADES, DEFECT_SEVERITIES, listingColorSchema } from "./listing";
-import { clampPrices, MAX_NEW_PRICE_CENTS, MIN_PRICE_CENTS } from "./pricing";
+import { clampPrices, MAX_NEW_PRICE_CENTS, MIN_PRICE_CENTS, type UsedPrice } from "./pricing";
 
 /** Millimeters, width by depth by height, with sizes a dorm item can have. */
 const sizeMmSchema = z.strictObject({
@@ -29,7 +29,7 @@ export const channel3CandidateSchema = z.strictObject({
 
 export type Channel3Candidate = z.infer<typeof channel3CandidateSchema>;
 
-/** The Channel3 call behind a draft, for Under the hood and the cost record. */
+/** The Channel3 call behind a draft, for the Developer view and the cost record. */
 export const channel3LookupSchema = z.strictObject({
   candidates: z.array(channel3CandidateSchema).max(4),
   /** 1 for a live call, 0 when the cache or a test fixture answered. */
@@ -70,6 +70,12 @@ export const sellerVerdictSchema = z.strictObject({
   material: z.string().min(1).max(40),
   styleTags: z.array(z.string().min(1).max(20)).max(3).describe("Up to three lowercase style words, such as minimal or cozy."),
   matchedCandidate: z.number().int().min(1).max(4).nullable().describe("The number of the Channel3 candidate that is the same product, or null when none is."),
+  // Replies recorded before this field existed parse with no similar products.
+  similarCandidates: z
+    .array(z.number().int().min(1).max(4))
+    .max(4)
+    .default([])
+    .describe("With matchedCandidate null, the numbers of the candidates that are the same kind of item with a similar size and build, closest first. Empty when matchedCandidate is set or no candidate is that close."),
   newPriceDollars: z.number().int().min(1).max(5000).describe("The matched candidate's price, or your estimate of a comparable new item at a mass market US retailer."),
   priceDollars: z.number().int().min(1).max(5000),
   floorDollars: z.number().int().min(1).max(5000).describe("The lowest price the seller should accept."),
@@ -83,6 +89,19 @@ export const defectDraftSchema = z.strictObject({
   severity: z.enum(DEFECT_SEVERITIES),
 });
 
+/**
+ * Channel3 products the seller agent called the same kind of item when none
+ * was the same product. Code prices the listing from their median new price.
+ */
+export const similarReferenceSchema = z.strictObject({
+  products: z.array(channel3CandidateSchema).min(1).max(4),
+  referenceCents: z.number().int().positive(),
+  /** The size of the closest product that states one, which the seller checks and edits. */
+  sizeMm: sizeMmSchema.nullable(),
+});
+
+export type SimilarReference = z.infer<typeof similarReferenceSchema>;
+
 /** The filled in listing a draft holds once the seller agent answered, with prices already clamped. */
 export const draftDetailsSchema = z.strictObject({
   category: z.enum(LISTING_CATEGORIES),
@@ -95,8 +114,10 @@ export const draftDetailsSchema = z.strictObject({
   material: z.string().min(1),
   styleTags: z.array(z.string().min(1)),
   match: channel3CandidateSchema.nullable(),
+  /** Drafts filled in before similar products were kept have no value here. */
+  similar: similarReferenceSchema.nullable().optional(),
   newPriceCents: z.number().int().positive(),
-  newPriceSource: z.enum(["channel3", "seller_agent"]),
+  newPriceSource: z.enum(["channel3", "channel3_similar", "seller_agent"]),
   priceCents: z.number().int().positive(),
   floorPriceCents: z.number().int().positive(),
   sizeMm: sizeMmSchema.nullable(),
@@ -198,17 +219,66 @@ export function notListedSentence(title: string): string {
   return `Roomover lists ${kinds.slice(0, -1).join(", ")}, and ${kinds.at(-1)}. This photo looks like ${title.toLowerCase()}, so try a photo of one of those.`;
 }
 
+const DOLLAR = 100;
+
+/** The median new price of the similar products, rounded to the dollar. Two middle prices average first. */
+export function similarReferenceCents(products: readonly Pick<Channel3Candidate, "newPriceCents">[]): number {
+  if (products.length === 0) throw new Error("A similar price reference needs at least one product.");
+  const prices = products.map((product) => product.newPriceCents).sort((a, b) => a - b);
+  const middle = Math.floor(prices.length / 2);
+  const median = prices.length % 2 === 1 ? prices[middle] : (prices[middle - 1] + prices[middle]) / 2;
+  return Math.max(DOLLAR, Math.round(median / DOLLAR) * DOLLAR);
+}
+
+/** The candidates the agent named as similar, each once, in its order, with numbers that exist. */
+function pickedCandidates(numbers: readonly number[], candidates: readonly Channel3Candidate[]): Channel3Candidate[] {
+  const picked: Channel3Candidate[] = [];
+  for (const number of new Set(numbers)) {
+    const candidate = candidates[number - 1];
+    if (candidate !== undefined) picked.push(candidate);
+  }
+  return picked;
+}
+
+/**
+ * The agent sets its price and floor as shares of its own new price
+ * estimate, which carry its read of the condition. On the similar path the
+ * same shares apply to the reference code computed, before the usual bounds.
+ */
+function rescaled(verdict: SellerVerdict, newPriceCents: number): UsedPrice {
+  const estimateCents = verdict.newPriceDollars * DOLLAR;
+  return {
+    priceCents: Math.round((verdict.priceDollars * DOLLAR * newPriceCents) / estimateCents),
+    floorPriceCents: Math.round((verdict.floorDollars * DOLLAR * newPriceCents) / estimateCents),
+  };
+}
+
+/** What the listing prices from: the matched product, the similar products' median, or the agent's estimate. */
+function priceReference(verdict: SellerVerdict, candidates: readonly Channel3Candidate[]) {
+  const match = verdict.matchedCandidate === null ? null : (candidates[verdict.matchedCandidate - 1] ?? null);
+  if (match !== null) return { match, similar: null, newPriceCents: match.newPriceCents, source: "channel3" as const, proposal: { priceCents: verdict.priceDollars * DOLLAR, floorPriceCents: verdict.floorDollars * DOLLAR } };
+  const products = pickedCandidates(verdict.similarCandidates, candidates);
+  if (products.length > 0) {
+    const referenceCents = Math.min(similarReferenceCents(products), MAX_NEW_PRICE_CENTS);
+    const similar: SimilarReference = { products, referenceCents, sizeMm: products.find((product) => product.sizeMm !== null)?.sizeMm ?? null };
+    return { match, similar, newPriceCents: referenceCents, source: "channel3_similar" as const, proposal: rescaled(verdict, referenceCents) };
+  }
+  const newPriceCents = Math.min(Math.max(verdict.newPriceDollars * DOLLAR, MIN_PRICE_CENTS), MAX_NEW_PRICE_CENTS);
+  return { match, similar: null, newPriceCents, source: "seller_agent" as const, proposal: { priceCents: verdict.priceDollars * DOLLAR, floorPriceCents: verdict.floorDollars * DOLLAR } };
+}
+
 /**
  * The draft's details from the seller agent's verdict. Code picks the
- * matched candidate by its number, takes the new price and the size from it,
- * and clamps the proposed price and floor, so the model's numbers never
- * reach the listing unchecked.
+ * matched candidate by its number and takes the new price and the size from
+ * it. With no match, the similar products the agent picked set the new price
+ * through their median, and the closest one with a size suggests the size.
+ * Code clamps the proposed price and floor either way, so the model's numbers
+ * never reach the listing unchecked.
  */
 export function draftDetailsFrom(verdict: SellerVerdict, candidates: readonly Channel3Candidate[], meta: { model: string; attempts: 1 | 2 }): { ok: true; details: DraftDetails } | { ok: false; reason: string } {
   if (verdict.category === "other") return { ok: false, reason: notListedSentence(verdict.title) };
-  const match = verdict.matchedCandidate === null ? null : (candidates[verdict.matchedCandidate - 1] ?? null);
-  const newPriceCents = match?.newPriceCents ?? Math.min(Math.max(verdict.newPriceDollars * 100, MIN_PRICE_CENTS), MAX_NEW_PRICE_CENTS);
-  const prices = clampPrices({ priceCents: verdict.priceDollars * 100, floorPriceCents: verdict.floorDollars * 100 }, newPriceCents);
+  const reference = priceReference(verdict, candidates);
+  const prices = clampPrices(reference.proposal, reference.newPriceCents);
   const title = verdict.title.trim();
   return {
     ok: true,
@@ -222,12 +292,13 @@ export function draftDetailsFrom(verdict: SellerVerdict, candidates: readonly Ch
       color: { name: verdict.colorName.trim().toLowerCase(), hex: verdict.colorHex.toUpperCase() },
       material: verdict.material.trim().toLowerCase(),
       styleTags: [...new Set(verdict.styleTags.map((tag) => tag.trim().toLowerCase()))],
-      match,
-      newPriceCents,
-      newPriceSource: match === null ? "seller_agent" : "channel3",
+      match: reference.match,
+      similar: reference.similar,
+      newPriceCents: reference.newPriceCents,
+      newPriceSource: reference.source,
       priceCents: prices.priceCents,
       floorPriceCents: prices.floorPriceCents,
-      sizeMm: match?.sizeMm ?? null,
+      sizeMm: reference.match?.sizeMm ?? null,
       model: meta.model,
       attempts: meta.attempts,
     },

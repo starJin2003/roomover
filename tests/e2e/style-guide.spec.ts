@@ -44,13 +44,13 @@ test("style guide renders cleanly, passes axe, and stays out of search", async (
   expect(problems).toEqual([]);
 });
 
-test("Under the hood reveals the PayPal API name and sandbox ID under every PayPal step", async ({ page }) => {
+test("the Developer view reveals the PayPal API name and sandbox ID under every PayPal step", async ({ page }) => {
   await page.goto("/style-guide");
   const moments = page.locator('section[aria-labelledby="paypal-moments-title"]');
   const ids = ["8RU61172JS455403V", "0TF88542GM8203619", "2GG279541U471931P", "7XJ4TQ2HW9N3E"];
   for (const id of ids) await expect(moments.getByText(id)).toHaveCount(0);
 
-  const toggle = moments.getByRole("switch", { name: "Under the hood" });
+  const toggle = moments.getByRole("switch", { name: "Developer view" });
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "true");
@@ -59,7 +59,7 @@ test("Under the hood reveals the PayPal API name and sandbox ID under every PayP
 
   const done = page.locator('section[aria-labelledby="handoff-done-title"]');
   await expect(done.getByText("7XJ4TQ2HW9N3E")).toHaveCount(0);
-  await done.getByRole("switch", { name: "Under the hood" }).click();
+  await done.getByRole("switch", { name: "Developer view" }).click();
   await expect(done.getByText("7XJ4TQ2HW9N3E")).toBeVisible();
 });
 

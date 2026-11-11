@@ -86,8 +86,8 @@ async function main() {
   timings.filledSeconds = seconds(Date.now() - photoPressed);
   await page.waitForTimeout(2000);
   await page.screenshot({ path: join(OUT, "details-1440.png") });
-  await page.getByRole("switch", { name: "Under the hood" }).click();
-  await page.getByRole("region", { name: "Under the hood" }).scrollIntoViewIfNeeded();
+  await page.getByRole("switch", { name: "Developer view" }).click();
+  await page.getByRole("region", { name: "Developer view" }).scrollIntoViewIfNeeded();
   await page.waitForTimeout(2500);
   await page.screenshot({ path: join(OUT, "details-under-the-hood-1440.png") });
   for (const [label, value] of Object.entries(SIZE)) {

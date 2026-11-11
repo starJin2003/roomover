@@ -82,8 +82,8 @@ test("the buyer agent negotiates with each seller and fills a gap with a new ite
   await expectAccessible(page);
   await captureFullHeight(page, `${SCREENSHOT_DIR}/negotiate-ready-${size}.png`);
 
-  // Under the hood lists every offer and counter and the Channel3 search with its credits.
-  await page.getByRole("switch", { name: "Under the hood" }).click();
+  // The Developer view lists every offer and counter and the Channel3 search with its credits.
+  await page.getByRole("switch", { name: "Developer view" }).click();
   const deals = page.locator("[data-negotiation]");
   await expect(deals).toHaveCount(2);
   const jun = deals.filter({ hasText: "Jun, round jute and cotton rug, 4 feet and black wood chair with red velvet seat" });

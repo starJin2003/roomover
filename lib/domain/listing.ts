@@ -33,7 +33,7 @@ export const conditionReportSchema = z.strictObject({
 export const retailReferenceSchema = z.strictObject({
   productName: z.string().min(1),
   newPriceCents: cents.positive(),
-  source: z.enum(["seed_estimate", "channel3", "seller", "seller_agent"]),
+  source: z.enum(["seed_estimate", "channel3", "channel3_similar", "seller", "seller_agent"]),
   sourceNote: z.string().min(1),
   url: z.url({ protocol: /^https$/ }).optional(),
   channel3ProductId: z.string().min(1).optional(),

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronDownIcon, CloseIcon, RotateIcon } from "@/components/ui/icons";
 import { checkFit, type FitRoom } from "@/lib/domain/fit";
@@ -9,6 +9,7 @@ import type { LayoutItem, PlanLayout } from "@/lib/domain/layout";
 import { moveItem, type Spot } from "@/lib/domain/placement";
 import { fitProblemWords, itemNoun, whereIs } from "@/lib/domain/room-words";
 import { formatUsdShort } from "@/lib/format";
+import { NO_RING, nextRing, ringLifetimeMs, selectionAfter } from "./marks";
 import { RoomList } from "./room-list";
 import type { DragStart, PlanPoint, SceneItem } from "./scene/room-scene";
 import type { RoomItemData, RoomPresetData } from "./types";
@@ -45,7 +46,7 @@ interface RoomStageProps {
   items: readonly RoomItemData[];
   /** Shows the Play placement control. */
   playable?: boolean;
-  /** Marks the last placed item with the Sky ring. */
+  /** Greets each item the agent places with the Sky ring, which fades about 2 seconds after it lands. */
   ring?: boolean;
   showList?: boolean;
   /** Lets the student drag, turn, and nudge items, with the same fit check the agent faces. */
@@ -120,7 +121,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
   const [animating, setAnimating] = useState<ReadonlySet<string>>(() => new Set());
   const [queued, setQueued] = useState<readonly string[]>([]);
   const [playing, setPlaying] = useState(false);
-  const [ringKey, setRingKey] = useState<string | null>(null);
+  const [ringState, dispatchRing] = useReducer(nextRing, NO_RING);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [listKey, setListKey] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -142,6 +143,13 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
     },
     [],
   );
+
+  const ringId = ringState.ring?.id ?? null;
+  useEffect(() => {
+    if (ringId === null) return;
+    const timer = window.setTimeout(() => dispatchRing({ type: "expired", id: ringId }), ringLifetimeMs(reducedMotion));
+    return () => window.clearTimeout(timer);
+  }, [ringId, reducedMotion]);
 
   // The wheel alone scrolls the page. A pinch on a trackpad, or Control with the wheel, zooms the room.
   useEffect(() => {
@@ -198,7 +206,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
   const focusKey = pointedKey ?? (drag === null ? (mark?.key ?? null) : null);
   const focused = shown.find((item) => item.layout.key === focusKey);
   const markTag = pointedKey === null && mark !== null && focused?.layout.key === mark.key ? mark.label : null;
-  const ringShown = mark === null ? ringKey : mark.key;
+  const ringShown = mark === null ? (ringState.ring?.key ?? null) : mark.key;
   const selected = editing === null ? undefined : shown.find((item) => item.layout.key === selectedKey);
   const invalid = draft !== null && draft.problems.length > 0;
   const locked = editing?.locked ?? null;
@@ -210,7 +218,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
     setVisible(new Set());
     setAnimating(new Set());
     setQueued([]);
-    setRingKey(null);
+    dispatchRing({ type: "cleared" });
     setSelectedKey(null);
     setAnnouncement(`${label} is empty. Placing ${items.length} items.`);
     items.forEach((item, index) => {
@@ -226,7 +234,8 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
 
   const onLanded = useCallback(
     (key: string) => {
-      if (ring) setRingKey(key);
+      // Items already in the room when it loads land without a drop, so they get no ring.
+      if (ring) dispatchRing({ type: "landed", key, placed: animating.has(key) });
       // Live screens announce arrivals through their activity feed, so only Play placement speaks here.
       if (!playing || !animating.has(key)) return;
       const index = items.findIndex((item) => item.layout.key === key);
@@ -250,7 +259,8 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
   }, []);
 
   const onReady = useCallback(() => setReady(true), []);
-  const toggle = useCallback((key: string) => setSelectedKey((current) => (current === key ? null : key)), []);
+  const toggle = useCallback((key: string) => setSelectedKey((current) => selectionAfter(current, { type: "toggle", key })), []);
+  const onFloor = useCallback(() => setSelectedKey((current) => selectionAfter(current, { type: "floor" })), []);
 
   /** The item at a new spot, with everything that moves with it and every problem at that spot. */
   const propose = useCallback(
@@ -265,8 +275,9 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
 
   const savedItem = useCallback((key: string): LayoutItem | undefined => layout.items.find((item) => item.key === key), [layout]);
 
+  /** Saves a proposal. A saved drag lets go of the item, and keys and Turn keep it selected for the next press. */
   const commit = useCallback(
-    async (proposal: Draft) => {
+    async (proposal: Draft, dragged: boolean) => {
       if (editing === null) return;
       const item = items.find((candidate) => candidate.layout.key === proposal.key);
       const noun = item === undefined ? "item" : itemNoun(item.layout);
@@ -280,6 +291,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
       setSaving(false);
       setDraft(null);
       if (result.ok) {
+        if (dragged) setSelectedKey((current) => selectionAfter(current, { type: "saved", key: proposal.key }));
         const moved = proposal.layout.items.find((candidate) => candidate.key === proposal.key);
         setAnnouncement(moved === undefined ? `Moved the ${noun}.` : `Moved the ${noun} ${whereIs(editing.room, proposal.layout, moved)}.`);
       } else {
@@ -297,7 +309,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
         return;
       }
       grab.current = { origin: null, offset: { x: 0, y: 0 }, travel: 0, wasSelected: selectedKey === start.key };
-      setSelectedKey(start.key);
+      setSelectedKey((current) => selectionAfter(current, { type: "select", key: start.key }));
       setDrag(start);
     },
     [editing, locked, saving, selectedKey],
@@ -332,11 +344,11 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
     if (ended === null) return;
     if (grab.current.travel < CLICK_MM) {
       setDraft(null);
-      if (grab.current.wasSelected) setSelectedKey(null);
+      if (grab.current.wasSelected) setSelectedKey((current) => selectionAfter(current, { type: "toggle", key: ended.key }));
       return;
     }
     setDraft((current) => {
-      if (current !== null) void commit(current);
+      if (current !== null) void commit(current, true);
       return current;
     });
   }, [commit, drag]);
@@ -365,7 +377,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
         setAnnouncement(`That spot does not work. ${proposal.problems[0]}`);
         return;
       }
-      keyboardSave.current = window.setTimeout(() => void commit(proposal), saveDelay);
+      keyboardSave.current = window.setTimeout(() => void commit(proposal, false), saveDelay);
     },
     [commit, draft, editing, locked, propose, savedItem, saving],
   );
@@ -389,7 +401,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
       const move = moves[event.key];
       if (move !== undefined) {
         event.preventDefault();
-        setSelectedKey(key);
+        setSelectedKey((current) => selectionAfter(current, { type: "select", key }));
         nudge(key, move, KEYBOARD_SAVE_MS);
       } else if (event.key === "Escape" && draft !== null) {
         event.preventDefault();
@@ -400,6 +412,19 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
     },
     [draft, editing, nudge],
   );
+
+  // Escape lets go of the selected item. A row's own Escape first puts back a spot still being tried.
+  useEffect(() => {
+    if (selectedKey === null) return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || drag !== null) return;
+      window.clearTimeout(keyboardSave.current);
+      setDraft(null);
+      setSelectedKey((current) => selectionAfter(current, { type: "escape" }));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedKey, drag]);
 
   // A spot that fails stays shown only while the student is still moving that item.
   const onRowBlur = useCallback(() => {
@@ -434,11 +459,14 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
               preset={preset}
               items={sceneItems}
               ringKey={ringShown}
+              ringFades={mark === null}
+              ringId={mark === null ? (ringState.ring?.id ?? 0) : 0}
               focusKey={focusKey}
               reducedMotion={reducedMotion}
               playing={active}
               onHover={setHoverKey}
               onSelect={toggle}
+              onFloor={onFloor}
               onLanded={onLanded}
               onReady={onReady}
               onAnchor={onAnchor}
@@ -483,7 +511,7 @@ export function RoomStage({ label, preset, items, playable = false, ring = false
             <RotateIcon className="size-4" />
             Turn
           </Button>
-          <Button variant="quiet" size="sm" square aria-label={`Done moving the ${itemNoun(selected.layout)}`} onClick={() => setSelectedKey(null)}>
+          <Button variant="quiet" size="sm" square aria-label={`Done moving the ${itemNoun(selected.layout)}`} onClick={() => setSelectedKey((current) => selectionAfter(current, { type: "done" }))}>
             <CloseIcon className="size-4" />
           </Button>
         </div>

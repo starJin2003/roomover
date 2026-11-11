@@ -8,7 +8,8 @@ import { preparePhoto } from "@/components/photos/prepare-photo";
 import { PhotoPlate } from "@/components/sell/photo-plate";
 import { SellProgress, type ProgressStep } from "@/components/sell/sell-progress";
 import { SellUnderTheHood } from "@/components/sell/sell-under-the-hood";
-import { sizeFromInches, SizeFields, type SizeText } from "@/components/sell/size-fields";
+import { SimilarProducts } from "@/components/sell/similar-products";
+import { sizeFromInches, SizeFields, sizeTextFromMm, type SizeText } from "@/components/sell/size-fields";
 import { SHELL_COLUMNS } from "@/components/site/screen-frame";
 import { Button } from "@/components/ui/button";
 import { ChoiceGroup, type Choice } from "@/components/ui/choice-group";
@@ -23,6 +24,7 @@ import type { MoveOutTerm } from "@/lib/domain/sell";
 import { formatInches, formatUsdShort } from "@/lib/format";
 import { SELL_SAMPLES } from "@/lib/sell/samples";
 import type { SellDraftView, SellView } from "@/lib/sell/view";
+import { sourceSentence } from "@/lib/sell/words";
 
 interface SellScreenProps {
   /** Null until the seller logs in with PayPal. */
@@ -72,23 +74,13 @@ function progressSteps(draft: SellDraftView | null, work: Work): ProgressStep[] 
   return [channel3, claude];
 }
 
-/** The sentence under the title, saying where the new price and the size came from. */
-function sourceSentence(draft: SellDraftView): string {
-  const details = draft.details;
-  if (details === null) return "";
-  const price = `New about ${formatUsdShort(details.newPriceCents)}.`;
-  if (draft.match !== null) return details.sizeMm === null ? `Filled in from your photo. ${price} Channel3 has no size for this product, so enter it yourself.` : `Filled in from your photo. ${price}`;
-  if (draft.channel3.unavailable !== null) return `Filled in from your photo. ${draft.channel3.unavailable} The seller agent estimated the new price, about ${formatUsdShort(details.newPriceCents)}, so enter the size yourself.`;
-  return `Filled in from your photo. Channel3 found no product that matches it, so the seller agent estimated the new price, about ${formatUsdShort(details.newPriceCents)}, and you enter the size.`;
-}
-
 const STICKY_FOOTER = "max-lg:sticky max-lg:bottom-0 max-lg:z-10 max-lg:border-t max-lg:border-hair max-lg:bg-paper max-lg:pb-[max(1rem,env(safe-area-inset-bottom))]";
 
 interface SellPanelProps {
   title: string;
   subtitle: string;
   step: number;
-  /** Shows the Under the hood switch once there is something behind the listing to show. */
+  /** Shows the Developer view switch once there is something behind the listing to show. */
   hood: boolean;
   footer: ReactNode;
   children: ReactNode;
@@ -145,7 +137,8 @@ interface DetailsPanelProps {
 function DetailsPanel({ view, draft, details, subtitle, listing, error, onList, onNewPhoto }: DetailsPanelProps) {
   const [price, setPrice] = useState(details.priceCents);
   const [floor, setFloor] = useState(details.floorPriceCents);
-  const [size, setSize] = useState<SizeText>({ width: "", depth: "", height: "" });
+  const suggestedSize = draft.similar?.sizeMm ?? null;
+  const [size, setSize] = useState<SizeText>(suggestedSize === null ? { width: "", depth: "", height: "" } : sizeTextFromMm(suggestedSize));
   const [sizeError, setSizeError] = useState<string | undefined>(undefined);
   const [term, setTerm] = useState<MoveOutTerm>("this_term");
   const [mode, setMode] = useState<HandoffMode>("direct");
@@ -197,6 +190,7 @@ function DetailsPanel({ view, draft, details, subtitle, listing, error, onList, 
         <h2 className="text-xl font-semibold text-balance">{details.title}</h2>
         <p className="text-sm text-flint">{sourceSentence(draft)}</p>
       </div>
+      {draft.similar !== null && <SimilarProducts products={draft.similar.products} />}
       <PriceStepper id="sell-price" label="Your price" value={price} onChange={changePrice} minCents={details.minPriceCents} maxCents={details.maxPriceCents} aside={`New about ${formatUsdShort(details.newPriceCents)}`} />
       <PriceStepper id="sell-floor" label="Lowest you'll take" value={floor} onChange={setFloor} minCents={minFloorCents(price)} maxCents={price} aside="The buyer agent never offers less" />
       <FactList
@@ -215,6 +209,7 @@ function DetailsPanel({ view, draft, details, subtitle, listing, error, onList, 
             setSizeError(undefined);
           }}
           error={sizeError}
+          note={suggestedSize === null ? undefined : "From a similar item. Check before you list."}
         />
       )}
       <ChoiceGroup name="move-out" legend="When you leave" choices={termChoices} value={term} onChange={setTerm} />

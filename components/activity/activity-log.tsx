@@ -12,7 +12,7 @@ export interface ActivityEntry {
   /** A hard constraint stopped this step. */
   readonly blocked?: boolean;
   readonly paypal?: { readonly api: string; readonly idLabel: string; readonly id: string };
-  /** Record IDs behind the step, shown with Under the hood on. */
+  /** Record IDs behind the step, shown with the Developer view on. */
   readonly refs?: readonly { readonly label: string; readonly value: string }[];
 }
 

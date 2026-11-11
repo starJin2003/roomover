@@ -9,6 +9,17 @@ import { sellSampleBySrc } from "./samples";
 
 function retailReference(details: DraftDetails, today: string): RetailReference {
   const match = details.match;
+  const similar = details.similar ?? null;
+  if (match === null && similar !== null) {
+    const count = similar.products.length;
+    return {
+      productName: `New ${details.title.toLowerCase()}`,
+      newPriceCents: details.newPriceCents,
+      source: "channel3_similar",
+      sourceNote: `Median new price of ${count === 1 ? "1 similar product" : `${count} similar products`} Channel3 found, because none is the same product.`,
+      checkedOn: today,
+    };
+  }
   if (match === null) {
     return {
       productName: `New ${details.title.toLowerCase()}`,

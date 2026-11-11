@@ -18,7 +18,9 @@ test.use({ holdsCatalog: true });
  * image search and the seller agent's recorded reply fill in the listing
  * with the matched retail product and its new price, she enters the size
  * Channel3 lacks, and one press lists it. The listing then sits in the
- * catalog the buyer agent searches.
+ * catalog the buyer agent searches. Uploading the same cart through the
+ * file picker replays a live run where no product was the same one, so the
+ * similar products set the price.
  */
 
 const SCREENSHOT_DIR = process.env.SCREENSHOT_DIR ?? "test-results/screenshots";
@@ -81,9 +83,9 @@ test("a leaving student logs in with PayPal, lists a sample photo with Channel3'
     for (let press = 0; press < 6; press++) await page.getByRole("button", { name: "Lower the price by $1" }).first().click();
     await expect(page.locator("#sell-price")).toHaveText("$21");
 
-    // Under the hood names the Channel3 match, the seller agent's call, and where payouts go.
-    await page.getByRole("switch", { name: "Under the hood" }).click();
-    const hood = page.getByRole("region", { name: "Under the hood" });
+    // The Developer view names the Channel3 match, the seller agent's call, and where payouts go.
+    await page.getByRole("switch", { name: "Developer view" }).click();
+    const hood = page.getByRole("region", { name: "Developer view" });
     await expect(hood.getByText("Råskog Utility Cart")).toBeVisible();
     await expect(hood.getByText("identify_product_by_image, POST /v1/image-search")).toBeVisible();
     await expect(hood.getByText(/^Replayed from a recorded Claude reply, \d+\.\d s\.$/)).toBeVisible();
@@ -129,6 +131,80 @@ test("a leaving student logs in with PayPal, lists a sample photo with Channel3'
   }
 });
 
+test("an uploaded cart with no exact match prices from similar Channel3 products and suggests a size to check", async ({ page, session }, testInfo) => {
+  test.setTimeout(120_000);
+  const width = testInfo.project.name === "desktop-1440" ? 1440 : 390;
+  const problems: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" || message.type() === "warning") problems.push(`${message.type()}: ${message.text()}`);
+  });
+  page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
+  const db = getDb();
+  const [before] = await db.select({ paypalAccountId: users.paypalAccountId }).from(users).where(eq(users.id, AVA));
+  try {
+    await page.goto("/sell");
+    await page.getByRole("link", { name: "Log in with PayPal" }).click();
+    await expect(page.getByText("Signed in with PayPal as Ava Lindqvist")).toBeVisible();
+
+    // The browser shrinks and saves the photo the same way every time, so the recorded live Channel3 search and seller agent reply answer this upload.
+    await page.locator('input[type="file"]').setInputFiles("public/sell-samples/black-rolling-cart.jpg");
+    await expect(page.getByText("Channel3 found 4 products like it")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { level: 2, name: "Black three tier rolling cart with mesh bottoms" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("Filled in from your photo. No exact match on Channel3. 3 similar items sell new for about $40, so your price starts there.")).toBeVisible();
+    await expect(page.getByText(/matches it/)).toHaveCount(0);
+    const similar = page.getByRole("region", { name: "Similar new items on Channel3" });
+    await expect(similar.getByRole("listitem")).toHaveText([/^3-tier Utility Cart\s*homedepot\.com\s*\$63\.81$/, /^Råskog Utility Cart\s*ikea\.com\s*\$39$/, /^Famous Brand 3-Tier Foldable Rolling Cart\s*boscovs\.com\s*\$39\.99$/]);
+    await expect(page.locator("#sell-price")).toHaveText("$18");
+    await expect(page.locator("#sell-floor")).toHaveText("$13");
+
+    // The closest similar product that states a size fills the fields, which stay editable.
+    const size = page.getByRole("group", { name: "Size in inches" });
+    await expect(size.getByText("From a similar item. Check before you list.")).toBeVisible();
+    await expect(page.getByLabel("Width")).toHaveValue("17");
+    await expect(page.getByLabel("Depth")).toHaveValue("11");
+    await expect(page.getByLabel("Height")).toHaveValue("30");
+    await expect(page.getByLabel("Width")).toHaveAccessibleDescription("From a similar item. Check before you list.");
+    await expectAccessible(page);
+    if (width === 1440) {
+      await page.locator("[data-panel-body]").evaluate((body) => body.scrollTo({ top: 0 }));
+      await page.screenshot({ path: `${SCREENSHOT_DIR}/sell-similar-${width}.png`, scale: "css" });
+      await size.evaluate((fields) => fields.scrollIntoView({ block: "center" }));
+      await page.screenshot({ path: `${SCREENSHOT_DIR}/sell-similar-size-${width}.png`, scale: "css" });
+    } else {
+      await captureFullHeight(page, `${SCREENSHOT_DIR}/sell-similar-${width}.png`);
+    }
+
+    // The Developer view shows the query, every product Channel3 returned, which ones the agent picked, and the reference code computed.
+    await page.getByRole("switch", { name: "Developer view" }).click();
+    const developer = page.getByRole("region", { name: "Developer view" });
+    await expect(developer.getByText("Query: Your photo as base64, limit 6, US, USD, lengths in cm.")).toBeVisible();
+    await expect(developer.getByText("The seller agent found no candidate that is the same product and picked 3 as the same kind of item.")).toBeVisible();
+    const returned = developer.getByRole("list", { name: "Products Channel3 returned" }).getByRole("listitem");
+    await expect(returned).toHaveCount(4);
+    await expect(returned.filter({ hasText: "picked as similar" })).toHaveCount(3);
+    await expect(returned.filter({ hasText: "NISSAFORS trolley" })).toContainText("not picked");
+    await expect(developer.getByText("Reference computed in code, the median of $39, $39.99, and $63.81 rounded to the dollar, $40.")).toBeVisible();
+    await expectAccessible(page);
+    if (width === 1440) {
+      await developer.evaluate((region) => region.scrollIntoView({ block: "start" }));
+      await page.screenshot({ path: `${SCREENSHOT_DIR}/developer-view.png`, scale: "css" });
+    }
+
+    // A size the seller corrects wins, and the listing names its reference as similar products, never a match.
+    await page.getByLabel("Depth").fill("11.5");
+    await page.getByRole("button", { name: "List for $18" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Listed for $18" })).toBeVisible({ timeout: 30_000 });
+    const [draft] = await db.select({ listingId: listingDrafts.listingId }).from(listingDrafts).where(eq(listingDrafts.sessionId, session));
+    const [listing] = await db.select().from(listings).where(eq(listings.id, draft.listingId ?? ""));
+    expect([listing.priceCents, listing.floorPriceCents, listing.widthMm, listing.depthMm, listing.heightMm]).toEqual([1_800, 1_300, 432, 292, 762]);
+    expect(listing.retailReference).toMatchObject({ source: "channel3_similar", newPriceCents: 4_000, sourceNote: "Median new price of 3 similar products Channel3 found, because none is the same product." });
+    expect(listing.retailReference.channel3ProductId).toBeUndefined();
+    expect(problems).toEqual([]);
+  } finally {
+    await db.update(users).set({ paypalAccountId: before.paypalAccountId }).where(eq(users.id, AVA));
+  }
+});
+
 test("a photo of something Roomover does not list, or no confident match, says so in a plain sentence", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-1440", "One width is enough for the no match path.");
   test.setTimeout(120_000);
@@ -141,7 +217,7 @@ test("a photo of something Roomover does not list, or no confident match, says s
     await expect(page.getByRole("heading", { level: 2, name: "White tufted molded side chair with wood legs" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/Channel3 found no product that matches it, so the seller agent estimated the new price, about \$\d+, and you enter the size\./)).toBeVisible();
     await expect(page.getByRole("group", { name: "Size in inches" })).toBeVisible();
-    await page.getByRole("switch", { name: "Under the hood" }).click();
+    await page.getByRole("switch", { name: "Developer view" }).click();
     await expect(page.getByText("The seller agent found no candidate that is the same product.")).toBeVisible();
     await expectNoPageScroll(page);
   } finally {

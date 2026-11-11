@@ -167,7 +167,7 @@ test("an outside assistant plans a room over MCP and the student approves it fro
     expect(status.isError).toBe(true);
     expect(text(status)).toBe(`The student already approved this room in PayPal, so PayPal holds ${plan.paypalTotal} until the handoff, which runs in the browser that approved it.`);
     await expect(page.getByRole("link", { name: "Go to handoff" })).toBeVisible();
-    await page.getByRole("switch", { name: "Under the hood" }).click();
+    await page.getByRole("switch", { name: "Developer view" }).click();
     await expect(page.locator("[data-via-mcp]").first()).toHaveText(/via MCP from an outside assistant \(roomover-e2e 1\.0\.0\)/);
     await expect(page.locator("[data-room]")).toHaveAttribute("data-ready", "true", { timeout: 30_000 });
     await page.waitForTimeout(1200);

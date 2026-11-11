@@ -47,7 +47,7 @@ async function scrollPanelTo(page: Page, selector: string): Promise<void> {
   await page.waitForTimeout(300);
 }
 
-/** The screenshots the planning chat reviews: sentences, the new item, and Under the hood at 1440, then the whole page at 390. */
+/** The screenshots the planning chat reviews: sentences, the new item, and the Developer view at 1440, then the whole page at 390. */
 async function takeShots(browser: Browser, page: Page, cookies: Cookie[], errors: string[]): Promise<void> {
   await page.screenshot({ path: join(OUT, "negotiation-sentences-1440.png") });
 
@@ -62,7 +62,7 @@ async function takeShots(browser: Browser, page: Page, cookies: Cookie[], errors
     await page.mouse.move(10, 10);
   }
 
-  await page.getByRole("switch", { name: "Under the hood" }).click();
+  await page.getByRole("switch", { name: "Developer view" }).click();
   await page.waitForTimeout(400);
   await scrollPanelTo(page, "[data-under-the-hood-log]");
   await page.screenshot({ path: join(OUT, "under-the-hood-1440.png") });
@@ -78,7 +78,7 @@ async function takeShots(browser: Browser, page: Page, cookies: Cookie[], errors
   await mobile.waitForTimeout(2500);
   await mobile.screenshot({ path: join(OUT, "negotiation-390.png"), fullPage: true, scale: "css" });
   await mobile.locator("#furnish-panel-title").evaluate((element) => element.scrollIntoView({ block: "start" }));
-  await mobile.getByRole("switch", { name: "Under the hood" }).click();
+  await mobile.getByRole("switch", { name: "Developer view" }).click();
   await mobile.waitForTimeout(500);
   await mobile.screenshot({ path: join(OUT, "under-the-hood-390.png"), fullPage: true, scale: "css" });
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

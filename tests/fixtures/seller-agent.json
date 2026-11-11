@@ -214,6 +214,82 @@
     },
     "diagnostics": null
    }
+  ],
+  "ba329b44dd17094ca5179716c25459c1b86a175e1d91fb058d806f54f54fbdc6": [
+   {
+    "model": "claude-sonnet-5-5",
+    "id": "msg_011Cgw9xHSUTKi4WXHrG1kqg",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+     {
+      "type": "tool_use",
+      "id": "toolu_01E3S2aurHibbWMBdFeKL86v",
+      "name": "describe_listing",
+      "input": {
+       "category": "storage",
+       "title": "Black three tier rolling cart with mesh bottoms",
+       "description": "A black metal three tier rolling cart on four caster wheels, with a deep top tray and mesh-bottom middle and lower baskets. It looks lightly used with no clear damage visible.",
+       "condition": "good",
+       "defects": [],
+       "colorName": "Black",
+       "colorHex": "#1E1E20",
+       "material": "metal",
+       "styleTags": [
+        "minimal",
+        "utility"
+       ],
+       "matchedCandidate": null,
+       "similarCandidates": [
+        3,
+        1,
+        4
+       ],
+       "newPriceDollars": 40,
+       "priceDollars": 18,
+       "floorDollars": 13
+      },
+      "caller": {
+       "type": "direct"
+      }
+     }
+    ],
+    "container": null,
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "stop_details": null,
+    "usage": {
+     "input_tokens": 12079,
+     "cache_creation_input_tokens": 0,
+     "cache_read_input_tokens": 0,
+     "cache_creation": {
+      "ephemeral_5m_input_tokens": 0,
+      "ephemeral_1h_input_tokens": 0
+     },
+     "iterations": [
+      {
+       "input_tokens": 12079,
+       "output_tokens": 456,
+       "cache_read_input_tokens": 0,
+       "cache_creation_input_tokens": 0,
+       "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+       },
+       "type": "message",
+       "model": null
+      }
+     ],
+     "output_tokens": 456,
+     "output_tokens_details": {
+      "thinking_tokens": 0
+     },
+     "service_tier": "standard",
+     "inference_geo": "global",
+     "speed": "standard"
+    },
+    "diagnostics": null
+   }
   ]
  }
 }

@@ -7,6 +7,8 @@ import { RoomScene, type RoomSceneProps } from "./scene/room-scene";
 export interface RoomCanvasProps extends RoomSceneProps {
   /** Renders every frame while a placement plays, and only on change otherwise. */
   playing: boolean;
+  /** A click that lands on no item, such as one on the empty floor. */
+  onFloor: () => void;
 }
 
 /**
@@ -14,7 +16,7 @@ export interface RoomCanvasProps extends RoomSceneProps {
  * transparent, so the page's table color shows through unchanged and the
  * room shares one table with the interface.
  */
-export default function RoomCanvas({ playing, ...scene }: RoomCanvasProps) {
+export default function RoomCanvas({ playing, onFloor, ...scene }: RoomCanvasProps) {
   return (
     <Canvas
       orthographic
@@ -25,7 +27,10 @@ export default function RoomCanvas({ playing, ...scene }: RoomCanvasProps) {
       gl={{ antialias: false, alpha: true, stencil: false, powerPreference: "high-performance" }}
       camera={{ near: 0.1, far: 40, position: [6, 5, 6], zoom: 100 }}
       onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
-      onPointerMissed={() => scene.onHover(null)}
+      onPointerMissed={() => {
+        scene.onHover(null);
+        onFloor();
+      }}
     >
       <Suspense fallback={null}>
         <RoomScene {...scene} />

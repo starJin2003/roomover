@@ -50,7 +50,9 @@ describe("the describe_listing tool", () => {
   it("is strict, keeps no keyword strict tools refuse, and the request lets Claude choose it with fallbacks on", () => {
     expect(DESCRIBE_LISTING_TOOL.strict).toBe(true);
     const text = JSON.stringify(DESCRIBE_LISTING_TOOL.input_schema);
-    for (const keyword of ["minLength", "maxLength", "minimum", "maximum", "maxItems", "pattern"]) expect(text).not.toContain(`"${keyword}"`);
+    for (const keyword of ["minLength", "maxLength", "minimum", "maximum", "maxItems", "pattern", "default"]) expect(text).not.toContain(`"${keyword}"`);
+    // Strict tools need every property listed as required, including the similar candidates that older recordings lack.
+    expect((DESCRIBE_LISTING_TOOL.input_schema as { required: string[] }).required).toContain("similarCandidates");
     const request = buildSellerRequest([]);
     expect([request.model, request.tool_choice, request.fallbacks, request.betas, request.output_config]).toEqual(["claude-sonnet-5-5", { type: "auto" }, "default", ["server-side-fallback-2026-07-01"], { effort: "medium" }]);
   });
@@ -79,6 +81,13 @@ describe("describeListing", () => {
     expect(JSON.stringify(retry)).toContain('"is_error":true');
   });
 
+  it("retries when a similar candidate number does not exist", async () => {
+    const transport = scripted([reply([call({ ...verdict, matchedCandidate: null, similarCandidates: [1, 2] })]), reply([call({ ...verdict, matchedCandidate: null, similarCandidates: [1] }, "toolu_2")])]);
+    const result = await describeListing(transport, photo, [{ candidate: cart, photo }]);
+    expect(result.ok && [result.attempts, result.verdict.similarCandidates]).toEqual([2, [1]]);
+    expect(JSON.stringify(transport.requests[1].messages.at(-1))).toContain("similarCandidates may only hold candidate numbers from 1 to 1.");
+  });
+
   it("skips the retry when the photo has one call left", async () => {
     const transport = scripted([reply([call({ ...verdict, matchedCandidate: 3 })]), reply([call(verdict, "toolu_2")])]);
     const result = await describeListing(transport, photo, [{ candidate: cart, photo }], 1);
@@ -94,7 +103,17 @@ describe("describeListing", () => {
   });
 });
 
+/** The cart sample as the Sell page uploads it, shrunk and saved as JPEG by Chromium. */
+const UPLOADED_CART = "ba329b44dd17094ca5179716c25459c1b86a175e1d91fb058d806f54f54fbdc6";
+
 describe("the recorded seller agent fixture", () => {
+  it("holds the uploaded cart's live reply, which names no match and three similar carts closest first", async () => {
+    const recording = await readReplyRecording("tests/fixtures/seller-agent.json");
+    const input = (recording.photos[UPLOADED_CART]?.at(-1)?.content as { type: string; name?: string; input?: unknown }[]).find((block) => block.type === "tool_use")?.input;
+    const verdict = sellerVerdictSchema.parse(input);
+    expect([verdict.matchedCandidate, verdict.similarCandidates]).toEqual([null, [3, 1, 4]]);
+  });
+
   it("holds a valid verdict for every Sell sample, so the e2e run replays each one", async () => {
     const recording = await readReplyRecording("tests/fixtures/seller-agent.json");
     for (const sample of SELL_SAMPLES) {

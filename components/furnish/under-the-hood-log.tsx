@@ -33,7 +33,7 @@ function outcome(negotiation: NegotiationView): string {
 const seconds = (ms: number | undefined) => (ms === undefined ? "" : `, ${(ms / 1000).toFixed(1)} s`);
 
 /**
- * What Under the hood adds to the Furnish panel: every offer and counter
+ * What the Developer view adds to the Furnish panel: every offer and counter
  * between the buyer agent and the seller agents, with any answer code
  * changed, and every Channel3 search with its filters, results, and credits.
  */

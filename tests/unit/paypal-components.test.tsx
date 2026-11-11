@@ -8,7 +8,7 @@ import { SellersPaid } from "@/components/payouts/sellers-paid";
 
 const held = PAYPAL_MOMENTS.heldAfterApproval;
 
-describe("Under the hood", () => {
+describe("Developer view", () => {
   it("is off by default, so the card shows everyday words and no PayPal IDs", () => {
     const html = renderToStaticMarkup(
       <UnderTheHoodProvider>

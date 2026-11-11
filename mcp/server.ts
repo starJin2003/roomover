@@ -18,7 +18,7 @@ const failed = (message: string): CallToolResult => ({ content: [{ type: "text",
 /**
  * One MCP server per MCP session. Each tool call writes one line to
  * agent_events with the tool, the client, and how long it took, so the
- * plan's Under the hood shows what came in over MCP.
+ * plan's Developer view shows what came in over MCP.
  */
 export function buildMcpServer(deps: McpDeps, session: { buyerSession: string; clientHash: string; fromAnthropic: boolean; logRunId: string }): McpServer {
   const planRoomDeps = deps.planRoom(session.logRunId);

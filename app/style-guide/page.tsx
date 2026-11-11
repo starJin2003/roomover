@@ -166,7 +166,7 @@ export default function StyleGuidePage() {
 
         <Section
           id="paypal"
-          lead="The navy card appears only when money is held, captured, or paid out. Under the hood adds the PayPal API and sandbox ID behind each step."
+          lead="The navy card appears only when money is held, captured, or paid out. The Developer view adds the PayPal API and sandbox ID behind each step."
         >
           <UnderTheHoodProvider>
             <Panel id="paypal-moments" title="Money moments" subtitle="Sandbox IDs are placeholders until checkout runs" action={<UnderTheHoodSwitch />}>

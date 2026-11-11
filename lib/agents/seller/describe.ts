@@ -29,7 +29,7 @@ export interface SellerTransport {
 export const DESCRIBE_LISTING_TOOL: BetaTool = {
   name: TOOL_NAME,
   description:
-    "Report the item in the seller's photo: its kind, a title, a description, its condition and visible defects, its main color and material, which Channel3 candidate is the same product (or null), and a used price and floor in whole dollars.",
+    "Report the item in the seller's photo: its kind, a title, a description, its condition and visible defects, its main color and material, which Channel3 candidate is the same product (or null), which candidates are similar when none is, and a used price and floor in whole dollars.",
   input_schema: strictSchema(z.toJSONSchema(sellerVerdictSchema)) as BetaTool["input_schema"],
   strict: true,
 };
@@ -70,7 +70,9 @@ function readVerdict(message: BetaMessage, candidateCount: number): Reading {
     ? z.prettifyError(parsed.error)
     : parsed.data.matchedCandidate !== null && parsed.data.matchedCandidate > candidateCount
       ? `matchedCandidate must be a candidate number from 1 to ${candidateCount}, or null.`
-      : null;
+      : parsed.data.similarCandidates.some((number) => number > candidateCount)
+        ? `similarCandidates may only hold candidate numbers from 1 to ${candidateCount}.`
+        : null;
   if (parsed.success && problem === null) return { ok: true, verdict: parsed.data };
   return { ok: false, reply: [{ type: "tool_result", tool_use_id: call.id, is_error: true, content: `The listing did not validate. ${problem} Call describe_listing again with corrected values.` }] };
 }

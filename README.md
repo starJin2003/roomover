@@ -58,7 +58,7 @@ The video and the Furnish images follow the Harbor Hall plan that the buyer agen
 
 <img alt="The Sell screen after one photo. Claude and Channel3 filled in a black 3-tier rolling utility cart, new about $39, priced at $21 with a $16 floor." src="docs/sell.png" width="900">
 
-Ava logs in with PayPal, which gives Roomover the email her payouts go to. She takes one photo, and the product search application programming interface (API) from Channel3 finds matching retail products with their new prices, and with their sizes when the retailer lists them. The seller agent picks the match and writes the listing. The cart's match carries no size, so Ava enters it herself. Code caps the price at 70 percent of the new price, and Ava sets the lowest price her agent may accept.
+Ava logs in with PayPal, which gives Roomover the email her payouts go to. She takes one photo, and the product search application programming interface (API) from Channel3 finds matching retail products with their new prices, and with their sizes when the retailer lists them. The seller agent picks the match and writes the listing. When no product is the same one, the agent picks the similar ones, and code prices the listing from their median new price. The cart's match carries no size, so Ava enters it herself. Code caps the price at 70 percent of the new price, and Ava sets the lowest price her agent may accept.
 
 ```mermaid
 sequenceDiagram
@@ -279,7 +279,7 @@ The first browser that approves the payment from a preview link takes the plan o
 2. **Claude Code**. Run `claude mcp add --transport http roomover https://roomover.onrender.com/mcp`, then send the same request.
 3. **MCP Inspector**. Run `npx @modelcontextprotocol/inspector`, choose the Streamable HTTP transport, and enter the same URL.
 
-Open the approval link the assistant returns, sign in as the judge buyer from [Test accounts](#test-accounts-for-judges), and approve. PayPal returns to the preview page, which shows the held payment with the order and authorization IDs under the hood.
+Open the approval link the assistant returns, sign in as the judge buyer from [Test accounts](#test-accounts-for-judges), and approve. PayPal returns to the preview page, which shows the held payment with the order and authorization IDs in the Developer view.
 
 ## Sponsor tools
 

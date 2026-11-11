@@ -1,6 +1,6 @@
 /** Claude reads photos best at up to 1568 px on the long edge, and phones take far larger ones. */
-const MAX_EDGE = 1568;
-const QUALITY = 0.86;
+export const MAX_EDGE = 1568;
+export const QUALITY = 0.86;
 
 /**
  * Shrinks a camera photo to the size Claude reads, turned upright and

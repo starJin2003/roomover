@@ -10,7 +10,7 @@ export type ToolkitReadTool = (typeof TOOLKIT_READ_TOOLS)[number];
 
 /**
  * Structured facts behind an activity line, kept for the full log and the
- * Under the hood view. Each field applies only to some tools.
+ * Developer view. Each field applies only to some tools.
  */
 export const agentEventDetailSchema = z.strictObject({
   listingId: z.uuid().optional(),

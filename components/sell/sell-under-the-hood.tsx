@@ -19,19 +19,29 @@ function Line({ who, call, children, paypal = false }: { who: string; call: stri
   );
 }
 
+/** The median code priced from, with the prices it came from, such as "Median of $29.99, $34, and $39.99, rounded, $34". */
+function referenceWords(similar: NonNullable<SellDraftView["similar"]>): string {
+  const prices = similar.products.map((product) => product.newPriceCents).sort((a, b) => a - b).map(formatUsdShort);
+  const listed = prices.length === 1 ? prices[0] : prices.length === 2 ? `${prices[0]} and ${prices[1]}` : `${prices.slice(0, -1).join(", ")}, and ${prices.at(-1)}`;
+  return `Reference computed in code, the median of ${listed} rounded to the dollar, ${formatUsdShort(similar.referenceCents)}.`;
+}
+
 /**
- * What ran behind the listing, shown while Under the hood is on: the Channel3
- * search with its match, the seller agent's Claude call, and where payouts
- * go: the payer ID, showing only its last four characters, or the email.
+ * What ran behind the listing, shown while the Developer view is on: the
+ * Channel3 search with its query and what it returned, the match or the
+ * similar products the seller agent picked, the seller agent's Claude call,
+ * and where payouts go: the payer ID, showing only its last four characters,
+ * or the email.
  */
 export function SellUnderTheHood({ draft, payerIdLast4 }: { draft: SellDraftView | null; payerIdLast4: string | null }) {
   const on = useUnderTheHood();
   if (!on) return null;
   return (
-    <section aria-label="Under the hood" className="rounded-xl bg-well p-4">
+    <section aria-label="Developer view" className="rounded-xl bg-well p-4">
       <ol className="flex flex-col">
         {draft !== null && (
           <Line who="Channel3" call="identify_product_by_image, POST /v1/image-search">
+            <p className="mb-1 text-flint">Query: {draft.channel3.query}.</p>
             {draft.channel3.unavailable !== null ? (
               <p>No answer. {draft.channel3.unavailable}</p>
             ) : (
@@ -45,7 +55,26 @@ export function SellUnderTheHood({ draft, payerIdLast4 }: { draft: SellDraftView
                 Match: <span className="text-ink">{draft.match.title}</span>, {formatUsdShort(draft.match.newPriceCents)} at {draft.match.domain}, product <span className="mono text-ink">{draft.match.productId}</span>
               </p>
             )}
-            {draft.match === null && draft.details !== null && <p className="mt-1 text-flint">The seller agent found no candidate that is the same product.</p>}
+            {draft.match === null && draft.details !== null && (
+              <>
+                <p className="mt-1 text-flint">
+                  {draft.similar === null
+                    ? "The seller agent found no candidate that is the same product."
+                    : `The seller agent found no candidate that is the same product and picked ${draft.similar.products.length} as the same kind of item.`}
+                </p>
+                {draft.channel3.candidates.length > 0 && (
+                  <ul aria-label="Products Channel3 returned" className="mt-1 flex flex-col gap-0.5 text-flint">
+                    {draft.channel3.candidates.map((candidate) => (
+                      <li key={candidate.productId}>
+                        <span className="text-ink">{candidate.title}</span>, {formatUsdShort(candidate.newPriceCents)} at {candidate.retailer}, product <span className="mono text-ink">{candidate.productId}</span>,{" "}
+                        {candidate.picked ? "picked as similar" : "not picked"}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {draft.similar !== null && <p className="mt-1 text-flint">{referenceWords(draft.similar)}</p>}
+              </>
+            )}
           </Line>
         )}
         {draft !== null && draft.claude.mode !== null && (

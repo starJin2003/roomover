@@ -27,5 +27,5 @@ export function useUnderTheHood(): boolean {
 
 export function UnderTheHoodSwitch() {
   const { on, setOn } = useContext(UnderTheHoodContext);
-  return <Switch label="Under the hood" checked={on} onCheckedChange={setOn} />;
+  return <Switch label="Developer view" checked={on} onCheckedChange={setOn} />;
 }

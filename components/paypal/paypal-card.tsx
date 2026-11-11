@@ -17,7 +17,7 @@ interface PayPalCardProps {
   moment: PayPalMoment;
   title: string;
   detail?: string;
-  /** Shown only while Under the hood is on. */
+  /** Shown only while the Developer view is on. */
   references: readonly PayPalReference[];
 }
 

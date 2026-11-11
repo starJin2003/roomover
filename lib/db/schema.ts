@@ -544,7 +544,7 @@ export const listingPhotos = pgTable(
  * One photo on its way to a listing. Channel3 matches it first, then the
  * seller agent fills in the details and the price, and the seller lists it.
  * The draft keeps what each step returned, so a reload shows the same panel
- * and Under the hood.
+ * and the Developer view.
  */
 export const listingDrafts = pgTable(
   "listing_drafts",

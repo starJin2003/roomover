@@ -34,7 +34,7 @@ describe("PaidPanel", () => {
     expect(html).not.toContain("94R599622M802332T");
   });
 
-  it("names Orders v2, the order ID, and the authorization ID under the hood", () => {
+  it("names Orders v2, the order ID, and the authorization ID in the Developer view", () => {
     const html = render(authorized, true);
     expect(html).toContain("Orders v2");
     expect(html).toContain("6VY26189SJ770603W");

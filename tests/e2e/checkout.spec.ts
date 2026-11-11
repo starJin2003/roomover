@@ -70,12 +70,12 @@ test("the student approves one PayPal checkout and PayPal holds the money for ev
     await page.locator("paypal-button").click();
   }
 
-  // The panel turns to the held state, and Under the hood names the API and both IDs.
+  // The panel turns to the held state, and the Developer view names the API and both IDs.
   await expect(page.getByText("PayPal holds your $107 until handoff")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText("Each item is charged when you check it at handoff, and 4 students get paid then.")).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: /^Handoff$/ })).toHaveAttribute("aria-current", "step");
   await expect(page.locator("paypal-button")).toHaveCount(0);
-  await page.getByRole("switch", { name: "Under the hood" }).click();
+  await page.getByRole("switch", { name: "Developer view" }).click();
   const card = page.locator('[data-paypal-moment="held"]');
   await expect(card.getByText("Orders v2").first()).toBeVisible();
 

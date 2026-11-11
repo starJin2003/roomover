@@ -59,7 +59,7 @@ export interface NegotiationRoundView {
   heldByCode: string | null;
 }
 
-/** One negotiation as Under the hood lists it, every offer and counter in order. */
+/** One negotiation as the Developer view lists it, every offer and counter in order. */
 export interface NegotiationView {
   listingIds: string[];
   titles: string[];

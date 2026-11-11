@@ -139,9 +139,9 @@ test("the student checks every item, the torn chair costs $30, and PayPal pays f
   await expect(page.locator('li[data-paid="true"]')).toHaveCount(5, { timeout: PAYOUT_WAIT_MS });
   await expect(page.getByText("sent to 5 sellers", { exact: true })).toBeVisible();
   await expect(page.locator('[data-paypal-moment="paid"]')).toContainText("PayPal paid 5 sellers $139");
-  await page.getByRole("switch", { name: "Under the hood" }).click();
+  await page.getByRole("switch", { name: "Developer view" }).click();
 
-  // Postgres agrees with the screen, and Under the hood names every PayPal ID.
+  // Postgres agrees with the screen, and the Developer view names every PayPal ID.
   const db = getDb();
   const [order] = await db.select().from(orders).where(eq(orders.planId, planId));
   expect(order.status).toBe("settled");
@@ -168,7 +168,7 @@ test("the student checks every item, the torn chair costs $30, and PayPal pays f
   for (const item of paid) await expect(paidCard.getByText(item.paypalPayoutItemId ?? "")).toBeVisible();
   for (const line of lines) await expect(page.locator('[data-paypal-moment="captured"]').getByText(line.paypalCaptureId ?? "")).toBeVisible();
   await expectAccessible(page);
-  // The longest Handoff state, five paid sellers and every ID under the hood, still fits the desktop window.
+  // The longest Handoff state, five paid sellers and every ID in the Developer view, still fits the desktop window.
   if (desktop) await expectFitsDesktops(page, SCREENSHOT_DIR, "handoff");
   await page.screenshot({ path: `${SCREENSHOT_DIR}/sellers-paid-done-${width}.png`, fullPage: true, scale: "css" });
 

@@ -4,7 +4,7 @@ interface PanelProps {
   id: string;
   title: string;
   subtitle?: string;
-  /** Sits at the right of the header, such as the Under the hood switch. */
+  /** Sits at the right of the header, such as the Developer view switch. */
   action?: ReactNode;
   heading?: "h1" | "h2" | "h3";
   /** Below the large breakpoint the panel becomes a bottom sheet under the room, full width with a grab bar. */

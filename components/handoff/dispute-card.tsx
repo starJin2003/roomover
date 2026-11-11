@@ -26,7 +26,7 @@ export function DisputeHelp() {
 /**
  * One dispute in plain words, outlined in Brick because it needs the
  * student's eye but moves no money here. A message Roomover sent the buyer
- * in the inquiry stage shows in full. Under the hood adds the PayPal dispute
+ * in the inquiry stage shows in full. The Developer view adds the PayPal dispute
  * ID, each Agent Toolkit read, the message call, and the evidence Roomover
  * sent.
  */

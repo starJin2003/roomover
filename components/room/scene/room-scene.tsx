@@ -11,6 +11,7 @@ import { FURNITURE } from "@/lib/domain/furniture";
 import { contains, rectangle } from "@/lib/domain/geometry";
 import { rowWidthMm, topMm } from "@/lib/domain/layout";
 import type { Fixture } from "@/lib/domain/room";
+import { ringLifetimeMs, ringOpacity } from "../marks";
 import { buildFixture } from "../model/fixtures";
 import { buildFurniture, type BedHost } from "../model/furniture";
 import type { Part } from "../model/parts";
@@ -47,6 +48,10 @@ export interface RoomSceneProps {
   preset: RoomPresetData;
   items: readonly SceneItem[];
   ringKey: string | null;
+  /** True for the ring under a placed item, which fades away. False for a mark that stays, such as the next item at handoff. */
+  ringFades: boolean;
+  /** Changes with every new placement ring, so the same item landing again gets a fresh ring. */
+  ringId: number;
   focusKey: string | null;
   reducedMotion: boolean;
   onHover: (key: string | null) => void;
@@ -326,8 +331,18 @@ function ringGeometry(layout: RoomItemData["layout"]) {
   return new ShapeGeometry(outer, 12).rotateX(-Math.PI / 2);
 }
 
-/** A flat outline under an item: Sky for the item the agent placed last, Flint while selected, Brick on a spot that fails. */
-function ItemRing({ entry, space, material, fade = false, lift = 3 }: { entry: SceneItem; space: ReturnType<typeof useRoomSpace>; material: Material; fade?: boolean; lift?: number }) {
+interface ItemRingProps {
+  entry: SceneItem;
+  space: ReturnType<typeof useRoomSpace>;
+  material: Material;
+  /** "in" grows in and stays. "in-out" grows in, holds, and fades away. */
+  fade?: "in" | "in-out";
+  reducedMotion?: boolean;
+  lift?: number;
+}
+
+/** A flat outline under an item: Sky for the item the agent just placed, Flint while selected, Brick on a spot that fails. */
+function ItemRing({ entry, space, material, fade, reducedMotion = false, lift = 3 }: ItemRingProps) {
   const { layout } = entry.data;
   const { furnitureType, widthMm, depthMm, pieces } = layout;
   const geometry = useMemo(
@@ -341,12 +356,21 @@ function ItemRing({ entry, space, material, fade = false, lift = 3 }: { entry: S
   const mesh = useRef<Mesh>(null);
   const born = useRef(-1);
   const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => invalidate(), [invalidate]);
   useFrame(() => {
-    if (!fade || mesh.current === null) return;
-    const now = performance.now() / 1000;
+    if (fade === undefined || mesh.current === null) return;
+    const now = performance.now();
     if (born.current < 0) born.current = now;
-    const p = Math.min(1, (now - born.current) / 0.22);
-    (mesh.current.material as MeshBasicMaterial).opacity = p;
+    const elapsed = now - born.current;
+    const material = mesh.current.material as MeshBasicMaterial;
+    if (fade === "in-out") {
+      material.opacity = ringOpacity(elapsed, reducedMotion);
+      mesh.current.scale.setScalar(reducedMotion ? 1 : 1.08 - 0.08 * Math.min(1, elapsed / 220));
+      if (!reducedMotion && elapsed < ringLifetimeMs(false)) invalidate();
+      return;
+    }
+    const p = Math.min(1, elapsed / 220);
+    material.opacity = p;
     mesh.current.scale.setScalar(1.08 - 0.08 * p);
     if (p < 1) invalidate();
   });
@@ -637,6 +661,8 @@ export function RoomScene({
   preset,
   items,
   ringKey,
+  ringFades,
+  ringId,
   focusKey,
   reducedMotion,
   onHover,
@@ -698,7 +724,9 @@ export function RoomScene({
         .map((entry) => (
           <ItemRing key={`new-${entry.data.layout.key}`} entry={entry} space={space} material={newItemRingMaterial} lift={2} />
         ))}
-      {ring !== undefined && ring !== outlined && <ItemRing key={`ring-${ring.data.layout.key}`} entry={ring} space={space} material={ringMaterial} fade />}
+      {ring !== undefined && ring !== outlined && (
+        <ItemRing key={`ring-${ring.data.layout.key}-${ringId}`} entry={ring} space={space} material={ringMaterial} fade={ringFades ? "in-out" : "in"} reducedMotion={reducedMotion} />
+      )}
       {outlined !== undefined && outline !== null && (
         <ItemRing key={`outline-${outlined.data.layout.key}`} entry={outlined} space={space} material={outline.invalid ? invalidRingMaterial : selectedRingMaterial} lift={4} />
       )}

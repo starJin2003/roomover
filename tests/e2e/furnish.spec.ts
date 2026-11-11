@@ -119,19 +119,22 @@ test.describe("the buyer agent", () => {
     await expectNoOverflow(page);
     await expectAccessible(page);
     await capture(page, "ready", width);
+    // The Sky ring under the last item the agent placed fades a couple of seconds after it lands.
+    await expect(room).toHaveAttribute("data-ring", "", { timeout: 8_000 });
+    await capture(page, "furnish-ring-faded", width);
     await page.locator("summary", { hasText: /^Details, \d+ steps$/ }).click();
     // Code reads the rules and the room before the first model call, so those steps come right after the start.
     const steps = page.locator("details ol > li");
     await expect(steps.nth(1)).toContainText("Read the Harbor Hall room standards");
     await expect(steps.nth(2)).toContainText("Read Harbor Hall 214");
     await expect(page.getByText(/Green metal floor reading lamp, halogen bulb from Marcus Bell\. Harbor Hall rule 1\.1/)).toBeVisible();
-    await page.getByRole("switch", { name: "Under the hood" }).click();
+    await page.getByRole("switch", { name: "Developer view" }).click();
     await expect(page.locator("code", { hasText: "place_item" }).first()).toBeVisible();
     await expect(page.getByText(/^Run [0-9a-f-]{36}$/).first()).toBeVisible();
     await expect(page.getByText(/^Order [A-Z0-9]{17}, sandbox$/)).toBeVisible();
     await expectNoOverflow(page);
     await expectAccessible(page);
-    // The longest Furnish state, every step open with Under the hood on, still fits the desktop window.
+    // The longest Furnish state, every step open with the Developer view on, still fits the desktop window.
     if (width >= 1024) await expectFitsDesktops(page, SCREENSHOT_DIR, "furnish");
     await capture(page, "under-the-hood", width);
     await page.locator("summary", { hasText: /^Details, \d+ steps$/ }).click();
@@ -153,6 +156,17 @@ test.describe("the buyer agent", () => {
     await seatRow.focus();
     await page.keyboard.press("ArrowUp");
     expect((await saved).status()).toBe(200);
+    // Keys keep the item selected for the next press, and Escape lets go of it.
+    await expect(room).toHaveAttribute("data-selected", BEAN_BAG);
+    await page.keyboard.press("Escape");
+    await expect(room).toHaveAttribute("data-selected", "");
+    // A click on the room where no item stands lets go too.
+    await seatRow.click();
+    await expect(room).toHaveAttribute("data-selected", BEAN_BAG);
+    const roomBox = await page.locator("[data-room-box]").boundingBox();
+    if (roomBox === null) throw new Error("The room has no box.");
+    await page.mouse.click(roomBox.x + 6, roomBox.y + 6);
+    await expect(room).toHaveAttribute("data-selected", "");
 
     // A pointer drag onto a spot that fails shows Brick, and the item does not drop there.
     if (width >= 600) {
@@ -184,10 +198,11 @@ test.describe("the buyer agent", () => {
     await expect(sentences(page).last()).toHaveText("Your room is updated. 6 items, $107 of $150.", { timeout: 30_000 });
     await expect(page.locator("[data-sentence]", { hasText: "Moved the bean bag under the window." })).toBeVisible();
 
-    // A reload shows the same room and the same story.
+    // A reload shows the same room and the same story, with no ring, since nothing was placed just now.
     await page.reload();
     await expect(room).toHaveAttribute("data-ready", "true", { timeout: 30_000 });
     await expect(room).toHaveAttribute("data-placed", "6");
+    await expect(room).toHaveAttribute("data-ring", "");
     await expect(sentences(page).last()).toHaveText("Your room is updated. 6 items, $107 of $150.");
     await expect(page.locator("[data-total]")).toHaveText("$107");
     expect(problems).toEqual([]);

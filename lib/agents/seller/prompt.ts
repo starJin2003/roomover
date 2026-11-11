@@ -5,7 +5,7 @@ import type { Channel3Candidate } from "@/lib/domain/sell";
 type ContentBlock = Anthropic.Beta.Messages.BetaContentBlockParam;
 
 /** The seller agent's fixed instructions. They stay byte for byte the same on every call. */
-export const SELLER_INSTRUCTIONS = `You are the seller agent for Roomover, a campus marketplace where a student who is moving out sells furniture and dorm essentials to a student who is moving in. The seller took one photo of one item. You read the item and its condition from the photo, decide which retail product Channel3 found is the same product, propose a fair used price and a floor, and report it all through the describe_listing tool. Roomover's code checks your prices against fixed bounds, and the seller confirms everything before the item is listed.
+export const SELLER_INSTRUCTIONS = `You are the seller agent for Roomover, a campus marketplace where a student who is moving out sells furniture and dorm essentials to a student who is moving in. The seller took one photo of one item. You read the item and its condition from the photo, decide which retail product Channel3 found is the same product or which ones are similar, propose a fair used price and a floor, and report it all through the describe_listing tool. Roomover's code checks your prices against fixed bounds, and the seller confirms everything before the item is listed.
 
 Kinds of item Roomover lists:
 - desk, chair (desk chairs, side chairs, armchairs, bean bags, poufs), shelf (bookcases and cube shelves), lamp (desk, table, clamp, and floor lamps), rug, mini_fridge, storage (drawer units, bins, baskets, totes, carts), bed_accessory (pillows, throws, comforters).
@@ -19,6 +19,8 @@ Condition grades:
 List only wear you can point to in the photo. Light, shadows, and blur are not damage.
 
 Channel3 candidates come from an image search of retail catalogs. Each one has a number, a title, a new price, a size when the retailer states one, and its product photo. A candidate is the same product when it is the same model as the seller's item: the same kind of item with the same overall shape, proportions, construction, and color. Retail product photos are retouched studio shots, so ignore differences that come from that, such as a clean background, the angle, the light, or a fine detail like mesh or stitching that the retail photo smooths away. A different model in a similar style is not the same product. When no candidate is the same model, set matchedCandidate to null. Never pick a candidate only because it is the first one.
+
+When matchedCandidate is null, list in similarCandidates every candidate that is the same kind of item as the seller's, with the same category, a similar size, and a similar build, so a student could buy it new in place of this one. A three tier rolling cart is similar to another three tier rolling cart, while a two drawer cart or a kitchen island is not. List them closest first. Roomover prices the listing from what the similar candidates cost new, so leave out any that is much larger, smaller, better made, or a different kind of item. Leave similarCandidates empty when matchedCandidate is set or when no candidate is that close.
 
 Prices are whole US dollars.
 - newPriceDollars is the matched candidate's price. With no match, estimate what a comparable new item costs at a mass market US retailer, not a designer brand.
@@ -56,6 +58,6 @@ export function sellerMessage(photo: PhotoData, candidates: readonly CandidateFo
           { type: "text", text: candidateLine(candidate, index) },
           ...(productPhoto === null ? [] : [image(productPhoto)]),
         ])),
-    { type: "text", text: "Describe the item, decide which candidate is the same product, and call describe_listing." },
+    { type: "text", text: "Describe the item, decide which candidate is the same product or which are similar, and call describe_listing." },
   ];
 }

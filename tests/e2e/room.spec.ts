@@ -40,7 +40,9 @@ test("Harbor Hall 214 draws on the table color and its list mirrors the room", a
   const problems = watchConsole(page);
   const room = await openFurnishRoom(page);
   await expect(room).toHaveAttribute("data-placed", "5");
-  await expect(room).toHaveAttribute("data-ring", "lea-navy-bean-bag");
+  // A room that loads furnished rings nothing, since no item was placed just now.
+  await page.waitForTimeout(500);
+  await expect(room).toHaveAttribute("data-ring", "");
   expect(await listKeys(page)).toEqual(CART);
   await expect(room.getByRole("img", { name: /Harbor Hall 214, a Harbor Hall double of 3\.6 by 4\.5 meters, with 5 of 5 items placed/ })).toBeVisible();
 
@@ -60,7 +62,11 @@ test("Play placement empties the room and lands the cart one item at a time", as
     await expect(room).toHaveAttribute("data-placed", String(count));
     expect(await listKeys(page)).toEqual(CART.slice(0, count));
   }
+  // Each landing rings its item, and the last ring fades about 2 seconds later.
   await expect(room).toHaveAttribute("data-ring", "lea-navy-bean-bag");
+  const ringed = Date.now();
+  await expect(room).toHaveAttribute("data-ring", "", { timeout: 5_000 });
+  expect(Date.now() - ringed).toBeGreaterThan(1_500);
   await expect(page.getByRole("button", { name: "Play placement" })).toBeEnabled();
   expect(problems).toEqual([]);
 });
@@ -74,6 +80,8 @@ test("reduced motion places each item without the drop", async ({ page }) => {
   await expect(room).toHaveAttribute("data-ring", "jun-white-desk", { timeout: 250 });
   await expect(room).toHaveAttribute("data-placed", "5");
   await expect(room).toHaveAttribute("data-ring", "lea-navy-bean-bag", { timeout: 250 });
+  // With reduced motion the ring shows briefly and leaves without fading.
+  await expect(room).toHaveAttribute("data-ring", "", { timeout: 4_000 });
 });
 
 test("focusing an item in the list shows its Paper tag", async ({ page }) => {

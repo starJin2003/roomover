@@ -149,11 +149,11 @@ test("a dispute on a settled plan gets Roomover's evidence, and the student sees
   await card.scrollIntoViewIfNeeded();
   await expectAccessible(page);
   await captureFullHeight(page, `${SCREENSHOT_DIR}/dispute-inquiry-message-${width}.png`);
-  await page.getByRole("switch", { name: "Under the hood" }).click();
+  await page.getByRole("switch", { name: "Developer view" }).click();
   await expect(card.locator("[data-message-call]")).toContainText("Disputes API send-message");
   await card.scrollIntoViewIfNeeded();
   await captureFullHeight(page, `${SCREENSHOT_DIR}/dispute-inquiry-under-the-hood-${width}.png`);
-  await page.getByRole("switch", { name: "Under the hood" }).click();
+  await page.getByRole("switch", { name: "Developer view" }).click();
 
   // The buyer escalates the case, and PayPal asks Roomover for evidence.
   const escalated = new Date(opened.getTime() + 20_000);
@@ -169,8 +169,8 @@ test("a dispute on a settled plan gets Roomover's evidence, and the student sees
   await expectAccessible(page);
   await captureFullHeight(page, `${SCREENSHOT_DIR}/dispute-card-${width}.png`);
 
-  // Under the hood names the dispute, each Agent Toolkit read, and the evidence Roomover sent.
-  await page.getByRole("switch", { name: "Under the hood" }).click();
+  // The Developer view names the dispute, each Agent Toolkit read, and the evidence Roomover sent.
+  await page.getByRole("switch", { name: "Developer view" }).click();
   await expect(card.locator("[data-dispute-details]")).toContainText(`Dispute ${disputeId}, ${REASON}, CHARGEBACK, sandbox`);
   const reads = card.locator("[data-toolkit-read]");
   await expect(reads).toHaveCount(6);
@@ -190,7 +190,7 @@ test("a dispute on a settled plan gets Roomover's evidence, and the student sees
   expect(await sendDisputeEvent(page.request, "CUSTOMER.DISPUTE.RESOLVED", { ...resource, dispute_life_cycle_stage: "CHARGEBACK", status: "RESOLVED", update_time: resolved.toISOString(), dispute_outcome: { outcome_code: "RESOLVED_SELLER_FAVOUR" } })).toMatchObject({ status: 200 });
   expect(await sendDisputeEvent(page.request, "CUSTOMER.DISPUTE.UPDATED", { ...resource, dispute_life_cycle_stage: "CHARGEBACK", status: "UNDER_REVIEW", update_time: reviewing.toISOString() })).toMatchObject({ status: 200 });
   await page.reload();
-  await page.getByRole("switch", { name: "Under the hood" }).click();
+  await page.getByRole("switch", { name: "Developer view" }).click();
   await expect(card).toContainText("PayPal closed the dispute about the chair in Marcus's favor.");
   await expect(card).toHaveAttribute("data-dispute-status", "resolved");
   await expect(page.locator("li[data-paid]").filter({ hasText: "Marcus Bell" }).locator("[data-seller-dispute]")).toHaveText("Dispute closed");

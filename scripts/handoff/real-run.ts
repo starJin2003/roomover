@@ -146,7 +146,7 @@ async function main() {
   await page.locator('li[data-paid="true"]').nth(4).waitFor({ timeout: 300_000 });
   timings.lastConfirmToAllPaidSeconds = seconds(Date.now() - confirmedLast);
   await page.waitForTimeout(2500);
-  await page.getByRole("switch", { name: "Under the hood" }).click();
+  await page.getByRole("switch", { name: "Developer view" }).click();
   await page.locator('[data-paypal-moment="paid"]').scrollIntoViewIfNeeded();
   await page.waitForTimeout(4000);
   timings.totalSeconds = seconds(Date.now() - started);

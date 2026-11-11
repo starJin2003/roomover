@@ -11,8 +11,8 @@ export interface Channel3Transport {
   searchText(request: Channel3Api.SearchRequest, queryKey: string): Promise<unknown>;
 }
 
-/** Five products leave room for the four Sell keeps after dropping ones without a new US price. */
-const SEARCH_LIMIT = 6;
+/** Six products leave room for the four Sell keeps after dropping ones without a new US price. */
+export const IMAGE_SEARCH = { limit: 6, config: { country: "US", currency: "USD", length_unit: "cm" } } as const;
 const TIMEOUT_SECONDS = 20;
 
 const recordedSearch = z.looseObject({ products: z.array(z.unknown()) });
@@ -36,7 +36,7 @@ export function liveChannel3Transport(apiKey: string): Channel3Transport {
   return {
     mode: "live",
     async searchByImage(base64) {
-      const page = await client.products.searchByImage({ base64_image: base64, limit: SEARCH_LIMIT, config: { country: "US", currency: "USD", length_unit: "cm" } });
+      const page = await client.products.searchByImage({ base64_image: base64, ...IMAGE_SEARCH });
       return page.response;
     },
     async searchText(request) {

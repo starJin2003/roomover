@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { payoutRecipient } from "@/lib/domain/payout-recipient";
 import { clampPrices, minFloorCents, priceBounds } from "@/lib/domain/pricing";
-import { draftDetailsFrom, notListedSentence, placementFor, sellerVerdictSchema, sellWindows, sizeFromRetail, toMillimeters, type Channel3Candidate, type SellerVerdict } from "@/lib/domain/sell";
+import { draftDetailsFrom, notListedSentence, placementFor, sellerVerdictSchema, sellWindows, similarReferenceCents, sizeFromRetail, toMillimeters, type Channel3Candidate, type SellerVerdict } from "@/lib/domain/sell";
 import { handoffWindow } from "@/lib/domain/handoff";
 import { imageSize, sniffImage } from "@/lib/images";
 
@@ -17,6 +17,7 @@ const verdict: SellerVerdict = {
   material: "Metal",
   styleTags: ["Minimal", "minimal", "practical"],
   matchedCandidate: 1,
+  similarCandidates: [],
   newPriceDollars: 35,
   priceDollars: 21,
   floorDollars: 16,
@@ -82,9 +83,68 @@ describe("the seller agent's verdict", () => {
     expect(built.details.match?.productId).toBe("OZSFCDr");
   });
 
-  it("uses the agent's estimate when no candidate is the same product", () => {
+  it("uses the agent's estimate when no candidate is the same product or similar", () => {
     const built = draftDetailsFrom({ ...verdict, matchedCandidate: null, newPriceDollars: 80, priceDollars: 44, floorDollars: 34 }, [cart], { model: "claude-sonnet-5-5", attempts: 2 });
-    expect(built.ok && [built.details.match, built.details.newPriceSource, built.details.newPriceCents, built.details.priceCents]).toEqual([null, "seller_agent", 8_000, 4_400]);
+    expect(built.ok && [built.details.match, built.details.similar, built.details.newPriceSource, built.details.newPriceCents, built.details.priceCents]).toEqual([null, null, "seller_agent", 8_000, 4_400]);
+  });
+
+  it("keeps the estimate path when Channel3 returned nothing, even if the agent names a similar number", () => {
+    const built = draftDetailsFrom({ ...verdict, matchedCandidate: null, similarCandidates: [1], newPriceDollars: 30, priceDollars: 15, floorDollars: 11 }, [], { model: "m", attempts: 1 });
+    expect(built.ok && [built.details.similar, built.details.newPriceSource, built.details.newPriceCents, built.details.priceCents, built.details.floorPriceCents, built.details.sizeMm]).toEqual([null, "seller_agent", 3_000, 1_500, 1_100, null]);
+  });
+
+  it("ignores similar numbers when the agent found the same product", () => {
+    const built = draftDetailsFrom({ ...verdict, similarCandidates: [2] }, [cart, { ...cart, productId: "B", newPriceCents: 9_900 }], { model: "m", attempts: 1 });
+    expect(built.ok && [built.details.match?.productId, built.details.similar, built.details.newPriceSource, built.details.newPriceCents]).toEqual(["OZSFCDr", null, "channel3", 3_900]);
+  });
+
+  it("accepts a verdict recorded before similarCandidates existed as one with none", () => {
+    const recorded: Partial<SellerVerdict> = { ...verdict };
+    delete recorded.similarCandidates;
+    expect(sellerVerdictSchema.parse(recorded).similarCandidates).toEqual([]);
+    expect(sellerVerdictSchema.safeParse({ ...verdict, similarCandidates: [5] }).success).toBe(false);
+  });
+});
+
+describe("the similar products path", () => {
+  const product = (productId: string, newPriceCents: number, sizeMm: Channel3Candidate["sizeMm"] = null): Channel3Candidate => ({ ...cart, productId, title: `Cart ${productId}`, newPriceCents, sizeMm });
+  const sized = { widthMm: 450, depthMm: 330, heightMm: 790 };
+  const returned = [product("A", 2_999), product("B", 3_400, sized), product("C", 3_999, { widthMm: 400, depthMm: 300, heightMm: 700 }), product("D", 12_900)];
+  const noMatch = { ...verdict, matchedCandidate: null, newPriceDollars: 40, priceDollars: 20, floorDollars: 16 };
+
+  it("takes the median new price, rounded to the dollar", () => {
+    expect(similarReferenceCents([product("A", 3_449)])).toBe(3_400);
+    expect(similarReferenceCents([product("A", 3_450)])).toBe(3_500);
+    expect(similarReferenceCents([product("A", 3_999), product("B", 2_999), product("C", 3_400)])).toBe(3_400);
+    // Two middle prices average first: $29.99 and $34.00 give $31.995, which rounds to $32.
+    expect(similarReferenceCents([product("A", 2_999), product("B", 3_400)])).toBe(3_200);
+    expect(similarReferenceCents([product("A", 1_000), product("B", 2_000), product("C", 3_000), product("D", 10_000)])).toBe(2_500);
+    expect(similarReferenceCents([product("A", 25)])).toBe(100);
+    expect(() => similarReferenceCents([])).toThrow();
+  });
+
+  it("prices from the median of the picked products and keeps the agent's shares for its condition", () => {
+    const built = draftDetailsFrom({ ...noMatch, similarCandidates: [2, 1, 3] }, returned, { model: "m", attempts: 1 });
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    // Median $34. The agent asked $20 and $16 of its own $40 estimate, so 50 and 40 percent of $34.
+    expect([built.details.newPriceSource, built.details.newPriceCents, built.details.priceCents, built.details.floorPriceCents, built.details.match]).toEqual(["channel3_similar", 3_400, 1_700, 1_400, null]);
+    expect(built.details.similar?.products.map((candidate) => candidate.productId)).toEqual(["B", "A", "C"]);
+    expect(built.details.similar?.referenceCents).toBe(3_400);
+  });
+
+  it("suggests the size of the closest picked product that states one, and leaves the confirmed size empty", () => {
+    const built = draftDetailsFrom({ ...noMatch, similarCandidates: [1, 3, 2] }, returned, { model: "m", attempts: 1 });
+    expect(built.ok && [built.details.similar?.sizeMm, built.details.sizeMm]).toEqual([{ widthMm: 400, depthMm: 300, heightMm: 700 }, null]);
+    const unsized = draftDetailsFrom({ ...noMatch, similarCandidates: [1] }, returned, { model: "m", attempts: 1 });
+    expect(unsized.ok && [unsized.details.similar?.sizeMm, unsized.details.similar?.referenceCents]).toEqual([null, 3_000]);
+  });
+
+  it("drops repeated and missing numbers, and still clamps the price to 70 percent of the reference", () => {
+    const built = draftDetailsFrom({ ...noMatch, similarCandidates: [4, 4, 9], newPriceDollars: 20, priceDollars: 18, floorDollars: 15 }, returned, { model: "m", attempts: 1 });
+    expect(built.ok && built.details.similar?.products.map((candidate) => candidate.productId)).toEqual(["D"]);
+    // $18 of a $20 estimate is 90 percent, which the bounds cap at 70 percent of $129, $90.
+    expect(built.ok && [built.details.newPriceCents, built.details.priceCents, built.details.floorPriceCents]).toEqual([12_900, 9_000, 9_000]);
   });
 
   it("turns a photo of something Roomover does not list into a sentence", () => {
