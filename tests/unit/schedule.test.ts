@@ -62,6 +62,29 @@ describe("buildSchedule", () => {
     expect(schedule.span).toEqual({ startsAt: campusInstant("2026-11-15", 0).toISOString(), endsAt: campusInstant("2026-11-30", 0).toISOString() });
   });
 
+  it("gives the student's row exactly one move in bar when the listings store move ins a day apart", () => {
+    const later = window(["2026-11-24", 9], ["2026-11-26", 18]);
+    const latest = window(["2026-11-25", 9], ["2026-11-27", 18]);
+    const [desk, chair, clamp, beanbag] = harbor().items;
+    const schedule = buildSchedule(harbor({ items: [desk, { ...chair, moveIn: later }, { ...clamp, moveIn: latest }, { ...beanbag, moveIn: later }] }));
+    const whole = { startsAt: WINTER_MOVE_IN.startsAt.toISOString(), endsAt: latest.endsAt.toISOString() };
+    expect(schedule.ranges.filter((range) => range.resourceId === STUDENT_ROW)).toEqual([{ id: "in", resourceId: STUDENT_ROW, kind: "move_in", label: "Jordan moves in", ...whole }]);
+    expect(schedule.ranges.filter((range) => range.kind === "move_in")).toHaveLength(1);
+    expect(schedule.moveIn).toEqual(whole);
+  });
+
+  it("joins one seller's move outs that overlap into one bar and keeps move outs in different terms apart", () => {
+    const dayLater = window(["2026-11-16", 8], ["2026-11-17", 12]);
+    const spring = window(["2027-01-23", 9], ["2027-01-25", 12]);
+    const lea = (id: string, moveOut: TimeWindow) => item(id, "Lea", id, "same_room", moveOut, slotFor({ day: "2026-11-23", startHour: 12 }));
+    const moveOuts = (items: ScheduleItem[]) => buildSchedule(harbor({ items })).ranges.filter((range) => range.kind === "move_out").map((range) => [range.startsAt, range.endsAt]);
+    expect(moveOuts([lea("tote", FALL_MOVE_OUT), lea("lamp", dayLater), lea("pouf", FALL_MOVE_OUT)])).toEqual([[FALL_MOVE_OUT.startsAt.toISOString(), dayLater.endsAt.toISOString()]]);
+    expect(moveOuts([lea("tote", spring), lea("lamp", FALL_MOVE_OUT)])).toEqual([
+      [FALL_MOVE_OUT.startsAt.toISOString(), FALL_MOVE_OUT.endsAt.toISOString()],
+      [spring.startsAt.toISOString(), spring.endsAt.toISOString()],
+    ]);
+  });
+
   it("marks storage holds and words the gap with real names and days", () => {
     const stored = harbor({
       items: [item("lamp", "Ava", "lamp", "storage_hold", FALL_MOVE_OUT, slotFor({ day: "2026-11-24", startHour: 12 }))],

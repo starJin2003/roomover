@@ -89,7 +89,7 @@ export interface ScheduleView {
   slots: ScheduleSlot[];
   /** Whole campus days from the first move out to the last window. */
   span: ScheduleWindow;
-  /** The student's move in when every item shares one, drawn as a band across every row. */
+  /** The student's move in, drawn as a band across every row. Null only when the order has no handoff. */
   moveIn: ScheduleWindow | null;
   /** The gap in one sentence, with names and dates. */
   summary: string;
@@ -100,8 +100,25 @@ const dates = (window: ScheduleWindow): TimeWindow => ({ startsAt: new Date(wind
 const sameWindow = (a: TimeWindow, b: TimeWindow) => a.startsAt.getTime() === b.startsAt.getTime() && a.endsAt.getTime() === b.endsAt.getTime();
 const firstNameOf = (name: string) => name.split(" ")[0];
 
-function distinct(windows: readonly TimeWindow[]): TimeWindow[] {
-  return windows.filter((window, index) => windows.findIndex((other) => sameWindow(other, window)) === index).sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+/**
+ * Windows in order of start, with any that overlap joined into one. Listings
+ * store their windows one by one, and a reseed moves only the listings no
+ * open order holds, so one move can arrive as windows a day apart.
+ */
+function joined(windows: readonly TimeWindow[]): TimeWindow[] {
+  const bars: TimeWindow[] = [];
+  for (const window of [...windows].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime())) {
+    const last = bars.at(-1);
+    if (last === undefined || window.startsAt > last.endsAt) bars.push({ ...window });
+    else if (window.endsAt > last.endsAt) last.endsAt = window.endsAt;
+  }
+  return bars;
+}
+
+/** One window from the earliest start to the latest end, or null for no windows. */
+function spanOf(windows: readonly TimeWindow[]): TimeWindow | null {
+  if (windows.length === 0) return null;
+  return { startsAt: new Date(Math.min(...windows.map((window) => window.startsAt.getTime()))), endsAt: new Date(Math.max(...windows.map((window) => window.endsAt.getTime()))) };
 }
 
 /** "desk", "rug and chair", or "lamp, cart, and rug". */
@@ -148,7 +165,7 @@ export function buildSchedule(input: ScheduleInput): ScheduleView {
     if (sellers.some((seller) => seller.id === item.sellerId)) continue;
     const own = input.items.filter((other) => other.sellerId === item.sellerId);
     sellers.push({ id: item.sellerId, kind: "seller", name: item.sellerName, detail: listWords(own.map((other) => other.noun)) });
-    distinct(own.map((other) => other.moveOut)).forEach((window, index) =>
+    joined(own.map((other) => other.moveOut)).forEach((window, index) =>
       ranges.push({ id: `out-${item.sellerId}-${index}`, resourceId: item.sellerId, kind: "move_out", label: `${firstNameOf(item.sellerName)} moves out`, ...iso(window) }),
     );
   }
@@ -187,14 +204,14 @@ export function buildSchedule(input: ScheduleInput): ScheduleView {
     }
   }
 
-  const moveIns = distinct(input.items.map((item) => item.moveIn));
-  moveIns.forEach((window, index) => ranges.push({ id: `in-${index}`, resourceId: STUDENT_ROW, kind: "move_in", label: `${input.buyerFirstName} moves in`, ...iso(window) }));
+  // The student moves in once, so the row gets one bar that covers every item's stored move in.
+  const moveIn = spanOf(input.items.map((item) => item.moveIn));
+  if (moveIn !== null) ranges.push({ id: "in", resourceId: STUDENT_ROW, kind: "move_in", label: `${input.buyerFirstName} moves in`, ...iso(moveIn) });
 
   const everything = [...ranges.map(dates), ...slots.map(dates)];
   const starts = everything.map((window) => window.startsAt.getTime());
   const ends = everything.map((window) => window.endsAt.getTime());
   const span = starts.length === 0 ? null : { startsAt: campusMidnight(new Date(Math.min(...starts)), false), endsAt: campusMidnight(new Date(Math.max(...ends)), true) };
-  const moveIn = moveIns.length === 1 ? moveIns[0] : null;
 
   return {
     buyerFirstName: input.buyerFirstName,
